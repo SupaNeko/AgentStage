@@ -79,7 +79,6 @@ erDiagram
         text name "群聊名称"
         text avatar_path "群聊头像"
         int mute_enabled "禁言开关"
-        int auto_mode_delay "自动模式延迟(秒)"
         int message_limit "消息上限数值"
         int message_limit_enabled "消息上限开关"
         int created_at "创建时间"
@@ -168,7 +167,7 @@ CREATE TABLE IF NOT EXISTS migrations (
 CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    avatar_path TEXT,
+    avatar_path TEXT,                    -- 头像路径（相对应用数据目录，如 avatars/alice.png）
     
     -- 人设字段（双人设设计）
     detailed_persona TEXT NOT NULL,      -- 详细人设：自身 System Prompt
@@ -191,6 +190,10 @@ CREATE TABLE IF NOT EXISTS agents (
     frequency_penalty REAL DEFAULT 0.0,
     api_key_encrypted BLOB,              -- AES-GCM 加密后的 API Key
     
+    -- 软删除（保留历史消息）
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER,                  -- 删除时间
+    
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -209,7 +212,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- 会话列表展示优化（反规范化）
     last_message_at INTEGER,             -- 用于会话列表按时间排序
     last_message_preview TEXT,           -- 最后一条消息的预览（前 100 字）
-    unread_count INTEGER DEFAULT 0       -- 未读消息数
+    unread_count INTEGER DEFAULT 0,      -- 未读消息数
+    
+    -- 软删除（支持清空/删除后保留聊天记录）
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER                   -- 删除/清空时间
 );
 ```
 
@@ -224,6 +231,10 @@ CREATE TABLE IF NOT EXISTS private_sessions (
     message_limit INTEGER,               -- NULL = 使用全局默认值
     message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
     
+    -- 消息上限计数器（由应用层维护）
+    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来对方 Agent 发送的消息数
+    last_reset_at INTEGER DEFAULT 0,        -- 上次计数重置时间戳
+    
     created_at INTEGER NOT NULL
 );
 ```
@@ -234,13 +245,16 @@ CREATE TABLE IF NOT EXISTS private_sessions (
 CREATE TABLE IF NOT EXISTS group_sessions (
     session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
     name TEXT NOT NULL,                  -- 群聊名称（必填）
-    avatar_path TEXT,                    -- 群聊头像
+    avatar_path TEXT,                    -- 群聊头像（相对应用数据目录，如 avatars/group_friends.png）
     
     -- 群聊配置（覆盖全局默认值）
     mute_enabled INTEGER DEFAULT 1 CHECK(mute_enabled IN (0, 1)),      -- 默认开启禁言
-    auto_mode_delay INTEGER DEFAULT 5,                                  -- 自动模式轮询延迟（秒）
     message_limit INTEGER,                                              -- NULL = 使用全局默认值
     message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    
+    -- 消息上限计数器（由应用层维护）
+    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来所有 Agent 发送的消息总数
+    last_reset_at INTEGER DEFAULT 0,        -- 上次计数重置时间戳
     
     created_at INTEGER NOT NULL
 );
@@ -257,6 +271,9 @@ CREATE TABLE IF NOT EXISTS group_members (
     
     talkness REAL DEFAULT 0.5 CHECK(talkness >= 0 AND talkness <= 1),  -- 发言欲望值，参考 RisuAI
     is_active INTEGER DEFAULT 1 CHECK(is_active IN (0, 1)),           -- 是否启用自动触发
+    
+    -- P2 预留：用户多身份切换（每个群聊可使用不同人设）
+    user_persona_id TEXT,                -- NULL = 普通用户模式；非 NULL = 使用该人设 ID
     
     PRIMARY KEY (session_id, participant_id, participant_type)
 );
@@ -367,13 +384,17 @@ CREATE INDEX IF NOT EXISTS idx_messages_system
     ON messages(sender_type, created_at) WHERE sender_type = 'system';
 
 -- ========== 会话基表索引 ==========
--- 会话列表按最近活动时间排序
+-- 活跃会话列表按最近活动时间排序
 CREATE INDEX IF NOT EXISTS idx_sessions_last_message 
-    ON sessions(last_message_at DESC);
+    ON sessions(last_message_at DESC) WHERE is_deleted = 0;
 
 -- 按类型筛选（私聊/群聊列表分开展示时）
 CREATE INDEX IF NOT EXISTS idx_sessions_type 
-    ON sessions(session_type, last_message_at DESC);
+    ON sessions(session_type, last_message_at DESC) WHERE is_deleted = 0;
+
+-- 已删除/归档会话查询
+CREATE INDEX IF NOT EXISTS idx_sessions_deleted 
+    ON sessions(deleted_at DESC) WHERE is_deleted = 1;
 
 -- ========== 私聊索引 ==========
 -- 查找用户的所有私聊（用于私聊列表）
@@ -402,7 +423,7 @@ CREATE INDEX IF NOT EXISTS idx_friendships_a2
 
 ### 决策 1：为什么私聊和群聊要拆成独立表？
 
-**原设计的缺陷**：单表继承（`sessions` + `type` 字段）导致群聊特有字段（`mute_enabled`, `auto_mode_delay`）在私聊行中必须为 NULL，造成：
+**原设计的缺陷**：单表继承（`sessions` + `type` 字段）导致群聊特有字段（`mute_enabled`, `message_limit` 等）在私聊行中必须为 NULL，造成：
 1. **语义污染**：私聊行中存在无意义的 NULL 字段
 2. **约束困难**：无法对群聊字段加 `NOT NULL`（如群聊名称必填）
 3. **查询歧义**：`SELECT * FROM sessions WHERE mute_enabled = 1` 可能返回私聊行（NULL 在 SQLite 中不等于 1，但逻辑上令人困惑）
@@ -424,24 +445,24 @@ CREATE INDEX IF NOT EXISTS idx_friendships_a2
 3. **查询性能**：获取好友列表只需查 `friendships`，无需扫描所有私聊
 4. **群友 vs 好友区分**：Prompt 拼接时"好友"和"群友"需要不同标注，独立表让区分更简单
 
-### 决策 3：为什么消息上限不维护计数器，而用 COUNT(*) 查询？
+### 决策 3：为什么消息上限用显式计数器字段维护？
 
-```sql
-WITH last_user_msg AS (
-    SELECT MAX(created_at) as ts
-    FROM messages
-    WHERE session_id = ? AND sender_type = 'user'
-)
-SELECT COUNT(*) 
-FROM messages m, last_user_msg l
-WHERE m.session_id = ? 
-  AND m.sender_type = 'agent'
-  AND m.created_at > IFNULL(l.ts, 0);
-```
+**设计变更**：由 SQL `COUNT(*)` 查询改为应用层维护计数器字段（`agent_message_count`）。
 
-- 消息量天然受上限控制（20-30 条触发上限后停止），实际查询范围很小
-- 避免计数器与真实数据不一致（崩溃、并发、bug 导致的不一致）
-- 用户发消息后"重置"就是改变 `last_user_msg` 的时间戳，逻辑简洁
+**原因**：
+- 用户明确要求用字段维护计数，重置时机明确（创建群聊、清空会话、用户说话、手动重置按钮）。
+- `COUNT(*)` 查询虽然范围小，但需要每次触发时查询数据库；计数器字段将检查变为 O(1) 的内存/字段读取。
+- 重置逻辑更灵活：除了用户发消息自动重置，还支持前端手动重置按钮。
+
+**计数器维护规则**：
+1. **初始化**：创建私聊/群聊时，`agent_message_count = 0`，`last_reset_at = now`。
+2. **递增**：Agent 发送消息后，`agent_message_count += 1`。
+3. **重置**：以下事件触发计数器重置为 0：
+   - 用户发送消息（自动重置）
+   - 创建新群聊（自动重置）
+   - 清空会话聊天记录（自动重置）
+   - 用户点击"重置计数"按钮（手动重置）
+4. **持久化**：计数器与 `last_reset_at` 随消息发送事务一起更新，确保一致性。
 
 ### 决策 4：为什么 pending_queue 不持久化？
 
@@ -701,37 +722,39 @@ ORDER BY m.created_at;
 
 ### 7.4 检查消息上限是否达到
 
-```sql
--- 统计自上次用户消息以来，会话中的 Agent 消息数
-WITH last_user_msg AS (
-    SELECT MAX(created_at) as ts
-    FROM messages
-    WHERE session_id = 'session_id' AND sender_type = 'user'
-)
-SELECT COUNT(*) as agent_message_count
-FROM messages m, last_user_msg l
-WHERE m.session_id = 'session_id' 
-  AND m.sender_type = 'agent'
-  AND m.is_deleted = 0
-  AND m.created_at > IFNULL(l.ts, 0);
-```
+**Rust 层逻辑**（直接读取计数器字段，O(1)）：
 
-**与上限比较**（Rust 层逻辑）：
 ```rust
 // 私聊上限配置
 let limit = private_session.message_limit
     .unwrap_or(app_settings.private_message_limit_default);
 let enabled = private_session.message_limit_enabled
     .unwrap_or(app_settings.private_limit_enabled_default);
+let count = private_session.agent_message_count;
 
 // 群聊上限配置
 let limit = group_session.message_limit
     .unwrap_or(app_settings.group_message_limit_default);
 let enabled = group_session.message_limit_enabled
     .unwrap_or(app_settings.group_limit_enabled_default);
+let count = group_session.agent_message_count;
 
 if enabled && count >= limit {
     return TriggerDecision::Blocked(Reason::MessageLimit);
+}
+```
+
+**计数器重置时机**：
+```rust
+// 用户发送消息时自动重置
+fn reset_counter_on_user_message(session_id: &str) {
+    UPDATE private_sessions SET agent_message_count = 0, last_reset_at = ? WHERE session_id = ?;
+    UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ? WHERE session_id = ?;
+}
+
+// 手动重置（前端按钮）
+fn reset_counter_manually(session_id: &str) {
+    // 同上，可由用户主动触发
 }
 ```
 
@@ -797,7 +820,7 @@ WHERE id = 'session_id';
 ### 7.8 获取会话列表（私聊 + 群聊统一查询）
 
 ```sql
--- 统一查询所有会话，用于侧边栏展示
+-- 统一查询活跃会话，用于侧边栏展示
 SELECT 
     s.id,
     s.session_type,
@@ -816,7 +839,23 @@ FROM sessions s
 LEFT JOIN group_sessions gs ON s.id = gs.session_id AND s.session_type = 'group'
 LEFT JOIN private_sessions ps ON s.id = ps.session_id AND s.session_type = 'private'
 LEFT JOIN agents a ON ps.agent_id = a.id
+WHERE s.is_deleted = 0
 ORDER BY s.last_message_at DESC;
+
+-- 查询已归档/删除的会话（用于"回收站"列表）
+SELECT 
+    s.id,
+    s.session_type,
+    s.last_message_at,
+    s.deleted_at,
+    gs.name as group_name,
+    a.name as private_agent_name
+FROM sessions s
+LEFT JOIN group_sessions gs ON s.id = gs.session_id AND s.session_type = 'group'
+LEFT JOIN private_sessions ps ON s.id = ps.session_id AND s.session_type = 'private'
+LEFT JOIN agents a ON ps.agent_id = a.id
+WHERE s.is_deleted = 1
+ORDER BY s.deleted_at DESC;
 ```
 
 ---

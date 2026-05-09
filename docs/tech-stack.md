@@ -280,6 +280,13 @@ Tauri Commands
   └── src/commands/settings.rs
 ```
 
+**Tauri Command 设计规范（混合模式）**：
+- **写操作粗粒度**：一个 Command 封装完整业务流程，减少前端调用次数和事务边界复杂度。
+  - 例：`send_message(session_id, content)` 一次性完成"写消息 → 更新会话状态 → 触发 Agent → 返回流式响应"。
+- **读操作细粒度**：按需查询，方便前端组合数据。
+  - 例：`get_session_list()`、`get_messages(session_id, limit)`、`get_agent_details(agent_id)` 独立提供。
+- **错误处理**：Rust 侧统一返回 `Result<T, AppError>`，通过 Tauri IPC 序列化为 `{ ok: T } | { error: { code, message } }`，前端统一拦截处理。
+
 ### 决策 4：Svelte 5 Runes vs Svelte 4 Store？
 
 **选择：Svelte 5 Runes**
@@ -389,7 +396,7 @@ pnpm install marked dompurify date-fns lucide-svelte
 1. **项目脚手架搭建**：`create-tauri-app` 初始化，配置 TailwindCSS、路径别名
 2. **数据库 Schema 设计**：基于 PRD 设计 SQLite 表结构（角色、会话、消息、设置）
 3. **Rust 后端骨架**：Tauri Commands 层、rusqlite 连接、基础 Repository 模式
-4. **前端基础框架**：路由（若需要多页面）、主题系统、状态管理（Svelte Runes）
+4. **前端基础框架**：页面状态管理（Svelte 5 Runes 条件渲染，无需路由库）、主题系统、组件库搭建
 5. **Agent 配置 UI**：表单、验证、Tavern Card 导入（PNG 元数据解析）
 6. **1对1 聊天核心**：消息列表、输入框、Prompt 拼接、LLM API 调用、流式展示
 7. **群聊扩展**：禁言开关、多 Agent 调度器、消息上限、全局间隔
