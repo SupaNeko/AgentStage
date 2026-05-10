@@ -4,9 +4,24 @@ export interface Agent {
     avatar_path: string | null;
     detailed_persona: string;
     simplified_persona: string;
+    personality: string | null;
+    scenario: string | null;
+    example_messages: string | null;
+    first_message: string | null;
+    creator_notes: string | null;
+    tags: string | null;
     model_provider: string | null;
     model_name: string | null;
+    base_url: string | null;
+    temperature: number;
+    max_tokens: number;
+    top_p: number;
+    presence_penalty: number;
+    frequency_penalty: number;
+    is_deleted: boolean;
+    deleted_at: number | null;
     created_at: number;
+    updated_at: number;
 }
 
 export interface Session {
