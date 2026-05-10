@@ -11,6 +11,22 @@ pub struct Message {
     pub message_type: String,
     pub tool_call_data: Option<String>,
     pub generation_info: Option<String>,
+    pub is_deleted: bool,
+}
+
+impl From<Message> for MessageResponse {
+    fn from(msg: Message) -> Self {
+        Self {
+            id: msg.id,
+            session_id: msg.session_id,
+            sender_type: msg.sender_type,
+            sender_id: msg.sender_id,
+            sender_name: String::new(), // populated by handler
+            content: msg.content,
+            created_at: msg.created_at,
+            message_type: msg.message_type,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

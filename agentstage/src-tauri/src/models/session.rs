@@ -39,7 +39,38 @@ pub struct SessionResponse {
     pub mute_enabled: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupSession {
+    pub session_id: String,
+    pub name: String,
+    pub avatar_path: Option<String>,
+    pub mute_enabled: bool,
+    pub message_limit: Option<i32>,
+    pub message_limit_enabled: bool,
+    pub agent_message_count: i32,
+    pub last_reset_at: i64,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatePrivateSessionRequest {
     pub agent_id: String,
+}
+
+impl From<(Session, PrivateSession)> for SessionResponse {
+    fn from((session, ps): (Session, PrivateSession)) -> Self {
+        Self {
+            id: session.id,
+            session_type: session.session_type,
+            last_message_at: session.last_message_at,
+            last_message_preview: session.last_message_preview,
+            unread_count: session.unread_count,
+            agent_id: Some(ps.agent_id),
+            agent_name: None, // populated by handler
+            agent_avatar: None,
+            group_name: None,
+            group_avatar: None,
+            mute_enabled: None,
+        }
+    }
 }
