@@ -3,11 +3,14 @@
     import { Plus, Bot } from 'lucide-svelte';
     import { onMount } from 'svelte';
     import type { Agent } from '$lib/types';
+    import CreateAgentModal from './CreateAgentModal.svelte';
     
     let agents = $state<Agent[]>([]);
     let loading = $state(true);
+    let modalOpen = $state(false);
     
-    onMount(async () => {
+    async function loadAgents() {
+        loading = true;
         try {
             agents = await invoke('list_agents');
         } catch (err) {
@@ -15,13 +18,17 @@
         } finally {
             loading = false;
         }
+    }
+    
+    onMount(() => {
+        loadAgents();
     });
 </script>
 
 <div class="flex flex-col h-full">
     <header class="flex items-center justify-between p-4 border-b border-border bg-surface">
         <h2 class="text-lg font-semibold">Agent 管理</h2>
-        <button class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
+        <button onclick={() => modalOpen = true} class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors">
             <Plus size={18} />
             <span>新建 Agent</span>
         </button>
@@ -60,3 +67,5 @@
         {/if}
     </div>
 </div>
+
+<CreateAgentModal bind:open={modalOpen} onSuccess={loadAgents} />
