@@ -1,9 +1,47 @@
 <script lang="ts">
     import './styles.css';
+    import { onMount } from 'svelte';
+    import { listen } from '@tauri-apps/api/event';
     import LeftNav from '$lib/components/LeftNav.svelte';
     import AgentList from '$lib/components/AgentList.svelte';
     import AgentDetail from '$lib/components/AgentDetail.svelte';
+    import SessionList from '$lib/components/SessionList.svelte';
+    import ChatView from '$lib/components/ChatView.svelte';
     import { appState } from '$lib/stores/appState.svelte';
+    import { sessionStore } from '$lib/stores/sessionStore.svelte';
+
+    onMount(() => {
+        const unlistenFns: (() => void)[] = [];
+
+        listen('new_message', (event) => {
+            const msg = event.payload as { session_id: string; content?: string; created_at?: number };
+            if (msg.session_id !== sessionStore.selectedSessionId) {
+                sessionStore.sessions = sessionStore.sessions.map((s) =>
+                    s.id === msg.session_id
+                        ? {
+                                ...s,
+                                unread_count: s.unread_count + 1,
+                                last_message_preview: msg.content || s.last_message_preview,
+                                last_message_at: msg.created_at || Date.now(),
+                            }
+                        : s
+                );
+            }
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('system_notice', () => {
+            // Ignore for MVP
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('agent_error', (event) => {
+            const payload = event.payload as { error?: string; message?: string };
+            alert('Agent error: ' + (payload.error || payload.message || 'Unknown error'));
+        }).then((fn) => unlistenFns.push(fn));
+
+        return () => {
+            unlistenFns.forEach((fn) => fn());
+        };
+    });
 </script>
 
 <div class="flex h-screen w-screen overflow-hidden bg-bg">
@@ -15,14 +53,7 @@
         {#if appState.currentView === 'agents'}
             <AgentList />
         {:else if appState.currentView === 'chat'}
-            <div class="flex flex-col h-full">
-                <header class="px-4 py-3 border-b border-border">
-                    <h2 class="text-base font-semibold">会话列表</h2>
-                </header>
-                <div class="flex-1 flex items-center justify-center text-text-secondary text-sm p-4">
-                    会话功能即将推出...
-                </div>
-            </div>
+            <SessionList />
         {:else}
             <div class="flex flex-col h-full">
                 <header class="px-4 py-3 border-b border-border">
@@ -40,9 +71,7 @@
         {#if appState.currentView === 'agents'}
             <AgentDetail />
         {:else if appState.currentView === 'chat'}
-            <div class="flex flex-col items-center justify-center h-full text-text-secondary">
-                <p>聊天功能即将推出...</p>
-            </div>
+            <ChatView />
         {:else}
             <div class="flex flex-col items-center justify-center h-full text-text-secondary">
                 <p>历史会话功能即将推出...</p>
