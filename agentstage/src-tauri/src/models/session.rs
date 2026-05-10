@@ -1,0 +1,45 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub id: String,
+    pub session_type: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub last_message_at: Option<i64>,
+    pub last_message_preview: Option<String>,
+    pub unread_count: i32,
+    pub is_deleted: bool,
+    pub deleted_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrivateSession {
+    pub session_id: String,
+    pub agent_id: String,
+    pub message_limit: Option<i32>,
+    pub message_limit_enabled: bool,
+    pub agent_message_count: i32,
+    pub last_reset_at: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionResponse {
+    pub id: String,
+    pub session_type: String,
+    pub last_message_at: Option<i64>,
+    pub last_message_preview: Option<String>,
+    pub unread_count: i32,
+    pub agent_id: Option<String>,
+    pub agent_name: Option<String>,
+    pub agent_avatar: Option<String>,
+    pub group_name: Option<String>,
+    pub group_avatar: Option<String>,
+    pub mute_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatePrivateSessionRequest {
+    pub agent_id: String,
+}
