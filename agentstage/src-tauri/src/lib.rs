@@ -1,4 +1,5 @@
 pub mod db;
+pub mod models;
 
 use db::connection::init_db;
 use tauri::Manager;
