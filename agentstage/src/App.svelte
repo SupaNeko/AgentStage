@@ -10,7 +10,7 @@
   }
 </script>
 
-<main class="container">
+<main class="container bg-bg text-text h-screen w-screen overflow-hidden">
   <h1>Welcome to Tauri + Svelte</h1>
 
   <div class="row">
