@@ -4,6 +4,8 @@ pub mod db;
 pub mod models;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};
+use commands::message::{get_session_messages, send_user_message};
+use commands::session::{create_private_session, delete_session, get_session, list_sessions};
 use db::connection::init_db;
 use tauri::Manager;
 
@@ -22,6 +24,12 @@ pub fn run() {
             list_agents,
             update_agent,
             delete_agent,
+            create_private_session,
+            list_sessions,
+            get_session,
+            delete_session,
+            send_user_message,
+            get_session_messages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
