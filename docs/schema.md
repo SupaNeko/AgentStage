@@ -8,12 +8,12 @@
 
 ## 一、设计原则
 
-1. **关系型为主**：Agent、会话、消息、好友关系天然适合关系模型
+1. **关系型为主**：角色、会话、消息、好友关系天然适合关系模型
 2. **适度反规范化**：IM 应用读多写少，适当冗余减少 JOIN（如会话最后消息预览）
 3. **单文件数据库**：`agentstage.db` 存于用户数据目录，备份 = 复制文件
 4. **预留扩展**：P2 功能（用户人设）预留表结构，但不影响核心表
 5. **WAL 模式**：启用 SQLite WAL (Write-Ahead Logging) 提升并发写入性能
-6. **逻辑视图**："每个 Agent 的可见消息历史"通过关系查询动态构建，不物理冗余存储
+6. **逻辑视图**："每个 角色 的可见消息历史"通过关系查询动态构建，不物理冗余存储
 7. **私聊/群聊彻底拆分**：两者业务差异大（配置项、参与者模型、触发逻辑不同），独立成表
 
 ---
@@ -36,7 +36,7 @@ erDiagram
         text name "角色名称"
         text avatar_path "头像路径"
         text detailed_persona "详细人设(System Prompt)"
-        text simplified_persona "简易人设(给其他Agent)"
+        text simplified_persona "简易人设(给其他角色)"
         text personality "性格"
         text scenario "场景"
         text example_messages "示例消息"
@@ -68,7 +68,7 @@ erDiagram
     
     PRIVATE_SESSION {
         text session_id PK,FK "会话ID"
-        text agent_id FK "对方Agent"
+        text agent_id FK "对方角色"
         int message_limit "消息上限数值"
         int message_limit_enabled "消息上限开关"
         int created_at "创建时间"
@@ -107,14 +107,14 @@ erDiagram
     }
     
     FRIENDSHIP {
-        text agent_id_1 FK "Agent A"
-        text agent_id_2 FK "Agent B"
+        text agent_id_1 FK "角色 A"
+        text agent_id_2 FK "角色 B"
         int created_at "建立时间"
         text source_session_id FK "来源私聊会话"
     }
     
     TRIGGER_STATE {
-        text agent_id PK,FK "Agent ID"
+        text agent_id PK,FK "角色 ID"
         int last_trigger_time "上次触发时间(ms)"
         int updated_at "更新时间"
     }
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS migrations (
 );
 ```
 
-### 3.2 角色/Agent 表
+### 3.2 角色/角色 表
 
 ```sql
 CREATE TABLE IF NOT EXISTS agents (
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS agents (
     
     -- 人设字段（双人设设计）
     detailed_persona TEXT NOT NULL,      -- 详细人设：自身 System Prompt
-    simplified_persona TEXT NOT NULL,    -- 简易人设：给其他 Agent 看的简介
+    simplified_persona TEXT NOT NULL,    -- 简易人设：给其他 角色 看的简介
     personality TEXT,                    -- 性格补充
     scenario TEXT,                       -- 场景设定
     example_messages TEXT,               -- 示例消息
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS agents (
     creator_notes TEXT,                  -- 创作者备注
     tags TEXT,                           -- JSON 数组字符串，如 '["tag1","tag2"]'
     
-    -- 模型配置（每个 Agent 独立）
+    -- 模型配置（每个 角色 独立）
     model_provider TEXT,                 -- openai, anthropic, google, custom...
     model_name TEXT,                     -- gpt-4o, claude-3-sonnet, gemini-pro...
     base_url TEXT,                       -- 自定义 API 地址
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS private_sessions (
     message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
     
     -- 消息上限计数器（由应用层维护）
-    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来对方 Agent 发送的消息数
+    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来对方 角色 发送的消息数
     last_reset_at INTEGER DEFAULT 0,        -- 上次计数重置时间戳
     
     created_at INTEGER NOT NULL
@@ -253,7 +253,7 @@ CREATE TABLE IF NOT EXISTS group_sessions (
     message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
     
     -- 消息上限计数器（由应用层维护）
-    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来所有 Agent 发送的消息总数
+    agent_message_count INTEGER DEFAULT 0,  -- 自上次重置以来所有 角色 发送的消息总数
     last_reset_at INTEGER DEFAULT 0,        -- 上次计数重置时间戳
     
     created_at INTEGER NOT NULL
@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS friendships (
 );
 ```
 
-### 3.9 Agent 触发状态表
+### 3.9 角色 触发状态表
 
 ```sql
 CREATE TABLE IF NOT EXISTS trigger_states (
@@ -406,7 +406,7 @@ CREATE INDEX IF NOT EXISTS idx_private_sessions_agent
 CREATE INDEX IF NOT EXISTS idx_group_members_session 
     ON group_members(session_id);
 
--- 查找 Agent 参与的所有群聊（用于构建可见历史）
+-- 查找 角色 参与的所有群聊（用于构建可见历史）
 CREATE INDEX IF NOT EXISTS idx_group_members_agent 
     ON group_members(participant_id, participant_type);
 
@@ -456,7 +456,7 @@ CREATE INDEX IF NOT EXISTS idx_friendships_a2
 
 **计数器维护规则**：
 1. **初始化**：创建私聊/群聊时，`agent_message_count = 0`，`last_reset_at = now`。
-2. **递增**：Agent 发送消息后，`agent_message_count += 1`。
+2. **递增**：角色 发送消息后，`agent_message_count += 1`。
 3. **重置**：以下事件触发计数器重置为 0：
    - 用户发送消息（自动重置）
    - 创建新群聊（自动重置）
@@ -478,7 +478,7 @@ PRD 中的 pending_queue 是"全局最小触发间隔内积压的消息"。
 
 ## 六、调度器消息准确性分析（核心问题）
 
-### 问题：当前设计能否在每次调用 Agent 时准确地添加新的消息？
+### 问题：当前设计能否在每次调用 角色 时准确地添加新的消息？
 
 **结论：可以。但需要严格的时间戳管理和调度器配合。**
 
@@ -492,10 +492,10 @@ last_trigger_time ────────────────────�
 ```
 
 ```sql
--- 获取 Agent 'agent_X' 的所有待处理新消息
+-- 获取 角色 'agent_X' 的所有待处理新消息
 SELECT * FROM messages
 WHERE session_id IN (
-    -- Agent X 参与的所有会话
+    -- 角色 X 参与的所有会话
     SELECT session_id FROM private_sessions WHERE agent_id = 'agent_X'
     UNION
     SELECT session_id FROM group_members 
@@ -519,56 +519,56 @@ ORDER BY created_at;
 
 #### 情况 A：触发过程中有新消息到达
 
-- t=30：触发 Agent X，`last_trigger_time=0`，查询获取 M1-M5
+- t=30：触发 角色 X，`last_trigger_time=0`，查询获取 M1-M5
 - t=32：API 调用过程中，群聊收到 M6
 - t=35：生成完成，更新 `last_trigger_time=30`
 - t=36：M6 的 `created_at=32` > `last_trigger_time=30`
 
 **结果**：M6 会在下一次触发（t=60）时被处理。**没有遗漏，只是延迟 30 秒。** 这是符合预期的，因为：
-- 不应在 Agent 正在生成回复时中断并重新组装 Prompt
+- 不应在 角色 正在生成回复时中断并重新组装 Prompt
 - 30 秒延迟模拟了人类的"看完消息后思考再回复"节奏
 
-#### 情况 B：Agent 自己发送的消息是否会被当作"新消息"？
+#### 情况 B：角色 自己发送的消息是否会被当作"新消息"？
 
-- t=30：触发 Agent X，处理 M1-M5
-- t=35：Agent X 调用 `send_message` 发送 M_reply
+- t=30：触发 角色 X，处理 M1-M5
+- t=35：角色 X 调用 `send_message` 发送 M_reply
 - M_reply 的 `created_at=35`
 - t=36：更新 `last_trigger_time=30`
 - 下次查询 `created_at > 30` 会包含 M_reply
 
-**风险**：Agent X 可能被自己的消息再次触发，导致循环。
+**风险**：角色 X 可能被自己的消息再次触发，导致循环。
 
 **解决方案（调度器层，非数据库层）**：
 
 PRD 已规定防循环逻辑：
-- **私聊**：Agent A 发消息后，触发的是接收方 Agent B，不是 Agent A 自己
-- **群聊**："对于群聊中除发送者外的每一个 Agent" — 发送者自己不被触发
+- **私聊**：角色 A 发消息后，触发的是接收方 角色 B，不是 角色 A 自己
+- **群聊**："对于群聊中除发送者外的每一个 角色" — 发送者自己不被触发
 
-因此调度器在查询后、触发前，必须**过滤掉 sender_id = 当前 Agent 的消息**。或者更简单地：调度器只响应"其他参与者发送的消息"，不响应自己发送的消息。
+因此调度器在查询后、触发前，必须**过滤掉 sender_id = 当前 角色 的消息**。或者更简单地：调度器只响应"其他参与者发送的消息"，不响应自己发送的消息。
 
-数据库本身无法阻止这个循环（因为 M_reply 确实是一条合法消息），但**调度器的业务逻辑保证 Agent 不会被自己的消息触发**。
+数据库本身无法阻止这个循环（因为 M_reply 确实是一条合法消息），但**调度器的业务逻辑保证 角色 不会被自己的消息触发**。
 
 #### 情况 C：多个会话同时有新消息
 
-- Agent X 同时参与了私聊 A 和群聊 B
+- 角色 X 同时参与了私聊 A 和群聊 B
 - t=10：私聊 A 收到 M1（来自用户）
-- t=15：群聊 B 收到 M2（来自 Agent Y）
+- t=15：群聊 B 收到 M2（来自 角色 Y）
 - t=30：触发器到期
 
 **查询结果**：M1 和 M2 都被选中，按 `created_at` 排序后一起注入 Prompt。
 
-**这正是 PRD 的设计意图**："间隔内积压的所有新消息一次性组装调用"。Agent X 会在 Prompt 中看到：
+**这正是 PRD 的设计意图**："间隔内积压的所有新消息一次性组装调用"。角色 X 会在 Prompt 中看到：
 ```
 【最新消息】
 - 用户在私聊 A 中说："..."（M1, t=10）
-- Agent Y 在群聊 B 中说："..."（M2, t=15）
+- 角色 Y 在群聊 B 中说："..."（M2, t=15）
 ```
 
-Agent X 可以基于这两条消息综合决定回复哪个会话（或两个都回复）。
+角色 X 可以基于这两条消息综合决定回复哪个会话（或两个都回复）。
 
 #### 情况 D：应用崩溃后恢复
 
-- t=10：触发 Agent X，处理 M1-M3，更新 `last_trigger_time=10`
+- t=10：触发 角色 X，处理 M1-M3，更新 `last_trigger_time=10`
 - t=15：收到 M4，加入内存 pending_queue
 - t=20：**应用崩溃**，pending_queue 丢失
 - 重启后：
@@ -594,7 +594,7 @@ SQLite 的 `INTEGER` 时间戳精度为毫秒，并发同毫秒概率极低。�
 |------|------|---------|
 | 触发过程中到达的消息延迟 30 秒 | 低 | 符合"人类反应时间"设计目标，IM 体验可接受 |
 | 时间戳精度不足导致消息遗漏 | 极低 | 毫秒级精度足够；如果真需要，可用 `last_trigger_time` = 上次触发开始时的时间而非结束时 |
-| Agent 回复被当作新消息自触发 | 中 | 调度器层排除 sender_id = 当前 Agent；群聊排除发送者；双重保险 |
+| 角色 回复被当作新消息自触发 | 中 | 调度器层排除 sender_id = 当前 角色；群聊排除发送者；双重保险 |
 | 崩溃后 pending_queue 丢失 | 无 | 消息已持久化，重启后重建 |
 
 ### 6.4 如果要彻底消除"触发过程中消息延迟"
@@ -630,10 +630,10 @@ t=30: 触发开始
 
 ## 七、关键业务查询示例
 
-### 7.1 构建 Agent 的可见消息历史（Prompt 拼接第 4 层）
+### 7.1 构建 角色 的可见消息历史（Prompt 拼接第 4 层）
 
 ```sql
--- 获取 Agent 'agent_xxx' 参与的所有会话的消息，按会话分组
+-- 获取 角色 'agent_xxx' 参与的所有会话的消息，按会话分组
 SELECT 
     s.id as session_id,
     s.session_type,
@@ -665,7 +665,7 @@ ORDER BY s.session_type, m.created_at;
 
 ### 7.2 构建 Prompt 参与者简介（Prompt 拼接第 3 层）
 
-**群聊场景**（当前群聊的所有其他 Agent）：
+**群聊场景**（当前群聊的所有其他 角色）：
 ```sql
 SELECT 
     a.id,
@@ -683,19 +683,19 @@ WHERE gm.session_id = 'group_session_id'
 ORDER BY is_friend DESC, a.name;
 ```
 
-**私聊场景**（对方 Agent）：
+**私聊场景**（对方 角色）：
 ```sql
--- 私聊直接通过 private_sessions 获取对方 Agent，无需查 group_members
+-- 私聊直接通过 private_sessions 获取对方 角色，无需查 group_members
 SELECT a.id, a.name, a.simplified_persona, 1 as is_friend
 FROM private_sessions ps
 JOIN agents a ON ps.agent_id = a.id
 WHERE ps.session_id = 'private_session_id';
 ```
 
-### 7.3 获取 Agent 的待处理新消息（调度器核心查询）
+### 7.3 获取 角色 的待处理新消息（调度器核心查询）
 
 ```sql
--- 获取 Agent X 自上次触发以来的所有新消息（跨所有参与的会话）
+-- 获取 角色 X 自上次触发以来的所有新消息（跨所有参与的会话）
 SELECT 
     m.*,
     s.session_type,
@@ -715,7 +715,7 @@ WHERE m.session_id IN (
   AND m.created_at > (
       SELECT last_trigger_time FROM trigger_states WHERE agent_id = 'agent_xxx'
   )
-  -- 关键：排除 Agent 自己发送的消息，防止自触发循环
+  -- 关键：排除 角色 自己发送的消息，防止自触发循环
   AND NOT (m.sender_type = 'agent' AND m.sender_id = 'agent_xxx')
 ORDER BY m.created_at;
 ```
@@ -758,10 +758,10 @@ fn reset_counter_manually(session_id: &str) {
 }
 ```
 
-### 7.5 群聊触发时获取待触发 Agent 列表
+### 7.5 群聊触发时获取待触发 角色 列表
 
 ```sql
--- 获取群聊中除发送者外的所有启用的 Agent 成员
+-- 获取群聊中除发送者外的所有启用的 角色 成员
 SELECT gm.participant_id as agent_id, a.name, t.last_trigger_time
 FROM group_members gm
 JOIN agents a ON gm.participant_id = a.id
@@ -772,7 +772,7 @@ WHERE gm.session_id = 'group_session_id'
   AND gm.is_active = 1;                         -- 只取启用的成员
 ```
 
-**Rust 层处理**：对每个 Agent 检查 `now - last_trigger_time >= global_interval`。
+**Rust 层处理**：对每个 角色 检查 `now - last_trigger_time >= global_interval`。
 
 ### 7.6 建立好友关系（创建私聊时自动）
 
@@ -788,7 +788,7 @@ VALUES ('sess_id', 'private', 1700000000000, 1700000000000);
 INSERT INTO private_sessions (session_id, agent_id, message_limit, message_limit_enabled, created_at)
 VALUES ('sess_id', 'agent_B_id', 20, 1, 1700000000000);
 
--- 3. 如果是 Agent-Agent 私聊，建立好友关系
+-- 3. 如果是 角色-角色 私聊，建立好友关系
 INSERT INTO friendships (agent_id_1, agent_id_2, created_at, source_session_id)
 VALUES (
     min('agent_A_id', 'agent_B_id'),
