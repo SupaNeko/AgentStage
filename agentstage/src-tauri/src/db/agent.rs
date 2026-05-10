@@ -2,6 +2,8 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::agent::{Agent, CreateAgentRequest, UpdateAgentRequest};
 use uuid::Uuid;
 
+const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, api_key_encrypted, is_deleted, deleted_at, created_at, updated_at";
+
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
         id: row.get(0)?,
@@ -34,7 +36,8 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
 pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    let api_key_bytes = req.api_key.as_bytes().to_vec(); // TODO: encrypt with aes-gcm
+    let api_key_encrypted = crate::crypto::encrypt(&req.api_key)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
     
     conn.execute(
         r#"INSERT INTO agents (
@@ -46,7 +49,7 @@ pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
             &id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature.unwrap_or(0.7), req.max_tokens.unwrap_or(2048),
-            &api_key_bytes, now, now,
+            &api_key_encrypted, now, now,
         ),
     )?;
     
@@ -55,7 +58,7 @@ pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
 
 pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Agent>> {
     let mut stmt = conn.prepare(
-        "SELECT * FROM agents WHERE id = ?1 AND is_deleted = 0"
+        &format!("SELECT {} FROM agents WHERE id = ?1 AND is_deleted = 0", SELECT_COLUMNS)
     )?;
     let mut rows = stmt.query_map([id], row_to_agent)?;
     rows.next().transpose()
@@ -63,7 +66,7 @@ pub fn get_by_id(conn: &Connection, id: &str) -> Result<Option<Agent>> {
 
 pub fn list_all(conn: &Connection) -> Result<Vec<Agent>> {
     let mut stmt = conn.prepare(
-        "SELECT * FROM agents WHERE is_deleted = 0 ORDER BY created_at DESC"
+        &format!("SELECT {} FROM agents WHERE is_deleted = 0 ORDER BY created_at DESC", SELECT_COLUMNS)
     )?;
     let rows = stmt.query_map([], row_to_agent)?;
     rows.collect()
@@ -71,6 +74,10 @@ pub fn list_all(conn: &Connection) -> Result<Vec<Agent>> {
 
 pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
     let now = chrono::Utc::now().timestamp_millis();
+    let api_key_encrypted = req.api_key.as_ref()
+        .map(|k| crate::crypto::encrypt(k))
+        .transpose()
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
     
     conn.execute(
         r#"UPDATE agents SET
@@ -92,7 +99,7 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
             &req.id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature, req.max_tokens,
-            req.api_key.as_ref().map(|k| k.as_bytes().to_vec()),
+            api_key_encrypted,
             now,
         ),
     )?;

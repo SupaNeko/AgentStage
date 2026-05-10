@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use tauri::Manager;
 
 pub struct DbState(pub Mutex<Connection>);
@@ -30,6 +30,6 @@ pub fn init_db(app: &tauri::App) -> Result<DbState, Box<dyn std::error::Error>> 
     Ok(DbState(Mutex::new(conn)))
 }
 
-pub fn get_db<'a>(state: &'a tauri::State<'a, DbState>) -> Result<std::sync::MutexGuard<'a, Connection>, String> {
-    state.0.lock().map_err(|e| format!("Database lock poisoned: {}", e))
+pub async fn get_db<'a>(state: &'a tauri::State<'a, DbState>) -> Result<tokio::sync::MutexGuard<'a, Connection>, String> {
+    Ok(state.0.lock().await)
 }

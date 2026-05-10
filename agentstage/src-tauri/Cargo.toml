@@ -28,4 +28,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+aes-gcm = "0.10"
+rand = "0.8"
+sha2 = "0.10"
 
