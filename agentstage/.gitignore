@@ -1,10 +1,22 @@
+# Build output
+/dist
+
+# Dependencies
+/node_modules
+
+# OS
 .DS_Store
-node_modules
-/build
-/.svelte-kit
-/package
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
 .env
 .env.*
 !.env.example
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
