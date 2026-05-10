@@ -3,11 +3,13 @@ pub mod crypto;
 pub mod db;
 pub mod llm;
 pub mod models;
+pub mod scheduler;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};
 use commands::message::{get_session_messages, send_user_message};
 use commands::session::{create_private_session, delete_session, get_session, list_sessions};
 use db::connection::init_db;
+use scheduler::Scheduler;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,7 +18,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let db_state = init_db(app)?;
-            app.manage(db_state);
+            app.manage(db_state.clone());
+
+            let scheduler = Scheduler::new(db_state);
+            scheduler.set_app_handle(app.handle().clone());
+            let scheduler_for_bg = scheduler.clone();
+            app.manage(scheduler);
+
+            // 启动后台扫描任务
+            tokio::spawn(async move {
+                scheduler_for_bg.start_background_scan().await;
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

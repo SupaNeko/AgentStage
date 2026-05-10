@@ -1,8 +1,10 @@
 use rusqlite::Connection;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Manager;
 
-pub struct DbState(pub Mutex<Connection>);
+#[derive(Clone)]
+pub struct DbState(pub Arc<Mutex<Connection>>);
 
 pub fn init_db(app: &tauri::App) -> Result<DbState, Box<dyn std::error::Error>> {
     let app_dir = app.path().app_data_dir()?;
@@ -27,7 +29,7 @@ pub fn init_db(app: &tauri::App) -> Result<DbState, Box<dyn std::error::Error>> 
 
     super::migration::run_migrations(&mut conn)?;
 
-    Ok(DbState(Mutex::new(conn)))
+    Ok(DbState(Arc::new(Mutex::new(conn))))
 }
 
 pub async fn get_db<'a>(state: &'a tauri::State<'a, DbState>) -> Result<tokio::sync::MutexGuard<'a, Connection>, String> {

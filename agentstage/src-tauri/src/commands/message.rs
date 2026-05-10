@@ -3,10 +3,12 @@ use crate::db::connection::{get_db, DbState};
 use crate::db::message as message_repo;
 use crate::db::session as session_repo;
 use crate::models::message::{Message, SendMessageRequest};
+use crate::scheduler::Scheduler;
 
 #[tauri::command]
 pub async fn send_user_message(
     state: State<'_, DbState>,
+    scheduler: State<'_, Scheduler>,
     req: SendMessageRequest,
 ) -> Result<Message, String> {
     let conn = get_db(&state).await?;
@@ -28,8 +30,10 @@ pub async fn send_user_message(
     };
     let _ = session_repo::update_session_last_message(&conn, &req.session_id, &preview);
 
-    // TODO: 触发调度器（Task 8 中集成）
-    // scheduler.on_new_message(&req.session_id, &message).await;
+    drop(conn);
+
+    // 触发调度器
+    scheduler.on_new_message(&req.session_id, &message).await?;
 
     Ok(message)
 }
