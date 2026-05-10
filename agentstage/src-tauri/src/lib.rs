@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod crypto;
 pub mod db;
+pub mod llm;
 pub mod models;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};

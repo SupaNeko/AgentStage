@@ -31,4 +31,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 aes-gcm = "0.10"
 rand = "0.8"
 sha2 = "0.10"
+reqwest = { version = "0.12", features = ["json"] }
+async-trait = "0.1"
 
