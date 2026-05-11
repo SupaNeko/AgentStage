@@ -74,3 +74,17 @@ impl From<(Session, PrivateSession)> for SessionResponse {
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateGroupSessionRequest {
+    pub name: String,
+    pub agent_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GroupMemberResponse {
+    pub participant_type: String,
+    pub participant_id: String,
+    pub name: String,
+    pub avatar_path: Option<String>,
+}
