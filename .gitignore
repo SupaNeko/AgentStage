@@ -27,12 +27,11 @@ npm-debug.log*
 # Runtime data (database, logs, webview cache)
 /data/
 
-# Testing
+# Testing (development only, not project files)
 /playwright-report/
 /test-results/
-/e2e/screenshots/
-/e2e/debug-*.cjs
-/e2e/*.log
+/e2e/
+/playwright.config.ts
 
 # Rust
 *.rs.bk
