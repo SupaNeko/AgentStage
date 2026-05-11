@@ -69,3 +69,45 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::settings::UpdateAppSettingsRequest;
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_update_settings_preserve_untouched_fields() {
+        let conn = init_test_db();
+        let before = get_or_create_settings(&conn).unwrap();
+        assert_eq!(before.theme, "system");
+        assert_eq!(before.font_size, "medium");
+
+        let req = UpdateAppSettingsRequest {
+            global_min_trigger_interval: Some(60),
+            private_message_limit_default: None,
+            group_message_limit_default: None,
+            private_limit_enabled_default: None,
+            group_limit_enabled_default: None,
+            theme: None,
+            font_size: None,
+            language: None,
+            enter_to_send: None,
+            launch_on_startup: None,
+            minimize_to_tray: None,
+        };
+        update_settings(&conn, &req).unwrap();
+
+        let after = get_or_create_settings(&conn).unwrap();
+        assert_eq!(after.global_min_trigger_interval, 60);
+        assert_eq!(after.theme, "system");
+        assert_eq!(after.font_size, "medium");
+    }
+}

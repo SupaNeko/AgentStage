@@ -181,3 +181,47 @@ pub fn get_group_members(
     })?;
     rows.collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_create_group_session_min_2_agents() {
+        let conn = init_test_db();
+        let result = create_group_session(&conn, "Test Group", &["agent1".into()]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_group_session_and_get_members() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        let session = create_group_session(&conn, "Test Group", &["agent1".into(), "agent2".into()]).unwrap();
+        assert_eq!(session.session_type, "group");
+        assert_eq!(session.group_name, Some("Test Group".into()));
+
+        let members = get_group_members(&conn, &session.id).unwrap();
+        assert_eq!(members.len(), 3);
+        assert_eq!(members[0].participant_type, "user");
+        assert_eq!(members[0].name, "用户");
+        assert_eq!(members[1].name, "Agent One");
+        assert_eq!(members[2].name, "Agent Two");
+    }
+}
