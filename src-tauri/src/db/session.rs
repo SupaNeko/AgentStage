@@ -115,3 +115,69 @@ pub fn update_session_last_message(conn: &Connection, session_id: &str, preview:
     )?;
     Ok(())
 }
+
+pub fn create_group_session(
+    conn: &Connection,
+    name: &str,
+    agent_ids: &[String],
+) -> Result<SessionResponse> {
+    if agent_ids.len() < 2 {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "群聊至少需要选择 2 个角色".into()
+        ));
+    }
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let tx = conn.unchecked_transaction()?;
+
+    conn.execute(
+        "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES (?1, 'group', ?2, ?3)",
+        (&session_id, now, now),
+    )?;
+
+    conn.execute(
+        "INSERT INTO group_sessions (session_id, name, mute_enabled, created_at) VALUES (?1, ?2, 0, ?3)",
+        (&session_id, name, now),
+    )?;
+
+    conn.execute(
+        "INSERT INTO group_members (session_id, participant_type, participant_id, joined_at) VALUES (?1, 'user', 'user', ?2)",
+        (&session_id, now),
+    )?;
+
+    for agent_id in agent_ids {
+        conn.execute(
+            "INSERT INTO group_members (session_id, participant_type, participant_id, joined_at) VALUES (?1, 'agent', ?2, ?3)",
+            (&session_id, agent_id, now),
+        )?;
+    }
+
+    tx.commit()?;
+    get_session_by_id(conn, &session_id)?
+        .ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+pub fn get_group_members(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Vec<crate::models::session::GroupMemberResponse>> {
+    let mut stmt = conn.prepare(
+        "SELECT gm.participant_type, gm.participant_id,
+                CASE WHEN gm.participant_type = 'user' THEN '用户' ELSE COALESCE(a.name, '未知角色') END as name,
+                a.avatar_path
+         FROM group_members gm
+         LEFT JOIN agents a ON gm.participant_type = 'agent' AND gm.participant_id = a.id
+         WHERE gm.session_id = ?1 AND gm.is_active = 1
+         ORDER BY gm.participant_type DESC, name ASC"
+    )?;
+    let rows = stmt.query_map([session_id], |row| {
+        Ok(crate::models::session::GroupMemberResponse {
+            participant_type: row.get(0)?,
+            participant_id: row.get(1)?,
+            name: row.get(2)?,
+            avatar_path: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
