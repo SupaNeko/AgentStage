@@ -34,17 +34,15 @@
         {/if}
     </div>
 
-    <!-- 聊天气泡 -->
+    <!-- 聊天气泡（时间固定在气泡内右下角） -->
     <div
-        class="{isMe
+        class="relative {isMe
             ? 'bg-primary text-white rounded-2xl rounded-tr-sm'
-            : 'bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2"
+            : 'bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 pb-5 min-w-[80px]"
     >
         {message.content}
-    </div>
-
-    <!-- 时间 -->
-    <div class="text-xs text-text-secondary mt-1">
-        {formatTime(message.created_at)}
+        <span class="absolute bottom-1 right-2 text-[10px] opacity-70">
+            {formatTime(message.created_at)}
+        </span>
     </div>
 </div>
