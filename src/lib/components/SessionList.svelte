@@ -3,7 +3,10 @@
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { appState } from '$lib/stores/appState.svelte';
     import { formatTime } from '$lib/utils';
-    import { Search, MessageSquare } from 'lucide-svelte';
+    import { Search, MessageSquare, Plus } from 'lucide-svelte';
+    import CreateGroupModal from './CreateGroupModal.svelte';
+
+    let showCreateGroup = $state(false);
 
     onMount(() => {
         sessionStore.loadSessions();
@@ -19,6 +22,10 @@
     <!-- Header -->
     <header class="flex items-center justify-between p-4 border-b border-border">
         <h2 class="text-base font-semibold">会话列表</h2>
+        <button onclick={() => showCreateGroup = true}
+            class="p-1.5 hover:bg-bg rounded-lg text-text-secondary hover:text-text transition-colors" title="新建群聊">
+            <Plus size={18} />
+        </button>
     </header>
 
     <!-- Search -->
@@ -89,3 +96,7 @@
         {/if}
     </div>
 </div>
+
+{#if showCreateGroup}
+    <CreateGroupModal onclose={() => showCreateGroup = false} />
+{/if}

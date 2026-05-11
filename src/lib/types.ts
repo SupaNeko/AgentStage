@@ -48,3 +48,10 @@ export interface Message {
     created_at: number;
     message_type: string;
 }
+
+export interface GroupMember {
+    participant_type: 'user' | 'agent';
+    participant_id: string;
+    name: string;
+    avatar_path: string | null;
+}
