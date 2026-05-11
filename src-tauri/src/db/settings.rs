@@ -41,3 +41,31 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
         Err(e) => Err(e),
     }
 }
+
+pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateAppSettingsRequest) -> Result<()> {
+    let current = get_or_create_settings(conn)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "UPDATE app_settings SET 
+            global_min_trigger_interval = ?1, private_message_limit_default = ?2,
+            group_message_limit_default = ?3, private_limit_enabled_default = ?4,
+            group_limit_enabled_default = ?5, theme = ?6, font_size = ?7,
+            language = ?8, enter_to_send = ?9, launch_on_startup = ?10,
+            minimize_to_tray = ?11, updated_at = ?12 WHERE id = 1",
+        rusqlite::params![
+            req.global_min_trigger_interval.unwrap_or(current.global_min_trigger_interval),
+            req.private_message_limit_default.unwrap_or(current.private_message_limit_default),
+            req.group_message_limit_default.unwrap_or(current.group_message_limit_default),
+            req.private_limit_enabled_default.unwrap_or(current.private_limit_enabled_default) as i32,
+            req.group_limit_enabled_default.unwrap_or(current.group_limit_enabled_default) as i32,
+            req.theme.as_deref().unwrap_or(&current.theme),
+            req.font_size.as_deref().unwrap_or(&current.font_size),
+            req.language.as_deref().unwrap_or(&current.language),
+            req.enter_to_send.unwrap_or(current.enter_to_send) as i32,
+            req.launch_on_startup.unwrap_or(current.launch_on_startup) as i32,
+            req.minimize_to_tray.unwrap_or(current.minimize_to_tray) as i32,
+            now,
+        ],
+    )?;
+    Ok(())
+}
