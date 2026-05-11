@@ -13,10 +13,10 @@
 </script>
 
 <div class="flex flex-col max-w-[80%] {isMe ? 'items-end' : 'items-start'}">
-    <!-- 头像 + 名称（同一行） -->
-    <div class="flex items-center gap-2 mb-1">
+    <!-- 头像 + 名称 + 时间（同一行） -->
+    <div class="flex items-center gap-2 mb-1 w-full">
         {#if !isMe}
-            <!-- 左侧消息：头像在左，名称在右 -->
+            <!-- 左侧消息：头像 → 名称 → 时间（最右） -->
             <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                 {#if message.sender_avatar}
                     <img src={message.sender_avatar} alt={senderName} class="w-full h-full object-cover" />
@@ -25,8 +25,14 @@
                 {/if}
             </div>
             <span class="text-xs text-text-secondary">{senderName}</span>
+            <span class="text-[10px] text-text-secondary opacity-70 ml-auto">
+                {formatTime(message.created_at)}
+            </span>
         {:else}
-            <!-- 右侧消息：名称在左，头像在右 -->
+            <!-- 右侧消息：时间（最左） → 名称 → 头像 -->
+            <span class="text-[10px] text-text-secondary opacity-70 mr-auto">
+                {formatTime(message.created_at)}
+            </span>
             <span class="text-xs text-text-secondary">{senderName}</span>
             <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0">
                 <User size={16} />
@@ -34,15 +40,12 @@
         {/if}
     </div>
 
-    <!-- 聊天气泡（时间靠右，与最后一行文字同行；放不下则换行靠右） -->
+    <!-- 聊天气泡 -->
     <div
-        class="flex flex-wrap items-end gap-x-1 {isMe
+        class="{isMe
             ? 'bg-primary text-white rounded-2xl rounded-tr-sm'
             : 'bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 min-w-[80px]"
     >
-        <span class="break-words">{message.content}</span>
-        <span class="text-[10px] opacity-70 whitespace-nowrap ml-auto">
-            {formatTime(message.created_at)}
-        </span>
+        {message.content}
     </div>
 </div>
