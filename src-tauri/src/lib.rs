@@ -9,7 +9,8 @@ pub mod scheduler;
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};
 use commands::log::log_frontend;
 use commands::message::{get_session_messages, send_user_message};
-use commands::session::{create_private_session, delete_session, get_session, list_sessions};
+use commands::session::{create_group_session, create_private_session, delete_session, get_group_members, get_session, list_sessions};
+use commands::settings::{get_settings, update_settings};
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -104,9 +105,13 @@ pub fn run() {
             list_sessions,
             get_session,
             delete_session,
+            create_group_session,
+            get_group_members,
             send_user_message,
             get_session_messages,
             log_frontend,
+            get_settings,
+            update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
