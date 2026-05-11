@@ -8,7 +8,6 @@ AgentStage is a Windows desktop multi-agent roleplay chat app built with **Tauri
 
 ```bash
 # Full dev environment (starts Vite + compiles Rust + opens window)
-cd agentstage
 pnpm tauri dev
 
 # Frontend build only
@@ -19,6 +18,7 @@ cd src-tauri
 cargo check
 
 # Run Rust backend only (no Vite frontend)
+cd src-tauri
 cargo run
 
 # Svelte type check
@@ -33,11 +33,11 @@ npx svelte-check --tsconfig ./tsconfig.json
 
 | Directory | Role |
 |-----------|------|
-| `agentstage/src/` | Frontend: Svelte 5 components, stores (`.svelte.ts`), types |
-| `agentstage/src-tauri/src/` | Rust backend: Tauri Commands, DB repositories, models, crypto |
-| `agentstage/src-tauri/src/db/` | SQLite connection, schema, migrations, handwritten repositories |
-| `agentstage/src-tauri/src/commands/` | Tauri IPC command handlers (exposed to frontend via `invoke`) |
-| `agentstage/src-tauri/src/models/` | Rust structs for DB rows and request/response DTOs |
+| `src/` | Frontend: Svelte 5 components, stores (`.svelte.ts`), types |
+| `src-tauri/src/` | Rust backend: Tauri Commands, DB repositories, models, crypto |
+| `src-tauri/src/db/` | SQLite connection, schema, migrations, handwritten repositories |
+| `src-tauri/src/commands/` | Tauri IPC command handlers (exposed to frontend via `invoke`) |
+| `src-tauri/src/models/` | Rust structs for DB rows and request/response DTOs |
 | `docs/` | Product docs: PRD.md, feature_list.md, schema.md, tech-stack.md |
 
 ---
@@ -93,10 +93,11 @@ export const appState = new AppState();
 ## Backend Traps (Rust + SQLite)
 
 ### Database location
-SQLite file is created at runtime in the user's app data directory:
+SQLite file is created at runtime in the program directory (forced portable mode):
 ```
-%APPDATA%\com.agentstage.app\agentstage.db
+<exe_dir>\data\agentstage.db
 ```
+In dev mode, data is stored at the project root `data/`.
 WAL mode is enforced (`PRAGMA journal_mode = WAL`).
 
 ### Async mutex for DB connection
@@ -156,6 +157,105 @@ const agents = await invoke<Agent[]>('list_agents');
 
 ---
 
+## E2E Testing (Playwright)
+
+AgentStage uses **Playwright** for end-to-end frontend testing. Since AgentStage is a Tauri desktop app, E2E tests run against the Vite dev server (`http://127.0.0.1:1420`) with mocked Tauri IPC — this tests frontend UI rendering and interaction without requiring the Rust backend.
+
+### Setup
+
+```bash
+cd agentstage
+pnpm add -D @playwright/test
+# Use system Chrome/Edge instead of downloading Chromium:
+pnpm exec playwright install-deps chromium
+```
+
+### Configuration (`playwright.config.ts`)
+
+```typescript
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://127.0.0.1:1420',
+    channel: 'chrome', // Use system Chrome
+    headless: true,
+  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+  ],
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://127.0.0.1:1420',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+### Mocking Tauri IPC
+
+**Critical:** Tauri v2's `invoke` uses `window.__TAURI_INTERNALS__.invoke`, not `window.__TAURI__.core.invoke`. You must mock `__TAURI_INTERNALS__` and also implement `transformCallback` / `unregisterCallback` for event support.
+
+In `test.beforeEach`, inject via `page.addInitScript(...)`:
+
+```typescript
+await page.addInitScript(() => {
+  const callbacks = new Map();
+  const eventListeners = new Map();
+
+  function registerCallback(callback, once = false) {
+    const id = window.crypto.getRandomValues(new Uint32Array(1))[0];
+    callbacks.set(id, (data) => { if (once) callbacks.delete(id); return callback?.(data); });
+    return id;
+  }
+
+  window.__TAURI_INTERNALS__ = {
+    invoke: async (cmd, args) => {
+      // Handle event plugin
+      if (cmd === 'plugin:event|listen') { /* ... */ }
+      if (cmd === 'plugin:event|emit') { /* ... */ }
+      // Handle app commands
+      switch (cmd) {
+        case 'list_agents': return [...];
+        case 'create_private_session': return {...};
+        // ... etc
+      }
+    },
+    transformCallback: registerCallback,
+    unregisterCallback: (id) => callbacks.delete(id),
+    runCallback: (id, data) => callbacks.get(id)?.(data),
+    callbacks,
+    metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } }
+  };
+});
+```
+
+See `e2e/smoke.spec.ts` for a complete working example.
+
+### Running Tests
+
+```bash
+# Run all E2E tests
+pnpm exec playwright test e2e/
+
+# Run with headed browser (for debugging)
+pnpm exec playwright test e2e/ --headed
+
+# View HTML report
+pnpm exec playwright show-report
+```
+
+### Limitations
+
+- **Mocked backend:** E2E tests mock all Tauri Commands. They test frontend UI/UX, not real Rust backend logic.
+- **No WebView2 testing:** Tests run in Chrome, not WebView2. WebView2-specific behaviors are not covered.
+- **Real backend tests:** Use `cargo test` for Rust unit/integration tests; use `pnpm test` (Vitest) for frontend component tests.
+
+---
+
 ## Common Issues
 
 | Symptom | Fix |
@@ -163,6 +263,7 @@ const agents = await invoke<Agent[]>('list_agents');
 | Blank white window | Ensure `main.ts` uses `mount()`, `tsconfig.json` has `useDefineForClassFields: false`, and `tauri.conf.json` `devUrl` matches Vite bind address (`127.0.0.1:1420`) |
 | `cargo check` passes but `pnpm tauri dev` fails | Check Vite console for Svelte compile errors; a11y warnings are non-fatal |
 | Database locked / busy | Only one `Connection` exists (managed in `DbState` Mutex). Check for unreleased locks in repository code |
+| Playwright `invoke` mock not working | Check that you mock `window.__TAURI_INTERNALS__.invoke`, not `window.__TAURI__.core.invoke` |
 
 ---
 

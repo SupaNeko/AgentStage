@@ -1,1 +1,38 @@
 /.opencode
+
+# Build output
+/dist
+/src-tauri/target
+
+# Dependencies
+/node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Runtime data (database, logs, webview cache)
+/data/
+
+# Testing
+/playwright-report/
+/test-results/
+/e2e/screenshots/
+/e2e/debug-*.cjs
+/e2e/*.log
+
+# Rust
+*.rs.bk

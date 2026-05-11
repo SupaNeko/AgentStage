@@ -1,0 +1,137 @@
+<script lang="ts">
+    import './styles.css';
+    import { onMount } from 'svelte';
+    import { listen } from '@tauri-apps/api/event';
+    import LeftNav from '$lib/components/LeftNav.svelte';
+    import AgentList from '$lib/components/AgentList.svelte';
+    import AgentDetail from '$lib/components/AgentDetail.svelte';
+    import SessionList from '$lib/components/SessionList.svelte';
+    import ChatView from '$lib/components/ChatView.svelte';
+    import { appState } from '$lib/stores/appState.svelte';
+    import { sessionStore } from '$lib/stores/sessionStore.svelte';
+    import { messageStore } from '$lib/stores/messageStore.svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { logger } from '$lib/logger';
+
+    onMount(() => {
+        const unlistenFns: (() => void)[] = [];
+
+        listen('new_message', (event) => {
+            const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string };
+            const isCurrentSession = msg.session_id === sessionStore.selectedSessionId;
+            logger.debug('[DEBUG App.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), isCurrentSession });
+            // 更新会话列表（未读数、预览）
+            sessionStore.sessions = sessionStore.sessions.map((s) =>
+                s.id === msg.session_id
+                    ? {
+                            ...s,
+                            unread_count: isCurrentSession ? s.unread_count : s.unread_count + 1,
+                            last_message_preview: msg.content || s.last_message_preview,
+                            last_message_at: msg.created_at || Date.now(),
+                        }
+                    : s
+            );
+            // 兜底：即使当前会话，也刷新消息列表（防止事件丢失）
+            if (isCurrentSession && msg.id) {
+                messageStore.loadMessages(msg.session_id);
+            }
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('system_notice', (event) => {
+            const payload = event.payload as { content?: string };
+            logger.debug('[DEBUG App.listen system_notice]', { content: payload.content });
+            toastStore.show(payload.content || '系统通知', 'info');
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('agent_error', (event) => {
+            const payload = event.payload as { error?: string; message?: string };
+            logger.error('[DEBUG App.listen agent_error]', { error: payload.error, message: payload.message });
+            toastStore.show(payload.error || payload.message || '角色回复失败，将在稍后重试', 'error');
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('agent_completed', (event) => {
+            const payload = event.payload as { agent_id?: string; session_id?: string };
+            logger.debug('[DEBUG App.listen agent_completed]', { agentId: payload.agent_id });
+            // Agent 完成后刷新当前会话消息（兜底）
+            if (sessionStore.selectedSessionId) {
+                messageStore.loadMessages(sessionStore.selectedSessionId);
+            }
+        }).then((fn) => unlistenFns.push(fn));
+
+        return () => {
+            unlistenFns.forEach((fn) => fn());
+        };
+    });
+</script>
+
+<div class="flex h-screen w-screen overflow-hidden bg-bg">
+    <!-- Left Navigation -->
+    <LeftNav />
+
+    <!-- Middle Panel -->
+    <div class="w-72 shrink-0 bg-surface border-r border-border">
+        {#if appState.currentView === 'agents'}
+            <AgentList />
+        {:else if appState.currentView === 'chat'}
+            <SessionList />
+        {:else}
+            <div class="flex flex-col h-full">
+                <header class="px-4 py-3 border-b border-border">
+                    <h2 class="text-base font-semibold">历史会话</h2>
+                </header>
+                <div class="flex-1 flex items-center justify-center text-text-secondary text-sm p-4">
+                    历史会话功能即将推出...
+                </div>
+            </div>
+        {/if}
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 min-w-0 bg-bg">
+        {#if appState.currentView === 'agents'}
+            <AgentDetail />
+        {:else if appState.currentView === 'chat'}
+            <ChatView />
+        {:else}
+            <div class="flex flex-col items-center justify-center h-full text-text-secondary">
+                <p>历史会话功能即将推出...</p>
+            </div>
+        {/if}
+    </main>
+</div>
+
+<!-- Toast Notifications -->
+<div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
+    {#each toastStore.items as toast (toast.id)}
+        <div
+            class="pointer-events-auto px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-all animate-in slide-in-from-top-2 {toast.type === 'error' ? 'bg-red-500 text-white' : toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-surface text-text border border-border'}"
+        >
+            {#if toast.type === 'error'}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
+            {:else if toast.type === 'success'}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            {/if}
+            <span>{toast.message}</span>
+            <button onclick={() => toastStore.remove(toast.id)} class="ml-1 opacity-70 hover:opacity-100">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+        </div>
+    {/each}
+</div>
+
+<!-- Settings Modal -->
+{#if appState.settingsOpen}
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={(e) => { if (e.target === e.currentTarget) appState.closeSettings(); }}>
+        <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between p-4 border-b border-border">
+                <h3 class="text-lg font-semibold">设置</h3>
+                <button onclick={() => appState.closeSettings()} class="p-1 hover:bg-gray-100 rounded">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-text-secondary text-sm">设置功能即将推出...</p>
+            </div>
+        </div>
+    </div>
+{/if}
