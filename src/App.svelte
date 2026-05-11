@@ -12,8 +12,11 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
+    import SettingsPanel from '$lib/components/SettingsPanel.svelte';
+    import { settingsStore } from '$lib/stores/settingsStore.svelte';
 
     onMount(() => {
+        settingsStore.load();
         const unlistenFns: (() => void)[] = [];
 
         listen('new_message', (event) => {
@@ -119,19 +122,6 @@
     {/each}
 </div>
 
-<!-- Settings Modal -->
 {#if appState.settingsOpen}
-    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={(e) => { if (e.target === e.currentTarget) appState.closeSettings(); }}>
-        <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
-            <div class="flex items-center justify-between p-4 border-b border-border">
-                <h3 class="text-lg font-semibold">设置</h3>
-                <button onclick={() => appState.closeSettings()} class="p-1 hover:bg-gray-100 rounded">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-            </div>
-            <div class="p-6 space-y-4">
-                <p class="text-text-secondary text-sm">设置功能即将推出...</p>
-            </div>
-        </div>
-    </div>
+    <SettingsPanel onclose={() => appState.closeSettings()} />
 {/if}

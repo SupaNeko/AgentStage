@@ -10,6 +10,8 @@ export interface AppSettings {
     theme: string;
     font_size: string;
     language: string;
+    launch_on_startup?: boolean;
+    minimize_to_tray?: boolean;
 }
 
 class SettingsStore {
