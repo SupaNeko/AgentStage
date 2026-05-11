@@ -349,6 +349,8 @@ impl Scheduler {
                     session_id: p.session_id.clone(),
                     sender_type: p.sender_type.clone(),
                     sender_id: p.sender_id.clone(),
+                    sender_name: String::new(),
+                    sender_avatar: None,
                     content: p.content.clone(),
                     created_at: p.created_at,
                     message_type: "text".to_string(),

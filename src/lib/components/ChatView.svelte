@@ -171,7 +171,7 @@
                             <MessageBubble
                                 {message}
                                 isMe={message.sender_type === 'user'}
-                                senderName={message.sender_name || selectedSession.agent_name || 'Agent'}
+                                senderName={message.sender_name || '未知'}
                             />
                         </div>
                     {/each}

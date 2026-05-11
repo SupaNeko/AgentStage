@@ -6,6 +6,10 @@ pub struct Message {
     pub session_id: String,
     pub sender_type: String,
     pub sender_id: String,
+    #[serde(default)]
+    pub sender_name: String,
+    #[serde(default)]
+    pub sender_avatar: Option<String>,
     pub content: String,
     pub created_at: i64,
     pub message_type: String,

@@ -10,6 +10,8 @@ fn row_to_message(row: &Row) -> Result<Message> {
         session_id: row.get(1)?,
         sender_type: row.get(2)?,
         sender_id: row.get(3)?,
+        sender_name: String::new(),
+        sender_avatar: None,
         content: row.get(4)?,
         created_at: row.get(5)?,
         message_type: row.get(6)?,
@@ -55,12 +57,31 @@ pub fn get_messages_by_session(
     offset: i32,
 ) -> Result<Vec<Message>> {
     let mut stmt = conn.prepare(
-        &format!(
-            "SELECT {} FROM messages WHERE session_id = ?1 AND is_deleted = 0 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
-            SELECT_COLUMNS
-        )
+        "SELECT m.id, m.session_id, m.sender_type, m.sender_id, 
+                COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                a.avatar_path as sender_avatar,
+                m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted
+         FROM messages m
+         LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+         WHERE m.session_id = ?1 AND m.is_deleted = 0 
+         ORDER BY m.created_at DESC LIMIT ?2 OFFSET ?3"
     )?;
-    let rows = stmt.query_map(rusqlite::params![session_id, limit, offset], row_to_message)?;
+    let rows = stmt.query_map(rusqlite::params![session_id, limit, offset], |row| {
+        Ok(Message {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            sender_type: row.get(2)?,
+            sender_id: row.get(3)?,
+            sender_name: row.get(4)?,
+            sender_avatar: row.get(5)?,
+            content: row.get(6)?,
+            created_at: row.get(7)?,
+            message_type: row.get(8)?,
+            tool_call_data: row.get(9)?,
+            generation_info: row.get(10)?,
+            is_deleted: row.get::<_, i32>(11)? != 0,
+        })
+    })?;
     rows.collect()
 }
 

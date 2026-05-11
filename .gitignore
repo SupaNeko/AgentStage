@@ -38,3 +38,5 @@ npm-debug.log*
 
 # Git worktrees
 /.worktrees/
+
+docs/reference.md
