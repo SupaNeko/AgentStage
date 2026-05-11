@@ -1,7 +1,7 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
 use crate::db::session as session_repo;
-use crate::models::session::{CreatePrivateSessionRequest, SessionResponse};
+use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse};
 
 #[tauri::command]
 pub async fn create_private_session(
@@ -50,4 +50,27 @@ pub async fn delete_session(state: State<'_, DbState>, id: String) -> Result<boo
 
     crate::logger::backend("DEBUG", &format!("[DEBUG delete_session] id={}, rows_affected={}", id, rows_affected));
     Ok(rows_affected)
+}
+
+#[tauri::command]
+pub async fn create_group_session(
+    state: State<'_, DbState>,
+    req: CreateGroupSessionRequest,
+) -> Result<SessionResponse, String> {
+    crate::logger::backend("DEBUG", &format!("[DEBUG create_group_session] name={}, agents={:?}", req.name, req.agent_ids));
+    let conn = get_db(&state).await?;
+    let session = session_repo::create_group_session(&conn, &req.name, &req.agent_ids)
+        .map_err(|e| e.to_string())?;
+    Ok(session)
+}
+
+#[tauri::command]
+pub async fn get_group_members(
+    state: State<'_, DbState>,
+    session_id: String,
+) -> Result<Vec<GroupMemberResponse>, String> {
+    let conn = get_db(&state).await?;
+    let members = session_repo::get_group_members(&conn, &session_id)
+        .map_err(|e| e.to_string())?;
+    Ok(members)
 }
