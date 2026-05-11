@@ -35,3 +35,6 @@ npm-debug.log*
 
 # Rust
 *.rs.bk
+
+# Git worktrees
+/.worktrees/
