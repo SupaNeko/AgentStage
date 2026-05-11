@@ -34,14 +34,14 @@
         {/if}
     </div>
 
-    <!-- 聊天气泡（时间紧跟文字，不单独占行） -->
+    <!-- 聊天气泡（时间靠右，与最后一行文字同行；放不下则换行靠右） -->
     <div
-        class="{isMe
+        class="flex flex-wrap items-end gap-x-1 {isMe
             ? 'bg-primary text-white rounded-2xl rounded-tr-sm'
             : 'bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 min-w-[80px]"
     >
         <span class="break-words">{message.content}</span>
-        <span class="inline-block text-[10px] opacity-70 ml-1 align-bottom translate-y-[1px]">
+        <span class="text-[10px] opacity-70 whitespace-nowrap ml-auto">
             {formatTime(message.created_at)}
         </span>
     </div>
