@@ -5,12 +5,15 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
-    import { Send, MessageSquare } from 'lucide-svelte';
+    import { Send, MessageSquare, User } from 'lucide-svelte';
     import { logger } from '$lib/logger';
+    import type { GroupMember } from '$lib/types';
 
     let inputText = $state('');
     let sending = $state(false);
     let isAgentTyping = $state(false);
+    let members = $state<GroupMember[]>([]);
+    let loadingMembers = $state(false);
 
     let selectedSession = $derived(
         sessionStore.sessions.find((s) => s.id === sessionStore.selectedSessionId)
@@ -20,8 +23,19 @@
         const id = sessionStore.selectedSessionId;
         if (id) {
             messageStore.loadMessages(id);
+            const session = sessionStore.sessions.find(s => s.id === id);
+            if (session?.session_type === 'group') {
+                loadingMembers = true;
+                invoke<GroupMember[]>('get_group_members', { sessionId: id })
+                    .then((data) => { members = data; })
+                    .catch((err) => logger.error('Failed to load group members:', err))
+                    .finally(() => { loadingMembers = false; });
+            } else {
+                members = [];
+            }
         } else {
             messageStore.setSessionId(null);
+            members = [];
         }
     });
 
@@ -109,89 +123,116 @@
     });
 </script>
 
-<div class="flex flex-col h-full bg-bg">
-    <!-- Header -->
-    <header class="flex items-center px-6 py-4 border-b border-border bg-surface shrink-0">
-        {#if selectedSession}
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
-                    {#if selectedSession.agent_avatar || selectedSession.group_avatar}
-                        <img
-                            src={selectedSession.agent_avatar || selectedSession.group_avatar}
-                            alt={selectedSession.agent_name || selectedSession.group_name || '会话'}
-                            class="w-full h-full object-cover"
-                        />
-                    {:else}
-                        <MessageSquare size={20} />
-                    {/if}
-                </div>
-                <div>
-                    <h2 class="text-lg font-semibold">
-                        {selectedSession.agent_name || selectedSession.group_name || '未命名会话'}
-                    </h2>
-                </div>
-            </div>
-        {:else}
-            <h2 class="text-lg font-semibold text-text-secondary">选择一个会话开始聊天</h2>
-        {/if}
-    </header>
-
-    <!-- Message list -->
-    {#if !selectedSession}
-        <div class="flex-1 flex items-center justify-center text-text-secondary">
-            <p>选择一个会话开始聊天</p>
-        </div>
-    {:else}
-        <div class="flex-1 overflow-y-auto">
-            {#if messageStore.messages.length === 0}
-                <div class="flex items-center justify-center h-full text-text-secondary p-4">
-                    <p>还没有消息，发送第一条消息吧</p>
+<div class="flex h-full bg-bg">
+    <div class="flex flex-col flex-1 min-w-0">
+        <!-- Header -->
+        <header class="flex items-center px-6 py-4 border-b border-border bg-surface shrink-0">
+            {#if selectedSession}
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
+                        {#if selectedSession.agent_avatar || selectedSession.group_avatar}
+                            <img
+                                src={selectedSession.agent_avatar || selectedSession.group_avatar}
+                                alt={selectedSession.agent_name || selectedSession.group_name || '会话'}
+                                class="w-full h-full object-cover"
+                            />
+                        {:else}
+                            <MessageSquare size={20} />
+                        {/if}
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold">
+                            {selectedSession.agent_name || selectedSession.group_name || '未命名会话'}
+                        </h2>
+                    </div>
                 </div>
             {:else}
-            <div class="py-4 space-y-2">
-                {#each messageStore.messages as message (message.id)}
-                    <div
-                        class="flex px-4 {message.sender_type === 'user' ? 'justify-end' : 'justify-start'}"
-                    >
-                        <MessageBubble
-                            {message}
-                            isMe={message.sender_type === 'user'}
-                            senderName={message.sender_name || selectedSession.agent_name || 'Agent'}
-                        />
+                <h2 class="text-lg font-semibold text-text-secondary">选择一个会话开始聊天</h2>
+            {/if}
+        </header>
+
+        <!-- Message list -->
+        {#if !selectedSession}
+            <div class="flex-1 flex items-center justify-center text-text-secondary">
+                <p>选择一个会话开始聊天</p>
+            </div>
+        {:else}
+            <div class="flex-1 overflow-y-auto">
+                {#if messageStore.messages.length === 0}
+                    <div class="flex items-center justify-center h-full text-text-secondary p-4">
+                        <p>还没有消息，发送第一条消息吧</p>
                     </div>
-                {/each}
-                {#if isAgentTyping}
-                    <div class="flex px-4 justify-start">
-                        <div class="max-w-[80%]">
-                            <div class="text-xs text-text-secondary mb-1">{selectedSession.agent_name || 'Agent'}</div>
-                            <div class="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2 text-text-secondary text-sm">
-                                正在输入中...
+                {:else}
+                <div class="py-4 space-y-2">
+                    {#each messageStore.messages as message (message.id)}
+                        <div
+                            class="flex px-4 {message.sender_type === 'user' ? 'justify-end' : 'justify-start'}"
+                        >
+                            <MessageBubble
+                                {message}
+                                isMe={message.sender_type === 'user'}
+                                senderName={message.sender_name || selectedSession.agent_name || 'Agent'}
+                            />
+                        </div>
+                    {/each}
+                    {#if isAgentTyping}
+                        <div class="flex px-4 justify-start">
+                            <div class="max-w-[80%]">
+                                <div class="text-xs text-text-secondary mb-1">{selectedSession.agent_name || 'Agent'}</div>
+                                <div class="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2 text-text-secondary text-sm">
+                                    正在输入中...
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    {/if}
+                </div>
                 {/if}
             </div>
-            {/if}
-        </div>
 
-        <!-- Input area -->
-        <div class="shrink-0 border-t border-border p-4 bg-surface">
-            <div class="flex items-end gap-2">
-                <textarea
-                    bind:value={inputText}
-                    onkeydown={handleKeydown}
-                    placeholder="输入消息..."
-                    rows={3}
-                    class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32"
-                ></textarea>
-                <button
-                    onclick={handleSend}
-                    disabled={sending || !inputText.trim()}
-                    class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0"
-                >
-                    <Send size={18} />
-                </button>
+            <!-- Input area -->
+            <div class="shrink-0 border-t border-border p-4 bg-surface">
+                <div class="flex items-end gap-2">
+                    <textarea
+                        bind:value={inputText}
+                        onkeydown={handleKeydown}
+                        placeholder="输入消息..."
+                        rows={3}
+                        class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32"
+                    ></textarea>
+                    <button
+                        onclick={handleSend}
+                        disabled={sending || !inputText.trim()}
+                        class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0"
+                    >
+                        <Send size={18} />
+                    </button>
+                </div>
             </div>
-        </div>
+        {/if}
+    </div>
+    {#if selectedSession?.session_type === 'group'}
+        <aside class="w-56 border-l border-border bg-surface flex flex-col shrink-0">
+            <div class="p-3 border-b border-border">
+                <h3 class="text-sm font-medium">成员 ({members.length})</h3>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                {#if loadingMembers}
+                    <p class="text-xs text-text-secondary p-2">加载中...</p>
+                {:else}
+                    {#each members as member}
+                        <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-bg">
+                            <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
+                                {#if member.avatar_path}
+                                    <img src={member.avatar_path} alt={member.name} class="w-full h-full object-cover" />
+                                {:else}
+                                    <User size={16} />
+                                {/if}
+                            </div>
+                            <span class="text-sm truncate">{member.name}</span>
+                        </div>
+                    {/each}
+                {/if}
+            </div>
+        </aside>
     {/if}
 </div>
