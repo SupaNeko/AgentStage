@@ -41,14 +41,14 @@
         </div>
         <div class="p-6 space-y-6">
             <div>
-                <label class="block text-sm font-medium mb-1">全局最小触发间隔（秒）</label>
+                <label class="block text-sm font-medium mb-1">角色触发消息间隔（秒）</label>
                 <input
                     type="number"
                     min="0"
                     bind:value={draft.global_min_trigger_interval}
                     class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
-                <p class="text-xs text-text-secondary mt-1">0 = 不限制，>0 = 角色收到消息后至少等待 N 秒才会被触发</p>
+                <p class="text-xs text-text-secondary mt-1">0 = 不限制，>0 = 防止角色被连续调用的最小间隔秒数</p>
             </div>
         </div>
         <div class="p-4 border-t border-border flex justify-end">

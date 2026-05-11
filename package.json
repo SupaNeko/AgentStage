@@ -17,6 +17,9 @@
     "@tauri-apps/plugin-opener": "^2",
     "lucide-svelte": "^1.0.1"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

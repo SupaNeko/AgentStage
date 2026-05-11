@@ -63,6 +63,7 @@ impl Scheduler {
     }
 
     /// 当有新消息到达时调用（用户发送消息或角色发送消息）
+    /// 以角色为中心：确定哪些角色应该收到这条消息，推入每个角色的 pending_queue
     pub async fn on_new_message(
         &self,
         session_id: &str,
@@ -84,83 +85,80 @@ impl Scheduler {
             )
             .map_err(|e| e.to_string())?;
 
-        if session_type != "private" {
-            return Ok(()); // Phase 3: 群聊
-        }
+        // 确定哪些角色应该收到这条消息
+        let target_agent_ids: Vec<String> = if session_type == "private" {
+            // 私聊：对面 agent
+            let agent_id: String = conn
+                .query_row(
+                    "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
+                    [session_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
 
-        // 获取私聊的 agent_id
-        let agent_id: String = conn
-            .query_row(
-                "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
-                [session_id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-
-        // 检查该会话是否达到消息上限
-        let (count, limit, enabled): (i32, Option<i32>, bool) = conn
-            .query_row(
-                "SELECT agent_message_count, message_limit, message_limit_enabled
-                 FROM private_sessions WHERE session_id = ?1",
-                [session_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get::<_, i32>(2)? != 0,
-                    ))
-                },
-            )
-            .map_err(|e| e.to_string())?;
-
-        if enabled {
-            let default_limit = settings_repo::get_or_create_settings(&conn)
-                .map(|s| s.private_message_limit_default)
-                .unwrap_or(20);
-            let effective_limit = limit.unwrap_or(default_limit);
-            if count >= effective_limit {
-                drop(conn);
-                self.emit(
-                    "system_notice",
-                    serde_json::json!({
-                        "session_id": session_id,
-                        "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
-                    }),
-                );
-                return Ok(());
+            // 用户发消息重置私聊计数器
+            if message.sender_type == "user" {
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG on_new_message] resetting private session counter for session_id={}",
+                    session_id
+                ));
+                conn.execute(
+                    "UPDATE private_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2",
+                    (chrono::Utc::now().timestamp_millis(), session_id),
+                ).unwrap_or_default();
             }
-        }
 
-        // 如果用户发消息，重置计数器
-        if message.sender_type == "user" {
-            crate::logger::backend("DEBUG", &format!(
-                "[DEBUG on_new_message] resetting agent_message_count for session_id={}",
-                session_id
-            ));
-            conn.execute(
-                "UPDATE private_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2",
-                (chrono::Utc::now().timestamp_millis(), session_id),
-            )
-            .map_err(|e| e.to_string())?;
-        }
+            vec![agent_id]
+        } else {
+            // 群聊：所有 agent 成员，排除发送者自己
+            let mut stmt = conn
+                .prepare(
+                    "SELECT participant_id FROM group_members 
+                     WHERE session_id = ?1 AND participant_type = 'agent' AND is_active = 1"
+                )
+                .map_err(|e| e.to_string())?;
+            let ids: Vec<String> = stmt
+                .query_map([session_id], |row| row.get(0))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .filter(|id| *id != message.sender_id)
+                .collect();
+            drop(stmt);
+
+            // 用户发消息重置群聊计数器
+            if message.sender_type == "user" {
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG on_new_message] resetting group session counter for session_id={}",
+                    session_id
+                ));
+                conn.execute(
+                    "UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2",
+                    (chrono::Utc::now().timestamp_millis(), session_id),
+                ).unwrap_or_default();
+            }
+
+            ids
+        };
 
         drop(conn);
 
-        // 将消息加入对方角色的 pending_queue
-        {
-            let mut queue = self.pending_queue.lock().await;
-            crate::logger::backend("DEBUG", &format!(
-                "[DEBUG on_new_message] pushing message to pending_queue for agent_id={}",
-                agent_id
-            ));
-            queue
-                .entry(agent_id.clone())
-                .or_insert_with(Vec::new)
-                .push(PendingMessage::from(message.clone()));
-        }
+        // 推入每个目标角色的 pending_queue，并尝试触发
+        for agent_id in target_agent_ids {
+            {
+                let mut queue = self.pending_queue.lock().await;
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG on_new_message] pushing message to pending_queue for agent_id={}",
+                    agent_id
+                ));
+                queue
+                    .entry(agent_id.clone())
+                    .or_insert_with(Vec::new)
+                    .push(PendingMessage::from(message.clone()));
+            }
 
-        // 尝试触发（错误不传播，在 try_trigger_agent 内部处理）
-        let _ = self.try_trigger_agent(&agent_id).await;
+            // 尝试触发（错误不传播，在 try_trigger_agent 内部处理）
+            let _ = self.try_trigger_agent(&agent_id).await;
+        }
 
         Ok(())
     }
@@ -279,42 +277,62 @@ impl Scheduler {
     }
 
     async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>) -> Result<(), String> {
-        // === 阶段 2：检查消息上限 ===
+        // === 阶段 2：检查消息上限（按会话过滤）===
+        let mut limited_sessions = Vec::new();
         {
             let conn = self.db_state.0.lock().await;
-            let limit_check: Result<(i32, Option<i32>, bool), rusqlite::Error> = conn.query_row(
-                "SELECT agent_message_count, message_limit, message_limit_enabled
-                 FROM private_sessions WHERE agent_id = ?1",
-                [agent_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get::<_, i32>(2)? != 0,
-                    ))
-                },
-            );
+            let settings = settings_repo::get_or_create_settings(&conn).unwrap_or_default();
 
-            if let Ok((count, limit, enabled)) = limit_check {
-                if enabled {
-                    let default_limit = settings_repo::get_or_create_settings(&conn)
-                        .map(|s| s.private_message_limit_default)
-                        .unwrap_or(20);
-                    let effective_limit = limit.unwrap_or(default_limit);
-                    if count >= effective_limit {
-                        drop(conn);
-                        self.emit(
-                            "system_notice",
-                            serde_json::json!({
-                                "agent_id": agent_id,
-                                "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
-                            }),
-                        );
-                        return Ok(());
+            for sid in pending.iter().map(|p| &p.session_id).collect::<std::collections::HashSet<_>>() {
+                // 先查 private_sessions
+                if let Ok((count, limit, enabled)) = conn.query_row(
+                    "SELECT agent_message_count, message_limit, message_limit_enabled FROM private_sessions WHERE session_id = ?1",
+                    [sid.as_str()],
+                    |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
+                ) {
+                    if enabled {
+                        let effective = limit.unwrap_or(settings.private_message_limit_default);
+                        if count >= effective {
+                            limited_sessions.push(sid.clone());
+                        }
+                    }
+                    continue;
+                }
+                // 再查 group_sessions
+                if let Ok((count, limit, enabled)) = conn.query_row(
+                    "SELECT agent_message_count, message_limit, message_limit_enabled FROM group_sessions WHERE session_id = ?1",
+                    [sid.as_str()],
+                    |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
+                ) {
+                    if enabled {
+                        let effective = limit.unwrap_or(settings.group_message_limit_default);
+                        if count >= effective {
+                            limited_sessions.push(sid.clone());
+                        }
                     }
                 }
             }
         }
+
+        let pending = if !limited_sessions.is_empty() {
+            let limited_set: std::collections::HashSet<String> = limited_sessions.into_iter().collect();
+            let filtered: Vec<PendingMessage> = pending.into_iter()
+                .filter(|p| !limited_set.contains(&p.session_id))
+                .collect();
+            if filtered.is_empty() {
+                self.emit(
+                    "system_notice",
+                    serde_json::json!({
+                        "agent_id": agent_id,
+                        "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
+                    }),
+                );
+                return Ok(());
+            }
+            filtered
+        } else {
+            pending
+        };
 
         // === 阶段 3：读取 agent 配置和 prompt ===
         let (agent, prompt) = {
@@ -424,11 +442,17 @@ impl Scheduler {
             let conn = self.db_state.0.lock().await;
 
             for msg in &agent_messages {
-                // 递增消息计数器
-                conn.execute(
+                // 递增消息计数器（先尝试 private_sessions，再尝试 group_sessions）
+                let rows = conn.execute(
                     "UPDATE private_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
                     [&msg.session_id],
-                ).map_err(|e| e.to_string())?;
+                ).unwrap_or(0);
+                if rows == 0 {
+                    let _ = conn.execute(
+                        "UPDATE group_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
+                        [&msg.session_id],
+                    );
+                }
 
                 // 更新会话最后消息预览（按字符截断，防止 UTF-8 切片 panic）
                 let preview = truncate_preview(&msg.content, 100);
@@ -447,34 +471,52 @@ impl Scheduler {
         for msg in &agent_messages {
             self.emit("new_message", msg);
 
-            // 把消息加入对方角色的 pending_queue（排除自己，防止自我触发）
-            let target_agent_id: Option<String> = {
+            // 查出这条消息应该触发哪些角色（群聊中所有其他 agent，私聊中对面 agent）
+            let target_ids: Vec<String> = {
                 let conn = self.db_state.0.lock().await;
-                conn.query_row(
-                    "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
-                    [&msg.session_id],
-                    |row| row.get(0),
-                ).ok()
+                // 先查群聊成员
+                let mut stmt = conn.prepare(
+                    "SELECT participant_id FROM group_members 
+                     WHERE session_id = ?1 AND participant_type = 'agent' 
+                     AND participant_id != ?2 AND is_active = 1"
+                ).unwrap();
+                let mut ids: Vec<String> = stmt.query_map(
+                    rusqlite::params![&msg.session_id, agent_id],
+                    |row| row.get(0)
+                ).unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+                drop(stmt);
+
+                // 如果没有群聊成员，再查私聊
+                if ids.is_empty() {
+                    if let Ok(target_id) = conn.query_row(
+                        "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
+                        [&msg.session_id],
+                        |row| row.get::<_, String>(0),
+                    ) {
+                        if target_id != agent_id {
+                            ids.push(target_id);
+                        }
+                    }
+                }
+                ids
             };
 
-            if let Some(target_agent_id) = target_agent_id {
-                // 私聊中 target_agent_id 就是发送消息的 agent 自己，不应推回自己的 queue
-                if target_agent_id != agent_id {
-                    let mut queue = self.pending_queue.lock().await;
-                    queue.entry(target_agent_id.clone())
-                        .or_insert_with(Vec::new)
-                        .push(PendingMessage::from(msg.clone()));
-                    crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG trigger_agent] pushed message to target_agent_id={} (from agent_id={})",
-                        target_agent_id, agent_id
-                    ));
-                } else {
-                    crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG trigger_agent] skipped self-trigger for agent_id={}", agent_id
-                    ));
-                }
+            for target_id in target_ids {
+                let mut queue = self.pending_queue.lock().await;
+                queue.entry(target_id.clone())
+                    .or_insert_with(Vec::new)
+                    .push(PendingMessage::from(msg.clone()));
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG trigger_agent] pushed message to target_id={} (from agent_id={})",
+                    target_id, agent_id
+                ));
             }
         }
+
+        // 消息已推入各角色的 pending_queue，由后台扫描在下次 tick 时触发
+        //（避免 async fn 递归调用问题）
 
         self.emit(
             "agent_completed",

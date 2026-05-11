@@ -153,8 +153,24 @@ impl PromptAssembler {
         }
         drop(stmt);
 
-        // 群聊会话（Phase 2）
-        // TODO: 群聊实现后补充
+        // 群聊会话
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.id, gs.name, 'group' 
+                 FROM sessions s 
+                 JOIN group_sessions gs ON s.id = gs.session_id 
+                 JOIN group_members gm ON s.id = gm.session_id 
+                 WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent' AND s.is_deleted = 0"
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([agent_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            sessions.push(row.map_err(|e| e.to_string())?);
+        }
 
         Ok(sessions)
     }
