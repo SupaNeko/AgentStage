@@ -74,3 +74,64 @@ pub async fn get_group_members(
         .map_err(|e| e.to_string())?;
     Ok(members)
 }
+
+#[tauri::command]
+pub async fn get_session_config(
+    state: State<'_, DbState>,
+    session_id: String,
+    session_type: String,
+) -> Result<crate::models::session::SessionConfig, String> {
+    let conn = get_db(&state).await?;
+    session_repo::get_session_config(&conn, &session_id, &session_type)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_session_config(
+    state: State<'_, DbState>,
+    req: crate::models::session::UpdateSessionConfigRequest,
+) -> Result<(), String> {
+    let conn = get_db(&state).await?;
+    session_repo::update_session_config(&conn, &req)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_session(
+    state: State<'_, DbState>,
+    req: crate::models::session::ResetSessionRequest,
+) -> Result<String, String> {
+    let conn = get_db(&state).await?;
+    session_repo::reset_session(&conn, &req.session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn disband_group(
+    state: State<'_, DbState>,
+    session_id: String,
+) -> Result<bool, String> {
+    let conn = get_db(&state).await?;
+    session_repo::disband_group(&conn, &session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_group_member(
+    state: State<'_, DbState>,
+    req: crate::models::session::AddGroupMemberRequest,
+) -> Result<(), String> {
+    let conn = get_db(&state).await?;
+    session_repo::add_group_member(&conn, &req.session_id, &req.agent_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_group_member(
+    state: State<'_, DbState>,
+    req: crate::models::session::RemoveGroupMemberRequest,
+) -> Result<bool, String> {
+    let conn = get_db(&state).await?;
+    session_repo::remove_group_member(&conn, &req.session_id, &req.agent_id)
+        .map_err(|e| e.to_string())
+}
