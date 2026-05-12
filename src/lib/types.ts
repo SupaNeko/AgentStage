@@ -56,3 +56,19 @@ export interface GroupMember {
     name: string;
     avatar_path: string | null;
 }
+
+export interface SessionConfig {
+    session_id: string;
+    history_limit: number;
+    message_limit: number;
+    message_limit_enabled: boolean;
+    mute_enabled: boolean;
+}
+
+export interface UpdateSessionConfigRequest {
+    session_id: string;
+    history_limit?: number;
+    message_limit?: number;
+    message_limit_enabled?: boolean;
+    mute_enabled?: boolean;
+}

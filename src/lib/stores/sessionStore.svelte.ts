@@ -33,6 +33,40 @@ export class SessionStore {
                 : s
         );
     }
+
+    async resetSession(sessionId: string): Promise<string> {
+        try {
+            const pageId = await invoke<string>('reset_session', { req: { session_id: sessionId } });
+            await this.loadSessions();
+            return pageId;
+        } catch (err) {
+            logger.error('Failed to reset session:', err);
+            throw err;
+        }
+    }
+
+    async disbandGroup(sessionId: string): Promise<boolean> {
+        try {
+            const result = await invoke<boolean>('disband_group', { sessionId });
+            if (result) {
+                this.sessions = this.sessions.filter(s => s.id !== sessionId);
+                if (this.selectedSessionId === sessionId) {
+                    this.selectedSessionId = null;
+                }
+            }
+            return result;
+        } catch (err) {
+            logger.error('Failed to disband group:', err);
+            throw err;
+        }
+    }
+
+    removeSession(sessionId: string) {
+        this.sessions = this.sessions.filter(s => s.id !== sessionId);
+        if (this.selectedSessionId === sessionId) {
+            this.selectedSessionId = null;
+        }
+    }
 }
 
 export const sessionStore = new SessionStore();
