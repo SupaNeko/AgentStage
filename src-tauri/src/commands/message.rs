@@ -55,9 +55,20 @@ pub async fn get_session_messages(
     println!("[DEBUG get_session_messages] session_id={}, limit={}, offset={}", session_id, limit, offset);
 
     let conn = get_db(&state).await?;
-    let messages = message_repo::get_messages_by_session(&conn, &session_id, 0, limit, offset)
+    
+    // Get current chat page for this session
+    let page_index: i32 = conn.query_row(
+        "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+         UNION ALL
+         SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+         LIMIT 1",
+        [&session_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    
+    let messages = message_repo::get_messages_by_session(&conn, &session_id, page_index, limit, offset)
         .map_err(|e| e.to_string())?;
 
-    println!("[DEBUG get_session_messages] returned {} messages", messages.len());
+    println!("[DEBUG get_session_messages] returned {} messages (page_index={})", messages.len(), page_index);
     Ok(messages)
 }

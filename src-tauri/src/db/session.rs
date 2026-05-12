@@ -503,4 +503,70 @@ mod tests {
         assert!(prompt_text.contains("Hello!"));
         assert!(prompt_text.contains("Test Agent"));
     }
+
+    #[test]
+    fn test_get_messages_by_session_returns_agent_messages() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        // Insert user message
+        let user_msg = crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text").unwrap();
+        assert_eq!(user_msg.sender_type, "user");
+        
+        // Insert agent message
+        let agent_msg = crate::db::message::insert_message(&conn, &session.id, "agent", "agent1", "Hi there!", "text").unwrap();
+        assert_eq!(agent_msg.sender_type, "agent");
+        
+        // Query messages
+        let messages = crate::db::message::get_messages_by_session(&conn, &session.id, 0, 100, 0).unwrap();
+        assert_eq!(messages.len(), 2, "Expected 2 messages, got {}", messages.len());
+        
+        let agent_messages: Vec<_> = messages.iter().filter(|m| m.sender_type == "agent").collect();
+        assert_eq!(agent_messages.len(), 1, "Agent message missing from query results");
+        assert_eq!(agent_messages[0].content, "Hi there!");
+    }
+
+    #[test]
+    #[ignore]
+    fn diagnose_real_db() {
+        let conn = rusqlite::Connection::open(r"D:\code_project\AgentStage\data\agentstage.db").unwrap();
+        let mut stmt = conn.prepare("SELECT id, session_id, sender_type, sender_id, content, page_index FROM messages ORDER BY created_at").unwrap();
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i32>(5)?,
+            ))
+        }).unwrap();
+        for row in rows {
+            let (id, sid, st, sid2, content, page): (String, String, String, String, String, i32) = row.unwrap();
+            eprintln!("msg: id={} session={} sender_type={} sender_id={} page={} content={}", id, sid, st, sid2, page, content.chars().take(30).collect::<String>());
+        }
+        
+        let mut stmt = conn.prepare("SELECT session_id, current_chat_page FROM private_sessions").unwrap();
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+        }).unwrap();
+        for row in rows {
+            let (sid, page): (String, i32) = row.unwrap();
+            eprintln!("private_session: session={} current_chat_page={}", sid, page);
+        }
+        
+        let mut stmt = conn.prepare("SELECT session_id, current_chat_page FROM group_sessions").unwrap();
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+        }).unwrap();
+        for row in rows {
+            let (sid, page): (String, i32) = row.unwrap();
+            eprintln!("group_session: session={} current_chat_page={}", sid, page);
+        }
+    }
 }

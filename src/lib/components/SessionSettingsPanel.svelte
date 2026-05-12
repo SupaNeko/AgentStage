@@ -4,6 +4,7 @@
     import { X, User, Trash2, RotateCcw } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
     import type { SessionConfig, GroupMember } from '$lib/types';
     import ConfirmDialog from './ConfirmDialog.svelte';
     import AddMemberModal from './AddMemberModal.svelte';
@@ -69,8 +70,10 @@
             await sessionStore.resetSession(sessionId);
             showResetConfirm = false;
             onClose();
+            toastStore.show('会话已重置，历史消息已归档', 'error', 10000);
         } catch (err) {
             logger.error('Reset failed:', err);
+            toastStore.show('重置失败，请稍后重试', 'error', 5000);
         }
     }
 
