@@ -88,3 +88,38 @@ pub struct GroupMemberResponse {
     pub name: String,
     pub avatar_path: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    pub session_id: String,
+    pub history_limit: i32,
+    pub message_limit: i32,
+    pub message_limit_enabled: bool,
+    pub mute_enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateSessionConfigRequest {
+    pub session_id: String,
+    pub history_limit: Option<i32>,
+    pub message_limit: Option<i32>,
+    pub message_limit_enabled: Option<bool>,
+    pub mute_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResetSessionRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AddGroupMemberRequest {
+    pub session_id: String,
+    pub agent_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RemoveGroupMemberRequest {
+    pub session_id: String,
+    pub agent_id: String,
+}

@@ -268,3 +268,62 @@ CREATE TABLE IF NOT EXISTS chat_pages (
 
 CREATE INDEX idx_chat_pages_session ON chat_pages(session_id);
 "#;
+
+pub const MIGRATION_V4: &str = r#"
+-- V4: Session configuration panel
+-- 1. Create unified session_settings table
+CREATE TABLE IF NOT EXISTS session_settings (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    history_limit INTEGER,
+    message_limit INTEGER,
+    message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    mute_enabled INTEGER DEFAULT 0 CHECK(mute_enabled IN (0, 1)),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- 2. Migrate existing config from private_sessions and group_sessions
+INSERT OR IGNORE INTO session_settings (session_id, history_limit, message_limit, message_limit_enabled, mute_enabled, created_at, updated_at)
+SELECT 
+    ps.session_id,
+    NULL as history_limit,
+    ps.message_limit,
+    ps.message_limit_enabled,
+    0 as mute_enabled,
+    ps.created_at,
+    ps.created_at
+FROM private_sessions ps
+LEFT JOIN session_settings ss ON ps.session_id = ss.session_id
+WHERE ss.session_id IS NULL;
+
+INSERT OR IGNORE INTO session_settings (session_id, history_limit, message_limit, message_limit_enabled, mute_enabled, created_at, updated_at)
+SELECT 
+    gs.session_id,
+    NULL as history_limit,
+    gs.message_limit,
+    gs.message_limit_enabled,
+    gs.mute_enabled,
+    gs.created_at,
+    gs.created_at
+FROM group_sessions gs
+LEFT JOIN session_settings ss ON gs.session_id = ss.session_id
+WHERE ss.session_id IS NULL;
+
+-- 3. Add page_index to messages for chat page support
+ALTER TABLE messages ADD COLUMN page_index INTEGER DEFAULT 0;
+
+-- 4. Initialize default chat_pages for existing sessions
+INSERT OR IGNORE INTO chat_pages (id, session_id, page_index, name, is_active, message_count, created_at, updated_at)
+SELECT 
+    lower(hex(randomblob(16))),
+    s.id,
+    0,
+    '默认',
+    1,
+    0,
+    s.created_at,
+    s.created_at
+FROM sessions s
+LEFT JOIN chat_pages cp ON s.id = cp.session_id AND cp.page_index = 0
+WHERE cp.id IS NULL;
+"#;
