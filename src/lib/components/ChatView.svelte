@@ -5,15 +5,17 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
-    import { Send, MessageSquare, User } from 'lucide-svelte';
+    import { Send, MessageSquare, User, Settings } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import type { GroupMember } from '$lib/types';
+    import SessionSettingsPanel from './SessionSettingsPanel.svelte';
 
     let inputText = $state('');
     let sending = $state(false);
     let isAgentTyping = $state(false);
     let members = $state<GroupMember[]>([]);
     let loadingMembers = $state(false);
+    let settingsOpen = $state(false);
 
     let selectedSession = $derived(
         sessionStore.sessions.find((s) => s.id === sessionStore.selectedSessionId)
@@ -117,16 +119,44 @@
             }
         }).then((fn) => unlistenFns.push(fn));
 
+        function handleDocumentClick(e: MouseEvent) {
+            if (settingsOpen) {
+                const target = e.target as HTMLElement;
+                if (!target.closest('.session-settings-panel') && !target.closest('[title="会话配置"]')) {
+                    settingsOpen = false;
+                }
+            }
+        }
+
+        document.addEventListener('click', handleDocumentClick);
+        unlistenFns.push(() => document.removeEventListener('click', handleDocumentClick));
+
         return () => {
             unlistenFns.forEach((fn) => fn());
         };
     });
 </script>
 
-<div class="flex h-full bg-bg">
+<div class="flex h-full bg-bg relative">
+    <SessionSettingsPanel
+        open={settingsOpen}
+        sessionId={selectedSession?.id ?? ''}
+        sessionType={selectedSession?.session_type ?? ''}
+        {members}
+        onClose={() => settingsOpen = false}
+        onMembersChange={() => {
+            if (selectedSession?.session_type === 'group') {
+                loadingMembers = true;
+                invoke<GroupMember[]>('get_group_members', { sessionId: selectedSession.id })
+                    .then((data) => { members = data; })
+                    .catch((err) => logger.error('Failed to reload members:', err))
+                    .finally(() => { loadingMembers = false; });
+            }
+        }}
+    />
     <div class="flex flex-col flex-1 min-w-0">
         <!-- Header -->
-        <header class="flex items-center px-6 py-4 border-b border-border bg-surface shrink-0">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0">
             {#if selectedSession}
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
@@ -146,6 +176,13 @@
                         </h2>
                     </div>
                 </div>
+                <button
+                    onclick={() => settingsOpen = !settingsOpen}
+                    class="p-2 hover:bg-bg rounded-lg text-text-secondary transition-colors"
+                    title="会话配置"
+                >
+                    <Settings size={20} />
+                </button>
             {:else}
                 <h2 class="text-lg font-semibold text-text-secondary">选择一个会话开始聊天</h2>
             {/if}
