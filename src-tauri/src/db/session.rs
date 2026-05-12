@@ -369,6 +369,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
         conn
     }
 
@@ -465,5 +466,41 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(page_index, 1);
+    }
+
+    #[test]
+    fn test_prompt_assemble_with_new_session() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, ' detailed', 'simple', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        // Insert a user message
+        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text").unwrap();
+        
+        // Assemble prompt
+        let pending = vec![crate::models::message::Message {
+            id: "test-msg".to_string(),
+            session_id: session.id.clone(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+            content: "Hello!".to_string(),
+            created_at: chrono::Utc::now().timestamp_millis(),
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+        }];
+        
+        let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", &pending);
+        assert!(prompt.is_ok(), "PromptAssembler failed: {:?}", prompt.err());
+        let prompt_text = prompt.unwrap();
+        assert!(prompt_text.contains("Hello!"));
+        assert!(prompt_text.contains("Test Agent"));
     }
 }

@@ -269,6 +269,11 @@ CREATE TABLE IF NOT EXISTS chat_pages (
 CREATE INDEX idx_chat_pages_session ON chat_pages(session_id);
 "#;
 
+pub const MIGRATION_V5: &str = r#"
+-- V5: Add missing current_chat_page to group_sessions
+ALTER TABLE group_sessions ADD COLUMN current_chat_page INTEGER DEFAULT 0;
+"#;
+
 pub const MIGRATION_V4: &str = r#"
 -- V4: Session configuration panel
 -- 1. Create unified session_settings table

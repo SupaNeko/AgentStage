@@ -28,6 +28,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "session_config_panel",
         sql: super::schema::MIGRATION_V4,
     },
+    Migration {
+        version: 5,
+        name: "group_sessions_current_chat_page",
+        sql: super::schema::MIGRATION_V5,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
