@@ -32,11 +32,21 @@ pub fn insert_message(
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
+    // Get current page_index
+    let page_index: i32 = conn.query_row(
+        "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+         UNION ALL
+         SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+         LIMIT 1",
+        [session_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
     conn.execute(
         r#"INSERT INTO messages (
-            id, session_id, sender_type, sender_id, content, created_at, message_type
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
-        (id.clone(), session_id, sender_type, sender_id, content, now, message_type),
+            id, session_id, sender_type, sender_id, content, created_at, message_type, page_index
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+        (id.clone(), session_id, sender_type, sender_id, content, now, message_type, page_index),
     )?;
 
     get_message_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
@@ -53,6 +63,7 @@ pub fn get_message_by_id(conn: &Connection, id: &str) -> Result<Option<Message>>
 pub fn get_messages_by_session(
     conn: &Connection,
     session_id: &str,
+    page_index: i32,
     limit: i32,
     offset: i32,
 ) -> Result<Vec<Message>> {
@@ -63,10 +74,10 @@ pub fn get_messages_by_session(
                 m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted
          FROM messages m
          LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
-         WHERE m.session_id = ?1 AND m.is_deleted = 0 
-         ORDER BY m.created_at DESC LIMIT ?2 OFFSET ?3"
+         WHERE m.session_id = ?1 AND m.is_deleted = 0 AND m.page_index = ?2
+         ORDER BY m.created_at DESC LIMIT ?3 OFFSET ?4"
     )?;
-    let rows = stmt.query_map(rusqlite::params![session_id, limit, offset], |row| {
+    let rows = stmt.query_map(rusqlite::params![session_id, page_index, limit, offset], |row| {
         Ok(Message {
             id: row.get(0)?,
             session_id: row.get(1)?,
