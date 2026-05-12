@@ -402,4 +402,68 @@ mod tests {
         assert_eq!(members[1].name, "Agent One");
         assert_eq!(members[2].name, "Agent Two");
     }
+
+    #[test]
+    fn test_session_config_defaults() {
+        let conn = init_test_db();
+        
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        let config = get_session_config(&conn, &session.id, "private").unwrap();
+        assert_eq!(config.history_limit, 30);
+        assert_eq!(config.message_limit, 10);
+        assert!(config.message_limit_enabled);
+        assert!(!config.mute_enabled);
+    }
+
+    #[test]
+    fn test_update_session_config() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        update_session_config(&conn, &crate::models::session::UpdateSessionConfigRequest {
+            session_id: session.id.clone(),
+            history_limit: Some(50),
+            message_limit: Some(20),
+            message_limit_enabled: Some(false),
+            mute_enabled: Some(true),
+        }).unwrap();
+        
+        let config = get_session_config(&conn, &session.id, "private").unwrap();
+        assert_eq!(config.history_limit, 50);
+        assert_eq!(config.message_limit, 20);
+        assert!(!config.message_limit_enabled);
+        assert!(config.mute_enabled);
+    }
+
+    #[test]
+    fn test_reset_session_creates_new_page() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        let page_id = reset_session(&conn, &session.id).unwrap();
+        assert!(!page_id.is_empty());
+        
+        let page_index: i32 = conn.query_row(
+            "SELECT page_index FROM chat_pages WHERE id = ?1",
+            [&page_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(page_index, 1);
+    }
 }
