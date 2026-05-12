@@ -89,14 +89,16 @@ impl PromptAssembler {
         let mut filtered_messages: Vec<Message> = Vec::new();
         for sid in &session_order {
             if let Some(msgs) = grouped.get_mut(sid) {
-                msgs.reverse(); // to chronological order
                 let limit: i32 = conn.query_row(
                     "SELECT COALESCE(history_limit, 50) FROM session_settings WHERE session_id = ?1",
                     [sid],
                     |row| row.get(0),
                 ).unwrap_or(50);
                 let take = msgs.len().min(limit as usize);
-                filtered_messages.extend(msgs.drain(..take));
+                // Keep the newest `take` messages (they're already in DESC order from SQL)
+                msgs.reverse(); // now chronological (oldest first)
+                let start = msgs.len().saturating_sub(take);
+                filtered_messages.extend(msgs.drain(start..));
             }
         }
         filtered_messages.sort_by_key(|m| m.created_at);
