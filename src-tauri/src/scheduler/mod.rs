@@ -279,33 +279,53 @@ impl Scheduler {
     async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>) -> Result<(), String> {
         // === 阶段 2：检查消息上限（按会话过滤）===
         let mut limited_sessions = Vec::new();
+        
+        // Filter out messages from muted sessions
+        let muted_sessions: Vec<String> = {
+            let conn = self.db_state.0.lock().await;
+            let mut muted = Vec::new();
+            for msg in &pending {
+                let m: bool = conn.query_row(
+                    "SELECT mute_enabled FROM session_settings WHERE session_id = ?1",
+                    [&msg.session_id],
+                    |row| Ok(row.get::<_, i32>(0)? != 0),
+                ).unwrap_or(false);
+                if m {
+                    muted.push(msg.session_id.clone());
+                }
+            }
+            muted
+        };
+        
+        let pending: Vec<PendingMessage> = pending.into_iter()
+            .filter(|p| !muted_sessions.contains(&p.session_id))
+            .collect();
+        
+        if pending.is_empty() {
+            return Ok(());
+        }
+
         {
             let conn = self.db_state.0.lock().await;
             let settings = settings_repo::get_or_create_settings(&conn).unwrap_or_default();
 
             for sid in pending.iter().map(|p| &p.session_id).collect::<std::collections::HashSet<_>>() {
-                // 先查 private_sessions
                 if let Ok((count, limit, enabled)) = conn.query_row(
-                    "SELECT agent_message_count, message_limit, message_limit_enabled FROM private_sessions WHERE session_id = ?1",
-                    [sid.as_str()],
+                    "SELECT ps.agent_message_count, COALESCE(ss.message_limit, ?2), ss.message_limit_enabled 
+                     FROM private_sessions ps
+                     LEFT JOIN session_settings ss ON ps.session_id = ss.session_id
+                     WHERE ps.session_id = ?1
+                     UNION ALL
+                     SELECT gs.agent_message_count, COALESCE(ss.message_limit, ?3), ss.message_limit_enabled 
+                     FROM group_sessions gs
+                     LEFT JOIN session_settings ss ON gs.session_id = ss.session_id
+                     WHERE gs.session_id = ?1
+                     LIMIT 1",
+                    rusqlite::params![sid, settings.private_message_limit_default, settings.group_message_limit_default],
                     |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
                 ) {
                     if enabled {
                         let effective = limit.unwrap_or(settings.private_message_limit_default);
-                        if count >= effective {
-                            limited_sessions.push(sid.clone());
-                        }
-                    }
-                    continue;
-                }
-                // 再查 group_sessions
-                if let Ok((count, limit, enabled)) = conn.query_row(
-                    "SELECT agent_message_count, message_limit, message_limit_enabled FROM group_sessions WHERE session_id = ?1",
-                    [sid.as_str()],
-                    |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
-                ) {
-                    if enabled {
-                        let effective = limit.unwrap_or(settings.group_message_limit_default);
                         if count >= effective {
                             limited_sessions.push(sid.clone());
                         }

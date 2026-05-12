@@ -36,32 +36,83 @@ impl PromptAssembler {
             layers.push(layer);
         }
 
-        // Layer 4: Chat History
-        let history = crate::db::message::get_visible_messages_for_agent(conn, agent_id)
-            .map_err(|e| e.to_string())?;
-        if !history.is_empty() {
-            let mut layer = String::from("【历史聊天记录】\n");
-            // Group by session_id, preserving session appearance order
-            let mut session_order: Vec<String> = Vec::new();
-            let mut grouped: HashMap<String, Vec<&Message>> = HashMap::new();
-            for msg in &history {
+        // Layer 4: Chat History — per session with individual history limits
+        let mut session_order: Vec<String> = Vec::new();
+        let mut grouped: HashMap<String, Vec<Message>> = HashMap::new();
+        
+        {
+            let mut stmt = conn.prepare(
+                "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at, 
+                        m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
+                        COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                        a.avatar_path as sender_avatar
+                 FROM messages m
+                 JOIN (
+                     SELECT session_id, COALESCE(current_chat_page, 0) as page FROM private_sessions WHERE agent_id = ?1
+                     UNION
+                     SELECT gs.session_id, COALESCE(gs.current_chat_page, 0) as page 
+                     FROM group_sessions gs
+                     JOIN group_members gm ON gs.session_id = gm.session_id
+                     WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent'
+                 ) sp ON m.session_id = sp.session_id AND m.page_index = sp.page
+                 LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                 WHERE m.is_deleted = 0
+                 ORDER BY m.created_at DESC"
+            ).map_err(|e| e.to_string())?;
+            
+            let rows = stmt.query_map([agent_id], |row| {
+                Ok(Message {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    sender_type: row.get(2)?,
+                    sender_id: row.get(3)?,
+                    content: row.get(4)?,
+                    created_at: row.get(5)?,
+                    message_type: row.get(6)?,
+                    tool_call_data: row.get(7)?,
+                    generation_info: row.get(8)?,
+                    is_deleted: row.get::<_, i32>(9)? != 0,
+                    sender_name: row.get(10)?,
+                    sender_avatar: row.get(11)?,
+                })
+            }).map_err(|e| e.to_string())?;
+            
+            for row in rows {
+                let msg = row.map_err(|e| e.to_string())?;
                 if !grouped.contains_key(&msg.session_id) {
                     session_order.push(msg.session_id.clone());
                 }
                 grouped.entry(msg.session_id.clone()).or_default().push(msg);
             }
-
-            for session_id in session_order {
-                let session_name = Self::get_session_name(conn, &session_id)?;
-                layer.push_str(&format!("\n--- {} ---\n", session_name));
-                if let Some(messages) = grouped.get(&session_id) {
-                    for msg in messages {
-                        let time = Self::format_time(msg.created_at);
-                        let sender =
-                            Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
-                        layer.push_str(&format!("[{}] {}: {}\n", time, sender, msg.content));
-                    }
+        }
+        
+        let mut filtered_messages: Vec<Message> = Vec::new();
+        for sid in &session_order {
+            if let Some(msgs) = grouped.get_mut(sid) {
+                msgs.reverse(); // to chronological order
+                let limit: i32 = conn.query_row(
+                    "SELECT COALESCE(history_limit, 50) FROM session_settings WHERE session_id = ?1",
+                    [sid],
+                    |row| row.get(0),
+                ).unwrap_or(50);
+                let take = msgs.len().min(limit as usize);
+                filtered_messages.extend(msgs.drain(..take));
+            }
+        }
+        filtered_messages.sort_by_key(|m| m.created_at);
+        
+        if !filtered_messages.is_empty() {
+            let mut layer = String::from("【历史聊天记录】\n");
+            let mut current_session = String::new();
+            for msg in &filtered_messages {
+                if msg.session_id != current_session {
+                    current_session = msg.session_id.clone();
+                    let session_name = Self::get_session_name(conn, &current_session)?;
+                    layer.push_str(&format!("\n--- {} ---\n", session_name));
                 }
+                let time = Self::format_time(msg.created_at);
+                let sender = Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
+                layer.push_str(&format!("[{}] {}: {}\n", time, sender, msg.content));
             }
             layers.push(layer);
         }
