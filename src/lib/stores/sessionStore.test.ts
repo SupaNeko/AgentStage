@@ -1,6 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { SessionStore } from './sessionStore.svelte';
 import type { Session } from '$lib/types';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('$lib/logger', () => ({ logger: { debug: vi.fn(), error: vi.fn() } }));
+
+const mockInvoke = vi.mocked(invoke);
 
 describe('SessionStore', () => {
     let store: SessionStore;
@@ -106,5 +112,34 @@ describe('SessionStore', () => {
         const unchanged = store.sessions.find(s => s.id === '2');
         expect(unchanged!.last_message_preview).toBe('Preview 2');
         expect(unchanged!.last_message_at).toBe(2000);
+    });
+
+    it('clears last_message_preview after resetSession', async () => {
+        const session: Session = {
+            id: '1',
+            session_type: 'single',
+            last_message_at: 1000,
+            last_message_preview: 'Old message',
+            unread_count: 0,
+        };
+
+        mockInvoke.mockImplementation(async (cmd: string) => {
+            if (cmd === 'reset_session') {
+                return 'new-page-id';
+            }
+            if (cmd === 'list_sessions') {
+                // backend still returns old preview because messages are not deleted
+                return [{ ...session }];
+            }
+            return undefined;
+        });
+
+        store.addSession(session);
+        const pageId = await store.resetSession('1');
+
+        expect(pageId).toBe('new-page-id');
+        const updated = store.sessions.find(s => s.id === '1');
+        expect(updated).toBeDefined();
+        expect(updated!.last_message_preview).toBe('');
     });
 });

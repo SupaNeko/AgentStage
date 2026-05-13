@@ -194,9 +194,13 @@ pub fn get_session_config(conn: &Connection, session_id: &str, session_type: &st
     };
 
     conn.query_row(
-        "SELECT session_id, COALESCE(history_limit, ?2), COALESCE(message_limit, ?3),
-                message_limit_enabled, mute_enabled
-         FROM session_settings WHERE session_id = ?1",
+        "SELECT ss.session_id, COALESCE(ss.history_limit, ?2), COALESCE(ss.message_limit, ?3),
+                ss.message_limit_enabled, ss.mute_enabled,
+                COALESCE(ps.agent_message_count, gs.agent_message_count, 0)
+         FROM session_settings ss
+         LEFT JOIN private_sessions ps ON ss.session_id = ps.session_id
+         LEFT JOIN group_sessions gs ON ss.session_id = gs.session_id
+         WHERE ss.session_id = ?1",
         rusqlite::params![session_id, defaults.0, defaults.1],
         |row| {
             Ok(crate::models::session::SessionConfig {
@@ -205,9 +209,22 @@ pub fn get_session_config(conn: &Connection, session_id: &str, session_type: &st
                 message_limit: row.get(2)?,
                 message_limit_enabled: row.get::<_, i32>(3)? != 0,
                 mute_enabled: row.get::<_, i32>(4)? != 0,
+                agent_message_count: row.get(5)?,
             })
         },
     )
+}
+
+pub fn reset_message_count(conn: &Connection, session_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE private_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+    conn.execute(
+        "UPDATE group_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+    Ok(())
 }
 
 pub fn init_session_settings(conn: &Connection, session_id: &str, session_type: &str) -> Result<()> {
@@ -529,6 +546,50 @@ mod tests {
         let agent_messages: Vec<_> = messages.iter().filter(|m| m.sender_type == "agent").collect();
         assert_eq!(agent_messages.len(), 1, "Agent message missing from query results");
         assert_eq!(agent_messages[0].content, "Hi there!");
+    }
+
+    #[test]
+    fn test_session_config_includes_agent_message_count() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        conn.execute(
+            "UPDATE private_sessions SET agent_message_count = 5 WHERE session_id = ?1",
+            [&session.id],
+        ).unwrap();
+        
+        let config = get_session_config(&conn, &session.id, "private").unwrap();
+        assert_eq!(config.agent_message_count, 5);
+    }
+
+    #[test]
+    fn test_reset_message_count() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        conn.execute(
+            "UPDATE private_sessions SET agent_message_count = 5 WHERE session_id = ?1",
+            [&session.id],
+        ).unwrap();
+        
+        reset_message_count(&conn, &session.id).unwrap();
+        
+        let count: i32 = conn.query_row(
+            "SELECT agent_message_count FROM private_sessions WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

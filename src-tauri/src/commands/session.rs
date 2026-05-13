@@ -107,6 +107,16 @@ pub async fn reset_session(
 }
 
 #[tauri::command]
+pub async fn reset_message_count(
+    state: State<'_, DbState>,
+    session_id: String,
+) -> Result<(), String> {
+    let conn = get_db(&state).await?;
+    session_repo::reset_message_count(&conn, &session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn disband_group(
     state: State<'_, DbState>,
     session_id: String,

@@ -63,6 +63,7 @@ export interface SessionConfig {
     message_limit: number;
     message_limit_enabled: boolean;
     mute_enabled: boolean;
+    agent_message_count: number;
 }
 
 export interface UpdateSessionConfigRequest {

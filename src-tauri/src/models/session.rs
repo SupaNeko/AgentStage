@@ -96,6 +96,7 @@ pub struct SessionConfig {
     pub message_limit: i32,
     pub message_limit_enabled: bool,
     pub mute_enabled: bool,
+    pub agent_message_count: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]

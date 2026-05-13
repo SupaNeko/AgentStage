@@ -38,6 +38,11 @@ export class SessionStore {
         try {
             const pageId = await invoke<string>('reset_session', { req: { session_id: sessionId } });
             await this.loadSessions();
+            this.sessions = this.sessions.map(s =>
+                s.id === sessionId
+                    ? { ...s, last_message_preview: '' }
+                    : s
+            );
             return pageId;
         } catch (err) {
             logger.error('Failed to reset session:', err);
