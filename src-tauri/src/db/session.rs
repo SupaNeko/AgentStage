@@ -382,12 +382,38 @@ mod tests {
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
         conn
+    }
+
+    #[test]
+    fn test_v6_migration_creates_frozen_states_and_unread_queue() {
+        let conn = init_test_db();
+        
+        // Verify session_frozen_states exists
+        conn.execute(
+            "INSERT INTO session_frozen_states (session_id, is_frozen, frozen_at, updated_at) VALUES ('test', 1, 0, 0)",
+            [],
+        ).unwrap();
+        
+        // Verify agent_unread_queue exists
+        conn.execute(
+            "INSERT INTO agent_unread_queue (session_id, agent_id, message_id, created_at) VALUES ('test', 'agent1', 'msg1', 0)",
+            [],
+        ).unwrap();
+        
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM agent_unread_queue WHERE session_id = 'test'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]

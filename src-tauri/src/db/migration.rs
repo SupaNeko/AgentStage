@@ -33,6 +33,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "group_sessions_current_chat_page",
         sql: super::schema::MIGRATION_V5,
     },
+    Migration {
+        version: 6,
+        name: "session_inbox_frozen_and_unread",
+        sql: super::schema::MIGRATION_V6,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {

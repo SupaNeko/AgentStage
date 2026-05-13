@@ -332,3 +332,27 @@ FROM sessions s
 LEFT JOIN chat_pages cp ON s.id = cp.session_id AND cp.page_index = 0
 WHERE cp.id IS NULL;
 "#;
+
+pub const MIGRATION_V6: &str = r#"
+-- V6: Session Inbox architecture
+-- 1. Create session_frozen_states table
+CREATE TABLE IF NOT EXISTS session_frozen_states (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    is_frozen INTEGER DEFAULT 0 CHECK(is_frozen IN (0, 1)),
+    frozen_at INTEGER,
+    updated_at INTEGER
+);
+
+-- 2. Create agent_unread_queue table
+CREATE TABLE IF NOT EXISTS agent_unread_queue (
+    session_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (session_id, agent_id, message_id)
+);
+
+-- 3. Create indexes for agent_unread_queue
+CREATE INDEX IF NOT EXISTS idx_agent_unread_session_agent ON agent_unread_queue(session_id, agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_unread_agent ON agent_unread_queue(agent_id);
+"#;
