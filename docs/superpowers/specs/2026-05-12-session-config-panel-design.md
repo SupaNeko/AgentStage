@@ -103,7 +103,9 @@ pub struct UpdateSessionConfigRequest {
   2. 创建新的 `chat_page`（`page_index + 1`，`name` 可选）
   3. 更新 `private_sessions.current_chat_page` / `group_sessions.current_chat_page`
   4. 重置 `agent_message_count = 0`
-  5. 返回新 page 的 id
+  5. **清空该 session 的所有未读消息**（`agent_unread_queue`）
+  6. **解除该 session 的冻结状态**（`session_frozen_states`）
+  7. 返回新 page 的 id
 
 - **`disband_group`**：
   1. 将 `sessions.is_deleted = 1`，`deleted_at = now()`

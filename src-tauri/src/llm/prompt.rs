@@ -2,37 +2,37 @@ use chrono::{Local, LocalResult, TimeZone};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
+use crate::llm::prompt_templates;
 use crate::models::message::Message;
 
 pub struct PromptAssembler;
 
 impl PromptAssembler {
-    const SYSTEM_PROMPT: &'static str = "你是一个正在参与即时通讯聊天的 AI 角色。请根据上下文自然地回应。\n你可以同时参与多个私聊和群聊，在回复时请根据上下文判断应该回复哪个会话。\n如果需要回复多个会话，可以多次调用 send_message 工具。\n请注意：你每次被调用时，都会看到自上次回复以来积累的所有新消息。请综合考虑这些消息后再决定如何回应。";
-
     pub fn assemble(
         conn: &Connection,
         agent_id: &str,
-        pending_messages: &[Message],
+        _pending_messages: &[Message],
     ) -> Result<String, String> {
-        crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, pending_messages.len()));
+        crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
 
         let mut layers: Vec<String> = Vec::new();
 
         // Layer 1: System Prompt
-        layers.push(Self::SYSTEM_PROMPT.to_string());
+        layers.push(prompt_templates::SYSTEM_PROMPT.to_string());
 
         // Layer 2: Self Persona
         let agent = Self::get_agent(conn, agent_id)?;
-        layers.push(format!("【你的角色设定】\n{}", agent.detailed_persona));
+        layers.push(format!("{}\n{}", prompt_templates::LAYER_PERSONA_TITLE, agent.detailed_persona));
 
         // Layer 3: Participants Introduction
         let participants = Self::get_participants(conn, agent_id)?;
         if !participants.is_empty() {
-            let mut layer = String::from("【你认识的参与者】\n");
+            let mut layer = String::from(prompt_templates::LAYER_PARTICIPANTS_TITLE);
+            layer.push('\n');
             for (name, relation, persona) in participants {
                 layer.push_str(&format!("- {}（{}）：{}\n", name, relation, persona));
             }
-            layer.push_str("- 用户（真实用户）：正在与你聊天的真实用户。");
+            layer.push_str(prompt_templates::LAYER_PARTICIPANTS_USER_LINE);
             layers.push(layer);
         }
 
@@ -104,7 +104,8 @@ impl PromptAssembler {
         filtered_messages.sort_by_key(|m| m.created_at);
         
         if !filtered_messages.is_empty() {
-            let mut layer = String::from("【历史聊天记录】\n");
+            let mut layer = String::from(prompt_templates::LAYER_HISTORY_TITLE);
+            layer.push('\n');
             let mut current_session = String::new();
             for msg in &filtered_messages {
                 if msg.session_id != current_session {
@@ -116,21 +117,8 @@ impl PromptAssembler {
                 let sender = Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
                 layer.push_str(&format!("[{}] {}: {}\n", time, sender, msg.content));
             }
-            layers.push(layer);
-        }
-
-        // Layer 5: Latest Messages
-        if !pending_messages.is_empty() {
-            let mut layer = String::from("【最新消息 - 需要你回应的消息】\n");
-            for msg in pending_messages {
-                let time = Self::format_time(msg.created_at);
-                let sender = Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
-                let session_name = Self::get_session_name(conn, &msg.session_id)?;
-                layer.push_str(&format!(
-                    "[{}] {} 在 {} 中说：{}\n",
-                    time, sender, session_name, msg.content
-                ));
-            }
+            layer.push('\n');
+            layer.push_str(prompt_templates::LAYER_FOOTER_NOTE);
             layers.push(layer);
         }
 
@@ -162,18 +150,9 @@ impl PromptAssembler {
         }
 
         let instruction = format!(
-            r#"【工具使用说明】
-你可以使用 send_message 工具向指定会话发送消息。
-当前你正在以下会话中聊天：
-{context_list}
-请根据上下文决定是否需要回复，以及回复哪个会话。
-如果需要回复，请调用 send_message 工具，参数如下：
-- target_type: "private" 或 "group"
-- target_id: 目标会话的 session_id（必须是上面列出的 ID 之一）
-- content: 你要发送的消息内容
-
-注意：你只能向上面列出的会话发送消息。target_id 必须是完整的 session_id，不能使用名称或其他 ID。"#,
-            context_list = context_list
+            "{}\n{}",
+            prompt_templates::LAYER_INSTRUCTION_TITLE,
+            prompt_templates::TOOL_INSTRUCTION_TEMPLATE.replace("{context_list}", &context_list)
         );
 
         Ok(instruction)
@@ -228,11 +207,11 @@ impl PromptAssembler {
         Ok(sessions)
     }
 
-    /// 变量替换：{{char}} → agent_name, {{user}} → "用户"
+    /// 变量替换：{{char}} → agent_name, {{user}} → 用户名称
     fn apply_variables(prompt: &str, agent_name: &str) -> String {
         prompt
             .replace("{{char}}", agent_name)
-            .replace("{{user}}", "用户")
+            .replace("{{user}}", prompt_templates::USER_NAME)
             .replace("{{group}}", "群聊")
     }
 
@@ -348,7 +327,7 @@ impl PromptAssembler {
             return Ok(name);
         }
 
-        Ok("未知会话".to_string())
+        Ok(prompt_templates::UNKNOWN_SESSION.to_string())
     }
 
     fn get_sender_name(
@@ -357,8 +336,8 @@ impl PromptAssembler {
         sender_id: &str,
     ) -> Result<String, String> {
         match sender_type {
-            "user" => Ok("用户".to_string()),
-            "system" => Ok("系统".to_string()),
+            "user" => Ok(prompt_templates::USER_NAME.to_string()),
+            "system" => Ok(prompt_templates::SYSTEM_NAME.to_string()),
             "agent" => {
                 let result: Result<String, rusqlite::Error> = conn.query_row(
                     "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
@@ -368,12 +347,12 @@ impl PromptAssembler {
                 match result {
                     Ok(name) => Ok(name),
                     Err(rusqlite::Error::QueryReturnedNoRows) => {
-                        Ok(format!("未知角色({})", sender_id))
+                        Ok(format!("{}{})", prompt_templates::UNKNOWN_AGENT_PREFIX, sender_id))
                     }
                     Err(e) => Err(e.to_string()),
                 }
             }
-            _ => Ok(format!("未知({})", sender_type)),
+            _ => Ok(format!("{}{})", prompt_templates::UNKNOWN_TYPE_PREFIX, sender_type)),
         }
     }
 
@@ -382,5 +361,162 @@ impl PromptAssembler {
             LocalResult::Single(dt) => dt.format("%H:%M").to_string(),
             _ => "??".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use crate::models::message::Message;
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn
+    }
+
+    fn insert_agent(conn: &Connection, id: &str, name: &str, persona: &str) {
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, ?3, '', ?4, ?4)",
+            (id, name, persona, 0i64),
+        ).unwrap();
+    }
+
+    fn insert_session(conn: &Connection, session_id: &str, session_type: &str) {
+        conn.execute(
+            "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+            (session_id, session_type, 0i64),
+        ).unwrap();
+    }
+
+    fn insert_private_session(conn: &Connection, session_id: &str, agent_id: &str, page: i32) {
+        conn.execute(
+            "INSERT INTO private_sessions (session_id, agent_id, created_at, current_chat_page) VALUES (?1, ?2, ?3, ?4)",
+            (session_id, agent_id, 0i64, page),
+        ).unwrap();
+    }
+
+    fn insert_session_settings(conn: &Connection, session_id: &str, history_limit: i32) {
+        conn.execute(
+            "INSERT INTO session_settings (session_id, history_limit, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+            (session_id, history_limit, 0i64),
+        ).unwrap();
+    }
+
+    fn insert_message(conn: &Connection, msg: &Message) {
+        conn.execute(
+            "INSERT INTO messages (id, session_id, sender_type, sender_id, content, created_at, message_type, tool_call_data, generation_info, is_deleted, page_index) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            (
+                &msg.id, &msg.session_id, &msg.sender_type, &msg.sender_id, &msg.content,
+                msg.created_at, &msg.message_type, &msg.tool_call_data, &msg.generation_info,
+                if msg.is_deleted { 1 } else { 0 }, 0i32,
+            ),
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_prompt_no_layer5_header() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Test Agent", "A test persona");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let msg = Message {
+            id: "msg1".to_string(),
+            session_id: "sess1".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "Hello".to_string(),
+            created_at: 1000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+        };
+        insert_message(&conn, &msg);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        assert!(!prompt.contains("【最新消息"), "Prompt should not contain Layer 5 header, but got:\n{}", prompt);
+    }
+
+    #[test]
+    fn test_prompt_contains_footer_note() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Test Agent", "A test persona");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let msg = Message {
+            id: "msg1".to_string(),
+            session_id: "sess1".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "Hello".to_string(),
+            created_at: 1000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+        };
+        insert_message(&conn, &msg);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        assert!(prompt.contains(super::prompt_templates::LAYER_FOOTER_NOTE), "Prompt should contain footer note, but got:\n{}", prompt);
+    }
+
+    #[test]
+    fn test_prompt_chronological_order() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Test Agent", "A test persona");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let msg1 = Message {
+            id: "msg1".to_string(),
+            session_id: "sess1".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "First message".to_string(),
+            created_at: 1000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+        };
+        let msg2 = Message {
+            id: "msg2".to_string(),
+            session_id: "sess1".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "Second message".to_string(),
+            created_at: 2000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+        };
+        insert_message(&conn, &msg1);
+        insert_message(&conn, &msg2);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        let pos1 = prompt.find("First message").expect("First message not found");
+        let pos2 = prompt.find("Second message").expect("Second message not found");
+        assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", prompt);
     }
 }
