@@ -248,6 +248,16 @@ pnpm exec playwright test e2e/ --headed
 pnpm exec playwright show-report
 ```
 
+### Version Control Policy
+
+- **`e2e/`** 和 **`playwright.config.ts`** 是**本地开发测试文件**，不上库。
+- 已在 `.gitignore` 中排除：
+  ```gitignore
+  /e2e/
+  /playwright.config.ts
+  ```
+- 这些文件由开发者在本地维护，用于验证前端 UI/UX，不纳入版本控制。
+
 ### Limitations
 
 - **Mocked backend:** E2E tests mock all Tauri Commands. They test frontend UI/UX, not real Rust backend logic.
