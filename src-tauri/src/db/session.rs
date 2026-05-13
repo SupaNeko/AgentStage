@@ -320,6 +320,12 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
         )?;
     }
 
+    // 清空未读消息
+    conn.execute("DELETE FROM agent_unread_queue WHERE session_id = ?1", [session_id])?;
+
+    // 解除冻结
+    conn.execute("DELETE FROM session_frozen_states WHERE session_id = ?1", [session_id])?;
+
     tx.commit()?;
     Ok(page_id)
 }

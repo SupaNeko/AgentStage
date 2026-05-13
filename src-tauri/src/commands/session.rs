@@ -1,7 +1,10 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
 use crate::db::session as session_repo;
+use crate::db::frozen_state as frozen_state_repo;
+use crate::db::agent_unread as agent_unread_repo;
 use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse};
+use crate::scheduler::Scheduler;
 
 #[tauri::command]
 pub async fn create_private_session(
@@ -109,11 +112,30 @@ pub async fn reset_session(
 #[tauri::command]
 pub async fn reset_message_count(
     state: State<'_, DbState>,
+    scheduler: State<'_, Scheduler>,
     session_id: String,
 ) -> Result<(), String> {
     let conn = get_db(&state).await?;
+
+    // 1. 重置计数器
     session_repo::reset_message_count(&conn, &session_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // 2. 解除冻结
+    let _ = frozen_state_repo::remove_frozen(&conn, &session_id);
+    scheduler.unfreeze_session(&session_id).await;
+
+    // 3. 触发有未读消息的 agents
+    let agents_with_unread = agent_unread_repo::get_agents_with_unread(&conn, &session_id)
+        .map_err(|e| e.to_string())?;
+
+    drop(conn);
+
+    for agent_id in agents_with_unread {
+        let _ = scheduler.try_trigger_agent(&agent_id).await;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

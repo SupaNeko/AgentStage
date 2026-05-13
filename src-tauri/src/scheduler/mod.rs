@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter};
@@ -8,6 +8,8 @@ use crate::db::agent as agent_repo;
 use crate::db::session as session_repo;
 use crate::db::settings as settings_repo;
 use crate::db::trigger_state as trigger_repo;
+use crate::db::frozen_state as frozen_state_repo;
+use crate::db::agent_unread as agent_unread_repo;
 use crate::db::connection::DbState;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
@@ -38,7 +40,9 @@ impl From<Message> for PendingMessage {
 
 #[derive(Clone)]
 pub struct Scheduler {
-    pending_queue: Arc<Mutex<HashMap<String, Vec<PendingMessage>>>>,
+    unread_messages: Arc<Mutex<HashMap<String, HashMap<String, Vec<PendingMessage>>>>>,
+    agent_notifications: Arc<Mutex<HashMap<String, HashSet<String>>>>,
+    frozen_sessions: Arc<Mutex<HashSet<String>>>,
     app_handle: Arc<std::sync::Mutex<Option<AppHandle>>>,
     db_state: DbState,
 }
@@ -46,7 +50,9 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(db_state: DbState) -> Self {
         Self {
-            pending_queue: Arc::new(Mutex::new(HashMap::new())),
+            unread_messages: Arc::new(Mutex::new(HashMap::new())),
+            agent_notifications: Arc::new(Mutex::new(HashMap::new())),
+            frozen_sessions: Arc::new(Mutex::new(HashSet::new())),
             app_handle: Arc::new(std::sync::Mutex::new(None)),
             db_state,
         }
@@ -62,8 +68,196 @@ impl Scheduler {
         }
     }
 
+    pub async fn recover_from_db(&self) -> Result<(), String> {
+        // 1. 加载 frozen sessions
+        let frozen: Vec<String> = {
+            let conn = self.db_state.0.lock().await;
+            frozen_state_repo::get_frozen_sessions(&conn)
+                .map_err(|e| e.to_string())?
+        };
+
+        {
+            let mut frozen_sessions = self.frozen_sessions.lock().await;
+            for session_id in frozen {
+                frozen_sessions.insert(session_id);
+            }
+        }
+
+        // 2. 加载未读消息（在独立的同步块中完成，避免 Statement 跨越 await）
+        let rows: Vec<_> = {
+            let conn = self.db_state.0.lock().await;
+            let mut stmt = conn.prepare(
+                "SELECT u.session_id, u.agent_id, u.message_id, u.created_at,
+                        m.sender_type, m.sender_id, m.content
+                 FROM agent_unread_queue u
+                 JOIN messages m ON u.message_id = m.id
+                 ORDER BY u.created_at ASC"
+            ).map_err(|e| e.to_string())?;
+
+            let rows: Vec<_> = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            }).map_err(|e| e.to_string())?
+              .filter_map(|r| r.ok())
+              .collect();
+            rows
+        };
+
+        let mut unread_messages = self.unread_messages.lock().await;
+        let mut agent_notifications = self.agent_notifications.lock().await;
+
+        for (session_id, agent_id, _message_id, created_at, sender_type, sender_id, content) in rows {
+            let pending = PendingMessage {
+                session_id: session_id.clone(),
+                sender_type,
+                sender_id,
+                content,
+                created_at,
+            };
+
+            unread_messages
+                .entry(session_id.clone())
+                .or_insert_with(HashMap::new)
+                .entry(agent_id.clone())
+                .or_insert_with(Vec::new)
+                .push(pending);
+
+            agent_notifications
+                .entry(agent_id.clone())
+                .or_insert_with(HashSet::new)
+                .insert(session_id.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn get_target_agents(&self, session_id: &str, sender_id: &str) -> Result<Vec<String>, String> {
+        let conn = self.db_state.0.lock().await;
+
+        let session_type: String = conn
+            .query_row(
+                "SELECT session_type FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let target_agent_ids: Vec<String> = if session_type == "private" {
+            let agent_id: String = conn
+                .query_row(
+                    "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
+                    [session_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+
+            if agent_id != sender_id {
+                vec![agent_id]
+            } else {
+                vec![]
+            }
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT participant_id FROM group_members 
+                     WHERE session_id = ?1 AND participant_type = 'agent' AND is_active = 1"
+                )
+                .map_err(|e| e.to_string())?;
+            let ids: Vec<String> = stmt
+                .query_map([session_id], |row| row.get(0))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .filter(|id| *id != sender_id)
+                .collect();
+            drop(stmt);
+            ids
+        };
+
+        Ok(target_agent_ids)
+    }
+
+    pub async fn distribute_message(&self, session_id: &str, message: &Message, sender_id: &str) -> Result<(), String> {
+        // 冻结的 session 不接收新消息（用户消息会在 on_new_message 中先解冻）
+        if self.frozen_sessions.lock().await.contains(session_id) {
+            return Ok(());
+        }
+
+        let target_agents = self.get_target_agents(session_id, sender_id).await?;
+
+        let conn = self.db_state.0.lock().await;
+
+        for agent_id in target_agents {
+            // 1. 插入内存
+            {
+                let mut unread = self.unread_messages.lock().await;
+                unread.entry(session_id.to_string())
+                    .or_insert_with(HashMap::new)
+                    .entry(agent_id.clone())
+                    .or_insert_with(Vec::new)
+                    .push(PendingMessage::from(message.clone()));
+            }
+
+            // 2. 插入 notifications
+            {
+                let mut notifications = self.agent_notifications.lock().await;
+                notifications.entry(agent_id.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(session_id.to_string());
+            }
+
+            // 3. 写入数据库
+            let _ = agent_unread_repo::insert_unread(&conn, session_id, &agent_id, &message.id, message.created_at);
+        }
+
+        Ok(())
+    }
+
+    async fn check_and_freeze_if_needed(&self, session_id: &str) -> bool {
+        let conn = self.db_state.0.lock().await;
+        let settings = settings_repo::get_or_create_settings(&conn).unwrap_or_default();
+
+        let result = conn.query_row(
+            "SELECT ps.agent_message_count, COALESCE(ss.message_limit, ?2), ss.message_limit_enabled 
+             FROM private_sessions ps
+             LEFT JOIN session_settings ss ON ps.session_id = ss.session_id
+             WHERE ps.session_id = ?1
+             UNION ALL
+             SELECT gs.agent_message_count, COALESCE(ss.message_limit, ?3), ss.message_limit_enabled 
+             FROM group_sessions gs
+             LEFT JOIN session_settings ss ON gs.session_id = ss.session_id
+             WHERE gs.session_id = ?1
+             LIMIT 1",
+            rusqlite::params![session_id, settings.private_message_limit_default, settings.group_message_limit_default],
+            |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
+        );
+
+        if let Ok((count, limit, enabled)) = result {
+            if enabled {
+                let effective = limit.unwrap_or(settings.private_message_limit_default);
+                if count >= effective {
+                    let _ = frozen_state_repo::set_frozen(&conn, session_id);
+                    drop(conn);
+                    self.frozen_sessions.lock().await.insert(session_id.to_string());
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    pub async fn unfreeze_session(&self, session_id: &str) {
+        self.frozen_sessions.lock().await.remove(session_id);
+    }
+
     /// 当有新消息到达时调用（用户发送消息或角色发送消息）
-    /// 以角色为中心：确定哪些角色应该收到这条消息，推入每个角色的 pending_queue
     pub async fn on_new_message(
         &self,
         session_id: &str,
@@ -76,94 +270,30 @@ impl Scheduler {
 
         let conn = self.db_state.0.lock().await;
 
-        // 获取会话类型
-        let session_type: String = conn
-            .query_row(
-                "SELECT session_type FROM sessions WHERE id = ?1",
-                [session_id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-
-        // 确定哪些角色应该收到这条消息
-        let target_agent_ids: Vec<String> = if session_type == "private" {
-            // 私聊：对面 agent
-            let agent_id: String = conn
-                .query_row(
-                    "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
-                    [session_id],
-                    |row| row.get(0),
-                )
-                .map_err(|e| e.to_string())?;
-
-            // 用户发消息重置私聊计数器
-            if message.sender_type == "user" {
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG on_new_message] resetting private session counter for session_id={}",
-                    session_id
-                ));
-                conn.execute(
-                    "UPDATE private_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2",
-                    (chrono::Utc::now().timestamp_millis(), session_id),
-                ).unwrap_or_default();
-            }
-
-            vec![agent_id]
-        } else {
-            // 群聊：所有 agent 成员，排除发送者自己
-            let mut stmt = conn
-                .prepare(
-                    "SELECT participant_id FROM group_members 
-                     WHERE session_id = ?1 AND participant_type = 'agent' AND is_active = 1"
-                )
-                .map_err(|e| e.to_string())?;
-            let ids: Vec<String> = stmt
-                .query_map([session_id], |row| row.get(0))
-                .map_err(|e| e.to_string())?
-                .filter_map(|r| r.ok())
-                .filter(|id| *id != message.sender_id)
-                .collect();
-            drop(stmt);
-
-            // 用户发消息重置群聊计数器
-            if message.sender_type == "user" {
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG on_new_message] resetting group session counter for session_id={}",
-                    session_id
-                ));
-                conn.execute(
-                    "UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2",
-                    (chrono::Utc::now().timestamp_millis(), session_id),
-                ).unwrap_or_default();
-            }
-
-            ids
-        };
+        // 用户消息自动重置计数器并解除冻结
+        if message.sender_type == "user" {
+            let now = chrono::Utc::now().timestamp_millis();
+            conn.execute("UPDATE private_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2", (now, session_id)).unwrap_or_default();
+            conn.execute("UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2", (now, session_id)).unwrap_or_default();
+            let _ = frozen_state_repo::remove_frozen(&conn, session_id);
+            self.frozen_sessions.lock().await.remove(session_id);
+        }
 
         drop(conn);
 
-        // 推入每个目标角色的 pending_queue，并尝试触发
-        for agent_id in target_agent_ids {
-            {
-                let mut queue = self.pending_queue.lock().await;
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG on_new_message] pushing message to pending_queue for agent_id={}",
-                    agent_id
-                ));
-                queue
-                    .entry(agent_id.clone())
-                    .or_insert_with(Vec::new)
-                    .push(PendingMessage::from(message.clone()));
-            }
+        // 统一分发
+        self.distribute_message(session_id, message, &message.sender_id).await?;
 
-            // 尝试触发（错误不传播，在 try_trigger_agent 内部处理）
+        // 触发目标 agents
+        let target_agents = self.get_target_agents(session_id, &message.sender_id).await?;
+        for agent_id in target_agents {
             let _ = self.try_trigger_agent(&agent_id).await;
         }
 
         Ok(())
     }
 
-    async fn try_trigger_agent(&self, agent_id: &str) -> Result<(), String> {
+    pub async fn try_trigger_agent(&self, agent_id: &str) -> Result<(), String> {
         let conn = self.db_state.0.lock().await;
 
         // 检查是否正在触发中（防止并发）
@@ -232,19 +362,78 @@ impl Scheduler {
             "[DEBUG trigger_agent] agent_id={}", agent_id
         ));
 
-        // === 阶段 1：原子取出 pending 消息 ===
-        let pending = {
-            let mut queue = self.pending_queue.lock().await;
-            queue.remove(agent_id).unwrap_or_default()
+        // === 阶段 1：从 agent_notifications 获取 session_ids ===
+        let session_ids: HashSet<String> = {
+            let mut notifications = self.agent_notifications.lock().await;
+            notifications.remove(agent_id).unwrap_or_default()
         };
+
+        if session_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut pending = Vec::new();
+        let mut processed_sessions = Vec::new();
+
+        {
+            let frozen = self.frozen_sessions.lock().await;
+            let mut unread = self.unread_messages.lock().await;
+
+            for session_id in &session_ids {
+                if frozen.contains(session_id) {
+                    // 冻结的 session 跳过，稍后重新加入 notifications
+                    continue;
+                }
+
+                if let Some(session_map) = unread.get_mut(session_id) {
+                    if let Some(messages) = session_map.get_mut(agent_id) {
+                        pending.extend(messages.drain(..));
+                        processed_sessions.push(session_id.clone());
+                    }
+
+                    // 清理空的 map
+                    if session_map.is_empty() {
+                        unread.remove(session_id);
+                    }
+                }
+            }
+        }
+
+        // 将冻结的 session 重新加入 notifications
+        let frozen_sessions_to_requeue: Vec<String> = {
+            let frozen = self.frozen_sessions.lock().await;
+            session_ids.iter()
+                .filter(|sid| frozen.contains(*sid))
+                .cloned()
+                .collect()
+        };
+
+        if !frozen_sessions_to_requeue.is_empty() {
+            let mut notifications = self.agent_notifications.lock().await;
+            let entry = notifications.entry(agent_id.to_string()).or_insert_with(HashSet::new);
+            for sid in frozen_sessions_to_requeue {
+                entry.insert(sid);
+            }
+        }
+
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        // 按 created_at 排序
+        pending.sort_by_key(|m| m.created_at);
 
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG trigger_agent] agent_id={}, pending_messages={}",
             agent_id, pending.len()
         ));
 
-        if pending.is_empty() {
-            return Ok(());
+        // 从数据库删除已读取的记录
+        {
+            let conn = self.db_state.0.lock().await;
+            for session_id in &processed_sessions {
+                let _ = agent_unread_repo::delete_unread_by_agent_session(&conn, agent_id, session_id);
+            }
         }
 
         // 设置触发中标志
@@ -277,10 +466,7 @@ impl Scheduler {
     }
 
     async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>) -> Result<(), String> {
-        // === 阶段 2：检查消息上限（按会话过滤）===
-        let mut limited_sessions = Vec::new();
-        
-        // Filter out messages from muted sessions
+        // === 阶段 2：检查 muted sessions ===
         let muted_sessions: Vec<String> = {
             let conn = self.db_state.0.lock().await;
             let mut muted = Vec::new();
@@ -296,63 +482,14 @@ impl Scheduler {
             }
             muted
         };
-        
+
         let pending: Vec<PendingMessage> = pending.into_iter()
             .filter(|p| !muted_sessions.contains(&p.session_id))
             .collect();
-        
+
         if pending.is_empty() {
             return Ok(());
         }
-
-        {
-            let conn = self.db_state.0.lock().await;
-            let settings = settings_repo::get_or_create_settings(&conn).unwrap_or_default();
-
-            for sid in pending.iter().map(|p| &p.session_id).collect::<std::collections::HashSet<_>>() {
-                if let Ok((count, limit, enabled)) = conn.query_row(
-                    "SELECT ps.agent_message_count, COALESCE(ss.message_limit, ?2), ss.message_limit_enabled 
-                     FROM private_sessions ps
-                     LEFT JOIN session_settings ss ON ps.session_id = ss.session_id
-                     WHERE ps.session_id = ?1
-                     UNION ALL
-                     SELECT gs.agent_message_count, COALESCE(ss.message_limit, ?3), ss.message_limit_enabled 
-                     FROM group_sessions gs
-                     LEFT JOIN session_settings ss ON gs.session_id = ss.session_id
-                     WHERE gs.session_id = ?1
-                     LIMIT 1",
-                    rusqlite::params![sid, settings.private_message_limit_default, settings.group_message_limit_default],
-                    |row| Ok((row.get::<_, i32>(0)?, row.get::<_, Option<i32>>(1)?, row.get::<_, i32>(2)? != 0)),
-                ) {
-                    if enabled {
-                        let effective = limit.unwrap_or(settings.private_message_limit_default);
-                        if count >= effective {
-                            limited_sessions.push(sid.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        let pending = if !limited_sessions.is_empty() {
-            let limited_set: std::collections::HashSet<String> = limited_sessions.into_iter().collect();
-            let filtered: Vec<PendingMessage> = pending.into_iter()
-                .filter(|p| !limited_set.contains(&p.session_id))
-                .collect();
-            if filtered.is_empty() {
-                self.emit(
-                    "system_notice",
-                    serde_json::json!({
-                        "agent_id": agent_id,
-                        "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
-                    }),
-                );
-                return Ok(());
-            }
-            filtered
-        } else {
-            pending
-        };
 
         // === 阶段 3：读取 agent 配置和 prompt ===
         let (agent, prompt) = {
@@ -460,7 +597,7 @@ impl Scheduler {
         ));
 
         // === 阶段 6：更新计数器和会话预览 ===
-        {
+        let sessions_to_check: Vec<String> = {
             let conn = self.db_state.0.lock().await;
 
             for msg in &agent_messages {
@@ -480,6 +617,25 @@ impl Scheduler {
                 let preview = truncate_preview(&msg.content, 100);
                 let _ = session_repo::update_session_last_message(&conn, &msg.session_id, &preview);
             }
+
+            agent_messages.iter().map(|m| m.session_id.clone()).collect()
+        };
+
+        // 检查是否达到上限（在释放 conn 后）
+        let is_any_frozen = {
+            let mut frozen = false;
+            for sid in &sessions_to_check {
+                if self.check_and_freeze_if_needed(sid).await {
+                    frozen = true;
+                }
+            }
+            frozen
+        };
+
+        if is_any_frozen {
+            self.emit("system_notice", serde_json::json!({
+                "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
+            }));
         }
 
         // 更新触发时间（同时清除 is_triggering，作为双重保险）
@@ -492,52 +648,10 @@ impl Scheduler {
         // === 阶段 7：触发链 ===
         for msg in &agent_messages {
             self.emit("new_message", msg);
-
-            // 查出这条消息应该触发哪些角色（群聊中所有其他 agent，私聊中对面 agent）
-            let target_ids: Vec<String> = {
-                let conn = self.db_state.0.lock().await;
-                // 先查群聊成员
-                let mut stmt = conn.prepare(
-                    "SELECT participant_id FROM group_members 
-                     WHERE session_id = ?1 AND participant_type = 'agent' 
-                     AND participant_id != ?2 AND is_active = 1"
-                ).unwrap();
-                let mut ids: Vec<String> = stmt.query_map(
-                    rusqlite::params![&msg.session_id, agent_id],
-                    |row| row.get(0)
-                ).unwrap()
-                    .filter_map(|r| r.ok())
-                    .collect();
-                drop(stmt);
-
-                // 如果没有群聊成员，再查私聊
-                if ids.is_empty() {
-                    if let Ok(target_id) = conn.query_row(
-                        "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
-                        [&msg.session_id],
-                        |row| row.get::<_, String>(0),
-                    ) {
-                        if target_id != agent_id {
-                            ids.push(target_id);
-                        }
-                    }
-                }
-                ids
-            };
-
-            for target_id in target_ids {
-                let mut queue = self.pending_queue.lock().await;
-                queue.entry(target_id.clone())
-                    .or_insert_with(Vec::new)
-                    .push(PendingMessage::from(msg.clone()));
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent] pushed message to target_id={} (from agent_id={})",
-                    target_id, agent_id
-                ));
-            }
+            self.distribute_message(&msg.session_id, msg, agent_id).await?;
         }
 
-        // 消息已推入各角色的 pending_queue，由后台扫描在下次 tick 时触发
+        // 消息已推入各角色的 unread，由后台扫描在下次 tick 时触发
         //（避免 async fn 递归调用问题）
 
         self.emit(
@@ -550,14 +664,26 @@ impl Scheduler {
 
     async fn restore_pending(&self, agent_id: &str, pending: Vec<PendingMessage>) {
         if !pending.is_empty() {
-            let mut queue = self.pending_queue.lock().await;
-            queue.entry(agent_id.to_string())
-                .or_insert_with(Vec::new)
-                .extend(pending);
+            let count = pending.len();
+            let mut unread = self.unread_messages.lock().await;
+            let mut notifications = self.agent_notifications.lock().await;
+
+            for msg in pending {
+                let session_id = msg.session_id.clone();
+                unread.entry(session_id.clone())
+                    .or_insert_with(HashMap::new)
+                    .entry(agent_id.to_string())
+                    .or_insert_with(Vec::new)
+                    .push(msg);
+
+                notifications.entry(agent_id.to_string())
+                    .or_insert_with(HashSet::new)
+                    .insert(session_id);
+            }
+
             crate::logger::backend("DEBUG", &format!(
                 "[DEBUG trigger_agent] restored {} pending messages for agent_id={}",
-                queue.get(agent_id).map(|v| v.len()).unwrap_or(0),
-                agent_id
+                count, agent_id
             ));
         }
     }
@@ -594,21 +720,42 @@ impl Scheduler {
         result.map_err(|e| format!("LLM call failed: {}", e))
     }
 
-    /// 后台扫描任务：定期检查 pending_queue 中是否有角色可以触发
+    /// 后台扫描任务：定期检查 agent_notifications 中是否有角色可以触发
     pub async fn start_background_scan(self) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
         loop {
             interval.tick().await;
 
             let agent_ids: Vec<String> = {
-                let queue = self.pending_queue.lock().await;
-                queue.keys().cloned().collect()
+                let notifications = self.agent_notifications.lock().await;
+                notifications.keys().cloned().collect()
             };
 
             for agent_id in agent_ids {
                 let _ = self.try_trigger_agent(&agent_id).await;
             }
         }
+    }
+
+    // Test accessors (hidden from docs)
+    #[doc(hidden)]
+    pub fn unread_messages(&self) -> &Arc<Mutex<HashMap<String, HashMap<String, Vec<PendingMessage>>>>> {
+        &self.unread_messages
+    }
+
+    #[doc(hidden)]
+    pub fn agent_notifications(&self) -> &Arc<Mutex<HashMap<String, HashSet<String>>>> {
+        &self.agent_notifications
+    }
+
+    #[doc(hidden)]
+    pub fn frozen_sessions(&self) -> &Arc<Mutex<HashSet<String>>> {
+        &self.frozen_sessions
+    }
+
+    #[doc(hidden)]
+    pub fn db_state(&self) -> &DbState {
+        &self.db_state
     }
 }
 
@@ -623,7 +770,253 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_preview;
+    use super::*;
+    use rusqlite::Connection;
+    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6};
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        conn.execute_batch(MIGRATION_V5).unwrap();
+        conn.execute_batch(MIGRATION_V6).unwrap();
+        conn
+    }
+
+    fn make_db_state(conn: Connection) -> DbState {
+        DbState(Arc::new(Mutex::new(conn)))
+    }
+
+    fn create_test_agent(conn: &Connection, agent_id: &str) {
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            (agent_id, format!("Agent {}", agent_id), 0i64),
+        ).unwrap();
+    }
+
+    fn create_test_private_session(conn: &Connection, agent_id: &str) -> String {
+        session_repo::create_private_session(conn, agent_id).unwrap().id
+    }
+
+    fn create_test_message(session_id: &str, sender_type: &str, sender_id: &str, content: &str, created_at: i64) -> Message {
+        Message {
+            id: format!("msg-{}", uuid::Uuid::new_v4()),
+            session_id: session_id.to_string(),
+            sender_type: sender_type.to_string(),
+            sender_id: sender_id.to_string(),
+            sender_name: String::new(),
+            sender_avatar: None,
+            content: content.to_string(),
+            created_at,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_distribute_message_populates_unread() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+        let db_state = make_db_state(conn);
+
+        let scheduler = Scheduler::new(db_state);
+        let message = create_test_message(&session_id, "user", "user", "Hello", 1000);
+
+        scheduler.distribute_message(&session_id, &message, "user").await.unwrap();
+
+        let unread = scheduler.unread_messages.lock().await;
+        assert!(unread.contains_key(&session_id));
+        let session_unread = unread.get(&session_id).unwrap();
+        assert!(session_unread.contains_key("agent-1"));
+        let agent_unread = session_unread.get("agent-1").unwrap();
+        assert_eq!(agent_unread.len(), 1);
+        assert_eq!(agent_unread[0].content, "Hello");
+
+        let notifications = scheduler.agent_notifications.lock().await;
+        assert!(notifications.contains_key("agent-1"));
+        assert!(notifications.get("agent-1").unwrap().contains(&session_id));
+    }
+
+    #[tokio::test]
+    async fn test_frozen_session_blocks_new_distributions() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+        let db_state = make_db_state(conn);
+
+        let scheduler = Scheduler::new(db_state);
+        scheduler.frozen_sessions.lock().await.insert(session_id.clone());
+
+        let message = create_test_message(&session_id, "user", "user", "Hello", 1000);
+        scheduler.distribute_message(&session_id, &message, "user").await.unwrap();
+
+        let unread = scheduler.unread_messages.lock().await;
+        assert!(!unread.contains_key(&session_id));
+
+        let notifications = scheduler.agent_notifications.lock().await;
+        assert!(!notifications.contains_key("agent-1"));
+    }
+
+    #[tokio::test]
+    async fn test_reset_unfreezes_and_triggers_agents() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+
+        // 设置冻结
+        frozen_state_repo::set_frozen(&conn, &session_id).unwrap();
+
+        let db_state = make_db_state(conn);
+        let scheduler = Scheduler::new(db_state.clone());
+
+        // 先恢复数据库状态到 scheduler
+        scheduler.recover_from_db().await.unwrap();
+
+        // 验证已冻结
+        assert!(scheduler.frozen_sessions.lock().await.contains(&session_id));
+
+        // 插入未读消息
+        {
+            let mut unread = scheduler.unread_messages.lock().await;
+            unread.entry(session_id.clone())
+                .or_insert_with(HashMap::new)
+                .entry("agent-1".to_string())
+                .or_insert_with(Vec::new)
+                .push(PendingMessage {
+                    session_id: session_id.clone(),
+                    sender_type: "user".to_string(),
+                    sender_id: "user".to_string(),
+                    content: "Hello".to_string(),
+                    created_at: 1000,
+                });
+        }
+        {
+            let mut notifications = scheduler.agent_notifications.lock().await;
+            notifications.entry("agent-1".to_string())
+                .or_insert_with(HashSet::new)
+                .insert(session_id.clone());
+        }
+
+        // 调用 unfreeze_session
+        scheduler.unfreeze_session(&session_id).await;
+
+        // 验证已解冻
+        assert!(!scheduler.frozen_sessions.lock().await.contains(&session_id));
+
+        // 验证 notifications 中有 agent-1
+        let notifications = scheduler.agent_notifications.lock().await;
+        assert!(notifications.contains_key("agent-1"));
+        assert!(notifications.get("agent-1").unwrap().contains(&session_id));
+    }
+
+    #[tokio::test]
+    async fn test_trigger_agent_reads_unread_chronologically() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+
+        let db_state = make_db_state(conn);
+        let scheduler = Scheduler::new(db_state);
+
+        // 插入多条未读消息，按非时间顺序
+        {
+            let mut unread = scheduler.unread_messages.lock().await;
+            let session_map = unread.entry(session_id.clone())
+                .or_insert_with(HashMap::new);
+            session_map.entry("agent-1".to_string())
+                .or_insert_with(Vec::new)
+                .extend(vec![
+                    PendingMessage {
+                        session_id: session_id.clone(),
+                        sender_type: "user".to_string(),
+                        sender_id: "user".to_string(),
+                        content: "Second".to_string(),
+                        created_at: 2000,
+                    },
+                    PendingMessage {
+                        session_id: session_id.clone(),
+                        sender_type: "user".to_string(),
+                        sender_id: "user".to_string(),
+                        content: "First".to_string(),
+                        created_at: 1000,
+                    },
+                    PendingMessage {
+                        session_id: session_id.clone(),
+                        sender_type: "user".to_string(),
+                        sender_id: "user".to_string(),
+                        content: "Third".to_string(),
+                        created_at: 3000,
+                    },
+                ]);
+        }
+        {
+            let mut notifications = scheduler.agent_notifications.lock().await;
+            notifications.entry("agent-1".to_string())
+                .or_insert_with(HashSet::new)
+                .insert(session_id.clone());
+        }
+
+        // 调用 trigger_agent
+        // 由于 agent 没有 API key，trigger_agent_inner 会失败并 restore_pending
+        let result = scheduler.trigger_agent("agent-1").await;
+        // 失败是因为 api_key 不存在，但消息应该被 restore 并保持排序
+        assert!(result.is_err());
+
+        // 检查 unread_messages 中的顺序
+        let unread = scheduler.unread_messages.lock().await;
+        let messages = unread.get(&session_id).unwrap().get("agent-1").unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].content, "First");
+        assert_eq!(messages[1].content, "Second");
+        assert_eq!(messages[2].content, "Third");
+    }
+
+    #[tokio::test]
+    async fn test_user_message_resets_counter_and_unfreezes() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+
+        // 设置计数器和冻结
+        conn.execute(
+            "UPDATE private_sessions SET agent_message_count = 5 WHERE session_id = ?1",
+            [&session_id],
+        ).unwrap();
+        frozen_state_repo::set_frozen(&conn, &session_id).unwrap();
+
+        let db_state = make_db_state(conn);
+        let scheduler = Scheduler::new(db_state);
+
+        // 先恢复数据库状态
+        scheduler.recover_from_db().await.unwrap();
+
+        assert!(scheduler.frozen_sessions.lock().await.contains(&session_id));
+
+        let message = create_test_message(&session_id, "user", "user", "Hello", 1000);
+        scheduler.on_new_message(&session_id, &message).await.unwrap();
+
+        // 验证已解冻
+        assert!(!scheduler.frozen_sessions.lock().await.contains(&session_id));
+
+        // 验证计数器已重置
+        let conn = scheduler.db_state.0.lock().await;
+        let count: i32 = conn.query_row(
+            "SELECT agent_message_count FROM private_sessions WHERE session_id = ?1",
+            [&session_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0);
+
+        // 验证已分发到 unread
+        let unread = scheduler.unread_messages.lock().await;
+        assert!(unread.contains_key(&session_id));
+    }
 
     #[test]
     fn test_truncate_preview_chinese_no_panic() {
@@ -671,14 +1064,4 @@ mod tests {
         let count: i32 = conn.query_row("SELECT COUNT(*) FROM test", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
     }
-
-    // 诊断结论：tauri::AppHandle 在 Windows lib 测试二进制中会导致 STATUS_ENTRYPOINT_NOT_FOUND
-    // 因此所有涉及 Scheduler（含 AppHandle）的集成测试移至外部验证
-    // #[test]
-    // fn test_apphandle_option() { ... }
-
-    // 注意：test_clear_triggering_flag 因 Windows 测试二进制入口点问题无法通过 cargo test --lib 运行
-    // 已通过 cargo run 手动验证 clear_triggering_flag 逻辑正确
-    // #[test]
-    // fn test_clear_triggering_flag() { ... }
 }

@@ -89,7 +89,15 @@ pub fn run() {
             let scheduler = Scheduler::new(db_state);
             scheduler.set_app_handle(app.handle().clone());
             let scheduler_for_bg = scheduler.clone();
+            let scheduler_for_recover = scheduler.clone();
             app.manage(scheduler);
+
+            // 恢复 scheduler 状态
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = scheduler_for_recover.recover_from_db().await {
+                    crate::logger::backend("ERROR", &format!("Failed to recover scheduler from db: {}", e));
+                }
+            });
 
             // 启动后台扫描任务（在独立线程中运行 Tokio runtime，避免依赖 Tauri 的 runtime 上下文）
             std::thread::spawn(move || {
