@@ -43,6 +43,9 @@ export class SessionStore {
                     ? { ...s, last_message_preview: '' }
                     : s
             );
+            // 清空前端消息列表，强制重新加载
+            const { messageStore } = await import('$lib/stores/messageStore.svelte');
+            messageStore.setSessionId(sessionId);
             return pageId;
         } catch (err) {
             logger.error('Failed to reset session:', err);
@@ -52,7 +55,7 @@ export class SessionStore {
 
     async disbandGroup(sessionId: string): Promise<boolean> {
         try {
-            const result = await invoke<boolean>('disband_group', { sessionId });
+            const result = await invoke<boolean>('disband_group', { req: { session_id: sessionId } });
             if (result) {
                 this.sessions = this.sessions.filter(s => s.id !== sessionId);
                 if (this.selectedSessionId === sessionId) {

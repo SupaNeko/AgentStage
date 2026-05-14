@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::message::Message;
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "id, session_id, sender_type, sender_id, content, created_at, message_type, tool_call_data, generation_info, is_deleted";
+const SELECT_COLUMNS: &str = "id, session_id, sender_type, sender_id, content, created_at, message_type, tool_call_data, generation_info, is_deleted, page_index";
 
 fn row_to_message(row: &Row) -> Result<Message> {
     Ok(Message {
@@ -18,6 +18,7 @@ fn row_to_message(row: &Row) -> Result<Message> {
         tool_call_data: row.get(7)?,
         generation_info: row.get(8)?,
         is_deleted: row.get::<_, i32>(9)? != 0,
+        page_index: row.get(10)?,
     })
 }
 
@@ -28,25 +29,28 @@ pub fn insert_message(
     sender_id: &str,
     content: &str,
     message_type: &str,
+    page_index: Option<i32>,
 ) -> Result<Message> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    // Get current page_index
-    let page_index: i32 = conn.query_row(
-        "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
-         UNION ALL
-         SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
-         LIMIT 1",
-        [session_id],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    let page = match page_index {
+        Some(p) => p,
+        None => conn.query_row(
+            "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+             UNION ALL
+             SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+             LIMIT 1",
+            [session_id],
+            |row| row.get(0),
+        ).unwrap_or(0),
+    };
 
     conn.execute(
         r#"INSERT INTO messages (
             id, session_id, sender_type, sender_id, content, created_at, message_type, page_index
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
-        (id.clone(), session_id, sender_type, sender_id, content, now, message_type, page_index),
+        (id.clone(), session_id, sender_type, sender_id, content, now, message_type, page),
     )?;
 
     get_message_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
@@ -71,7 +75,7 @@ pub fn get_messages_by_session(
         "SELECT m.id, m.session_id, m.sender_type, m.sender_id, 
                 COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
                 a.avatar_path as sender_avatar,
-                m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted
+                m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted, m.page_index
          FROM messages m
          LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
          WHERE m.session_id = ?1 AND m.is_deleted = 0 AND m.page_index = ?2
@@ -91,6 +95,7 @@ pub fn get_messages_by_session(
             tool_call_data: row.get(9)?,
             generation_info: row.get(10)?,
             is_deleted: row.get::<_, i32>(11)? != 0,
+            page_index: row.get(12)?,
         })
     })?;
     rows.collect()

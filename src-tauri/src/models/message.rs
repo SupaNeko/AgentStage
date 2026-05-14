@@ -16,6 +16,8 @@ pub struct Message {
     pub tool_call_data: Option<String>,
     pub generation_info: Option<String>,
     pub is_deleted: bool,
+    #[serde(default)]
+    pub page_index: i32,
 }
 
 impl From<Message> for MessageResponse {
@@ -49,4 +51,13 @@ pub struct MessageResponse {
 pub struct SendMessageRequest {
     pub session_id: String,
     pub content: String,
+    pub page_index: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetSessionMessagesRequest {
+    pub session_id: String,
+    pub limit: i32,
+    pub offset: i32,
+    pub page_index: Option<i32>,
 }

@@ -73,3 +73,14 @@ export interface UpdateSessionConfigRequest {
     message_limit_enabled?: boolean;
     mute_enabled?: boolean;
 }
+
+export interface ChatPage {
+    id: string;
+    session_id: string;
+    page_index: number;
+    name: string;
+    is_active: boolean;
+    message_count: number;
+    created_at: number;
+    updated_at: number;
+}

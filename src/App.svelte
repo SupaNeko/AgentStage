@@ -14,6 +14,7 @@
     import { logger } from '$lib/logger';
     import SettingsPanel from '$lib/components/SettingsPanel.svelte';
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
+    import HistorySessionList from '$lib/components/HistorySessionList.svelte';
 
     onMount(() => {
         settingsStore.load();
@@ -78,14 +79,7 @@
         {:else if appState.currentView === 'chat'}
             <SessionList />
         {:else}
-            <div class="flex flex-col h-full">
-                <header class="px-4 py-3 border-b border-border">
-                    <h2 class="text-base font-semibold">历史会话</h2>
-                </header>
-                <div class="flex-1 flex items-center justify-center text-text-secondary text-sm p-4">
-                    历史会话功能即将推出...
-                </div>
-            </div>
+            <HistorySessionList />
         {/if}
     </div>
 
@@ -96,9 +90,7 @@
         {:else if appState.currentView === 'chat'}
             <ChatView />
         {:else}
-            <div class="flex flex-col items-center justify-center h-full text-text-secondary">
-                <p>历史会话功能即将推出...</p>
-            </div>
+            <ChatView mode="history" />
         {/if}
     </main>
 </div>

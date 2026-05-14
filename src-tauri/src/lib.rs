@@ -13,6 +13,7 @@ use commands::session::{
     create_group_session, create_private_session, delete_session, get_group_members,
     get_session, list_sessions, get_session_config, update_session_config,
     reset_session, reset_message_count, disband_group, add_group_member, remove_group_member,
+    list_chat_pages,
 };
 use commands::settings::{get_settings, update_settings};
 use db::connection::init_db;
@@ -126,6 +127,7 @@ pub fn run() {
             disband_group,
             add_group_member,
             remove_group_member,
+            list_chat_pages,
             send_user_message,
             get_session_messages,
             log_frontend,

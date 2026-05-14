@@ -11,6 +11,8 @@ impl PromptAssembler {
     pub fn assemble(
         conn: &Connection,
         agent_id: &str,
+        trigger_session_id: Option<&str>,
+        trigger_page_index: Option<i32>,
         _pending_messages: &[Message],
     ) -> Result<String, String> {
         crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
@@ -45,7 +47,8 @@ impl PromptAssembler {
                 "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at, 
                         m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
                         COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
-                        a.avatar_path as sender_avatar
+                        a.avatar_path as sender_avatar,
+                        m.page_index
                  FROM messages m
                  JOIN (
                      SELECT session_id, COALESCE(current_chat_page, 0) as page FROM private_sessions WHERE agent_id = ?1
@@ -54,13 +57,19 @@ impl PromptAssembler {
                      FROM group_sessions gs
                      JOIN group_members gm ON gs.session_id = gm.session_id
                      WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent'
-                 ) sp ON m.session_id = sp.session_id AND m.page_index = sp.page
+                  ) sp ON m.session_id = sp.session_id 
+                      AND m.page_index = CASE 
+                          WHEN ?2 IS NOT NULL AND m.session_id = ?2 THEN ?3 
+                          ELSE sp.page 
+                      END
                  LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
                  WHERE m.is_deleted = 0
                  ORDER BY m.created_at DESC"
             ).map_err(|e| e.to_string())?;
             
-            let rows = stmt.query_map([agent_id], |row| {
+            let rows = stmt.query_map(
+                rusqlite::params![agent_id, trigger_session_id, trigger_page_index],
+                |row| {
                 Ok(Message {
                     id: row.get(0)?,
                     session_id: row.get(1)?,
@@ -74,6 +83,7 @@ impl PromptAssembler {
                     is_deleted: row.get::<_, i32>(9)? != 0,
                     sender_name: row.get(10)?,
                     sender_avatar: row.get(11)?,
+                    page_index: row.get(12)?,
                 })
             }).map_err(|e| e.to_string())?;
             
@@ -414,7 +424,7 @@ mod tests {
             (
                 &msg.id, &msg.session_id, &msg.sender_type, &msg.sender_id, &msg.content,
                 msg.created_at, &msg.message_type, &msg.tool_call_data, &msg.generation_info,
-                if msg.is_deleted { 1 } else { 0 }, 0i32,
+                if msg.is_deleted { 1 } else { 0 }, msg.page_index,
             ),
         ).unwrap();
     }
@@ -440,10 +450,11 @@ mod tests {
             is_deleted: false,
             sender_name: "用户".to_string(),
             sender_avatar: None,
+            page_index: 0,
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
         assert!(!prompt.contains("【最新消息"), "Prompt should not contain Layer 5 header, but got:\n{}", prompt);
     }
 
@@ -468,10 +479,11 @@ mod tests {
             is_deleted: false,
             sender_name: "用户".to_string(),
             sender_avatar: None,
+            page_index: 0,
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
         assert!(prompt.contains(super::prompt_templates::LAYER_FOOTER_NOTE), "Prompt should contain footer note, but got:\n{}", prompt);
     }
 
@@ -496,6 +508,7 @@ mod tests {
             is_deleted: false,
             sender_name: "用户".to_string(),
             sender_avatar: None,
+            page_index: 0,
         };
         let msg2 = Message {
             id: "msg2".to_string(),
@@ -510,13 +523,57 @@ mod tests {
             is_deleted: false,
             sender_name: "用户".to_string(),
             sender_avatar: None,
+            page_index: 0,
         };
         insert_message(&conn, &msg1);
         insert_message(&conn, &msg2);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
         let pos1 = prompt.find("First message").expect("First message not found");
         let pos2 = prompt.find("Second message").expect("Second message not found");
         assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", prompt);
+    }
+
+    #[test]
+    fn test_prompt_assemble_uses_trigger_page_for_trigger_session() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Agent One", "Persona 1");
+        
+        // Create private session for agent1 (page 0)
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+        
+        // Insert message to page 0
+        let msg0 = Message {
+            id: "msg0".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Page0 message".to_string(), created_at: 1000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
+        };
+        insert_message(&conn, &msg0);
+        
+        // Simulate reset: create page 1 and insert message there
+        let msg1 = Message {
+            id: "msg1".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Page1 message".to_string(), created_at: 2000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 1,
+        };
+        insert_message(&conn, &msg1);
+        
+        // Trigger from page 0: prompt should contain "Page0 message" but NOT "Page1 message"
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[]).unwrap();
+        assert!(prompt.contains("Page0 message"), "Prompt should contain page 0 message");
+        assert!(!prompt.contains("Page1 message"), "Prompt should NOT contain page 1 message when triggered from page 0");
+        
+        // Trigger from page 1: prompt should contain "Page1 message" but NOT "Page0 message"
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[]).unwrap();
+        assert!(prompt.contains("Page1 message"), "Prompt should contain page 1 message");
+        assert!(!prompt.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
     }
 }

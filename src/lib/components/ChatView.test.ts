@@ -28,7 +28,7 @@ describe('ChatView', () => {
         messageStore.currentSessionId = null;
         eventCallbacks.clear();
         vi.clearAllMocks();
-        mockInvoke.mockImplementation((cmd: string) => {
+        mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
             if (cmd === 'get_session_messages') {
                 return Promise.resolve([]);
             }
@@ -36,14 +36,18 @@ describe('ChatView', () => {
                 return Promise.resolve(undefined);
             }
             if (cmd === 'get_session_config') {
+                const payload = args as { req?: { session_id?: string } };
                 return Promise.resolve({
-                    session_id: 's1',
+                    session_id: payload?.req?.session_id ?? 's1',
                     history_limit: 30,
                     message_limit: 10,
                     message_limit_enabled: true,
                     mute_enabled: false,
                     agent_message_count: 0,
                 } as SessionConfig);
+            }
+            if (cmd === 'get_group_members') {
+                return Promise.resolve([]);
             }
             return Promise.resolve(undefined);
         });
@@ -303,7 +307,7 @@ describe('ChatView', () => {
         resetButton.click();
         await tick();
 
-        expect(mockInvoke).toHaveBeenCalledWith('reset_message_count', { sessionId: 's1' });
+        expect(mockInvoke).toHaveBeenCalledWith('reset_message_count', { req: { session_id: 's1' } });
     });
 
     it('scrolls to bottom when session is selected and messages load', async () => {
@@ -428,5 +432,98 @@ describe('ChatView', () => {
         await tick();
 
         expect(container.scrollTop).toBe(100);
+    });
+
+    // Bug 3: Typing indicator should not persist when switching sessions
+    it('hides typing indicator when switching to a different session', async () => {
+        const session1: Session = {
+            id: 's1',
+            session_type: 'single',
+            agent_id: 'a1',
+            agent_name: 'Agent One',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+        const session2: Session = {
+            id: 's2',
+            session_type: 'single',
+            agent_id: 'a2',
+            agent_name: 'Agent Two',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        sessionStore.sessions = [session1, session2];
+        sessionStore.selectedSessionId = 's1';
+
+        render(ChatView);
+        await tick();
+
+        // Agent One starts typing in session 1
+        const typingCallback = eventCallbacks.get('agent_typing');
+        typingCallback!({ payload: { agent_id: 'a1' } });
+        await tick();
+        expect(screen.getByText('正在输入中...')).toBeInTheDocument();
+
+        // User switches to session 2 — typing indicator should disappear
+        sessionStore.selectedSessionId = 's2';
+        await tick();
+        expect(screen.queryByText('正在输入中...')).not.toBeInTheDocument();
+    });
+
+    it('clears typing indicator on agent_error event', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'single',
+            agent_id: 'a1',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        sessionStore.sessions = [session];
+        sessionStore.selectedSessionId = 's1';
+
+        render(ChatView);
+        await tick();
+
+        const typingCallback = eventCallbacks.get('agent_typing');
+        typingCallback!({ payload: { agent_id: 'a1' } });
+        await tick();
+        expect(screen.getByText('正在输入中...')).toBeInTheDocument();
+
+        const errorCallback = eventCallbacks.get('agent_error');
+        expect(errorCallback).toBeDefined();
+        errorCallback!({ payload: { agent_id: 'a1', error: 'Something went wrong' } });
+        await tick();
+
+        expect(screen.queryByText('正在输入中...')).not.toBeInTheDocument();
+    });
+
+    it('does not show typing indicator in group chat message stream', async () => {
+        const session: Session = {
+            id: 'g1',
+            session_type: 'group',
+            group_name: 'Test Group',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        sessionStore.sessions = [session];
+        sessionStore.selectedSessionId = 'g1';
+
+        render(ChatView);
+        await tick();
+
+        // Any agent typing should NOT show a typing bubble in the message stream
+        const typingCallback = eventCallbacks.get('agent_typing');
+        typingCallback!({ payload: { agent_id: 'a1' } });
+        await tick();
+
+        expect(screen.queryByText('正在输入中...')).not.toBeInTheDocument();
     });
 });

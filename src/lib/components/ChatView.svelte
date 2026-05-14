@@ -9,10 +9,18 @@
     import { logger } from '$lib/logger';
     import type { GroupMember, SessionConfig } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
+    import { historyStore } from '$lib/stores/historyStore.svelte';
+    import { formatTime } from '$lib/utils';
+
+    interface Props {
+        mode?: 'chat' | 'history';
+    }
+    let { mode = 'chat' }: Props = $props();
 
     let inputText = $state('');
     let sending = $state(false);
-    let isAgentTyping = $state(false);
+    let typingAgents = $state<Set<string>>(new Set());
+    let typingTimeouts = $state<Map<string, number>>(new Map());
     let members = $state<GroupMember[]>([]);
     let loadingMembers = $state(false);
     let settingsOpen = $state(false);
@@ -27,9 +35,14 @@
     }
 
     let selectedSession = $derived(
-        sessionStore.sessions.find((s) => s.id === sessionStore.selectedSessionId)
+        mode === 'chat'
+            ? sessionStore.sessions.find((s) => s.id === sessionStore.selectedSessionId)
+            : historyStore.sessions.find((s) => s.id === historyStore.selectedSessionId)
     );
     let currentAgentId = $state<string | undefined>(undefined);
+    let isAgentTyping = $derived(
+        currentAgentId != null && typingAgents.has(currentAgentId)
+    );
     let isMessageLimitReached = $derived(
         sessionConfig != null &&
         sessionConfig.message_limit_enabled &&
@@ -39,8 +52,10 @@
     async function loadSessionConfig(sessionId: string, sessionType: string) {
         try {
             const config = await invoke<SessionConfig>('get_session_config', {
-                sessionId,
-                sessionType,
+                req: {
+                    session_id: sessionId,
+                    session_type: sessionType,
+                },
             });
             sessionConfig = config;
         } catch (err) {
@@ -49,15 +64,23 @@
     }
 
     $effect(() => {
-        const id = sessionStore.selectedSessionId;
+        const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         prevMsgCount = 0;
     });
 
     $effect(() => {
-        const id = sessionStore.selectedSessionId;
+        const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         if (id) {
-            messageStore.loadMessages(id);
-            const session = sessionStore.sessions.find(s => s.id === id);
+            if (pageIdx != null) {
+                messageStore.loadMessages(id, pageIdx);
+            } else {
+                messageStore.loadMessages(id);
+            }
+            const session = mode === 'chat'
+                ? sessionStore.sessions.find(s => s.id === id)
+                : historyStore.sessions.find(s => s.id === id);
             currentAgentId = session?.agent_id;
             if (session) {
                 loadSessionConfig(id, session.session_type);
@@ -81,7 +104,7 @@
 
     $effect(() => {
         const msgs = messageStore.messages;
-        const selectedId = sessionStore.selectedSessionId;
+        const selectedId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         const currentId = messageStore.currentSessionId;
 
         if (!selectedId || currentId !== selectedId) return;
@@ -100,14 +123,19 @@
     });
 
     async function handleResetMessageCount() {
-        if (!sessionStore.selectedSessionId || !sessionConfig) return;
+        const sessionId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        if (!sessionId || !sessionConfig) return;
         try {
             await invoke('reset_message_count', {
-                sessionId: sessionStore.selectedSessionId,
+                req: {
+                    session_id: sessionId,
+                },
             });
-            const session = sessionStore.sessions.find(s => s.id === sessionStore.selectedSessionId);
+            const session = mode === 'chat'
+                ? sessionStore.sessions.find(s => s.id === sessionId)
+                : historyStore.sessions.find(s => s.id === sessionId);
             if (session) {
-                await loadSessionConfig(sessionStore.selectedSessionId, session.session_type);
+                await loadSessionConfig(sessionId, session.session_type);
             }
         } catch (err) {
             logger.error('Failed to reset message count:', err);
@@ -116,8 +144,10 @@
 
     async function handleSend() {
         const content = inputText.trim();
-        logger.debug('[DEBUG ChatView.handleSend]', { sessionId: sessionStore.selectedSessionId, content });
-        if (!content || !sessionStore.selectedSessionId) return;
+        const sessionId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : undefined;
+        logger.debug('[DEBUG ChatView.handleSend]', { sessionId, content });
+        if (!content || !sessionId) return;
 
         sending = true;
         inputText = '';
@@ -125,7 +155,7 @@
         // 乐观更新：立即在 UI 中显示用户消息
         const optimisticMsg: import('$lib/types').Message = {
             id: 'optimistic-' + Date.now(),
-            session_id: sessionStore.selectedSessionId,
+            session_id: sessionId,
             sender_type: 'user',
             sender_id: 'user',
             sender_name: '用户',
@@ -136,14 +166,20 @@
         messageStore.addMessage(optimisticMsg);
 
         try {
-            await invoke('send_user_message', {
-                req: {
-                    session_id: sessionStore.selectedSessionId,
-                    content,
-                },
-            });
+            const req: Record<string, unknown> = {
+                session_id: sessionId,
+                content,
+            };
+            if (pageIdx != null) {
+                req.page_index = pageIdx;
+            }
+            await invoke('send_user_message', { req });
             logger.debug('[DEBUG ChatView.handleSend] success');
-            await messageStore.loadMessages(sessionStore.selectedSessionId);
+            if (pageIdx != null) {
+                await messageStore.loadMessages(sessionId, pageIdx);
+            } else {
+                await messageStore.loadMessages(sessionId);
+            }
         } catch (err) {
             logger.debug('[DEBUG ChatView.handleSend] failed', { error: err });
             // 发送失败时移除乐观消息
@@ -165,9 +201,12 @@
         const unlistenFns: (() => void)[] = [];
 
         listen('new_message', (event) => {
-            const msg = event.payload as { session_id: string; content?: string; id?: string } & Record<string, unknown>;
+            const msg = event.payload as { session_id: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
             logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50) });
-            if (msg.session_id === sessionStore.selectedSessionId) {
+            const shouldAdd = mode === 'chat'
+                ? msg.session_id === sessionStore.selectedSessionId
+                : msg.session_id === historyStore.selectedSessionId && msg.page_index === historyStore.selectedPageIndex;
+            if (shouldAdd) {
                 // 去重：如果消息已存在，不重复添加
                 const exists = messageStore.messages.some((m) => m.id === msg.id);
                 if (!exists) {
@@ -179,16 +218,59 @@
         listen('agent_typing', (event) => {
             const payload = event.payload as { agent_id?: string };
             logger.debug('[DEBUG ChatView.listen agent_typing]', { agentId: payload.agent_id });
-            if (currentAgentId === payload.agent_id) {
-                isAgentTyping = true;
+            if (payload.agent_id) {
+                const agentId = payload.agent_id;
+                const next = new Set(typingAgents);
+                next.add(agentId);
+                typingAgents = next;
+                // Defense: 5-minute timeout in case agent_completed is lost
+                const existing = typingTimeouts.get(agentId);
+                if (existing) clearTimeout(existing);
+                const t = setTimeout(() => {
+                    const n = new Set(typingAgents);
+                    n.delete(agentId);
+                    typingAgents = n;
+                    const nextTimeouts = new Map(typingTimeouts);
+                    nextTimeouts.delete(agentId);
+                    typingTimeouts = nextTimeouts;
+                }, 5 * 60 * 1000);
+                const nextTimeouts = new Map(typingTimeouts);
+                nextTimeouts.set(agentId, t);
+                typingTimeouts = nextTimeouts;
             }
         }).then((fn) => unlistenFns.push(fn));
 
         listen('agent_completed', (event) => {
             const payload = event.payload as { agent_id?: string };
             logger.debug('[DEBUG ChatView.listen agent_completed]', { agentId: payload.agent_id });
-            if (currentAgentId === payload.agent_id) {
-                isAgentTyping = false;
+            if (payload.agent_id) {
+                const next = new Set(typingAgents);
+                next.delete(payload.agent_id);
+                typingAgents = next;
+                const existing = typingTimeouts.get(payload.agent_id);
+                if (existing) {
+                    clearTimeout(existing);
+                    const nextTimeouts = new Map(typingTimeouts);
+                    nextTimeouts.delete(payload.agent_id);
+                    typingTimeouts = nextTimeouts;
+                }
+            }
+        }).then((fn) => unlistenFns.push(fn));
+
+        listen('agent_error', (event) => {
+            const payload = event.payload as { agent_id?: string; error?: string };
+            logger.debug('[DEBUG ChatView.listen agent_error]', { agentId: payload.agent_id });
+            if (payload.agent_id) {
+                const next = new Set(typingAgents);
+                next.delete(payload.agent_id);
+                typingAgents = next;
+                const existing = typingTimeouts.get(payload.agent_id);
+                if (existing) {
+                    clearTimeout(existing);
+                    const nextTimeouts = new Map(typingTimeouts);
+                    nextTimeouts.delete(payload.agent_id);
+                    typingTimeouts = nextTimeouts;
+                }
             }
         }).then((fn) => unlistenFns.push(fn));
 
@@ -206,6 +288,7 @@
 
         return () => {
             unlistenFns.forEach((fn) => fn());
+            typingTimeouts.forEach((t) => clearTimeout(t));
         };
     });
 </script>
@@ -229,7 +312,7 @@
     />
     <div class="flex flex-col flex-1 min-w-0">
         <!-- Header -->
-        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0 relative">
             {#if selectedSession}
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
@@ -249,6 +332,27 @@
                         </h2>
                     </div>
                 </div>
+                {#if mode === 'history' && historyStore.chatPages.length > 0}
+                    <div class="absolute left-1/2 -translate-x-1/2">
+                        <select
+                            value={historyStore.selectedPageIndex ?? 0}
+                            onchange={(e) => {
+                                const idx = Number((e.target as HTMLSelectElement).value);
+                                historyStore.selectPage(idx);
+                                if (historyStore.selectedSessionId) {
+                                    messageStore.loadMessages(historyStore.selectedSessionId, idx);
+                                }
+                            }}
+                            class="px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px]"
+                        >
+                            {#each historyStore.chatPages as page (page.page_index)}
+                                <option value={page.page_index}>
+                                    {page.name} #{page.page_index + 1} — {formatTime(page.updated_at)}
+                                </option>
+                            {/each}
+                        </select>
+                    </div>
+                {/if}
                 <button
                     onclick={() => settingsOpen = !settingsOpen}
                     class="p-2 hover:bg-bg rounded-lg text-text-secondary transition-colors"
@@ -257,14 +361,16 @@
                     <Settings size={20} />
                 </button>
             {:else}
-                <h2 class="text-lg font-semibold text-text-secondary">选择一个会话开始聊天</h2>
+                <h2 class="text-lg font-semibold text-text-secondary">
+                    {mode === 'history' ? '选择一个会话查看历史' : '选择一个会话开始聊天'}
+                </h2>
             {/if}
         </header>
 
         <!-- Message list -->
         {#if !selectedSession}
             <div class="flex-1 flex items-center justify-center text-text-secondary">
-                <p>选择一个会话开始聊天</p>
+                <p>{mode === 'history' ? '选择一个会话查看历史' : '选择一个会话开始聊天'}</p>
             </div>
         {:else}
             <div class="flex-1 overflow-y-auto" bind:this={messageListEl} data-testid="message-list">

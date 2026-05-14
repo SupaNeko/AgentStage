@@ -124,3 +124,19 @@ pub struct RemoveGroupMemberRequest {
     pub session_id: String,
     pub agent_id: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GetSessionConfigRequest {
+    pub session_id: String,
+    pub session_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResetMessageCountRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DisbandGroupRequest {
+    pub session_id: String,
+}
