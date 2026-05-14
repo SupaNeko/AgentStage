@@ -65,6 +65,7 @@
 
     $effect(() => {
         const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         prevMsgCount = 0;
     });
 
@@ -311,7 +312,7 @@
     />
     <div class="flex flex-col flex-1 min-w-0">
         <!-- Header -->
-        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0 relative">
             {#if selectedSession}
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
