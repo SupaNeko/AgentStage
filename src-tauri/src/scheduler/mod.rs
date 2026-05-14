@@ -569,20 +569,11 @@ impl Scheduler {
             }
         }
 
-        // 读取各 session 当前的 page_index（用于绑定到本次触发）
+        // 从 pending 消息中读取各 session 的 page_index（确保回复绑定到触发消息所在页）
         let session_pages: HashMap<String, i32> = {
-            let conn = self.db_state.0.lock().await;
             let mut map = HashMap::new();
-            for session_id in &processed_sessions {
-                let page: i32 = conn.query_row(
-                    "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
-                     UNION ALL
-                     SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
-                     LIMIT 1",
-                    [session_id],
-                    |row| row.get(0),
-                ).unwrap_or(0);
-                map.insert(session_id.clone(), page);
+            for msg in &pending {
+                map.entry(msg.session_id.clone()).or_insert(msg.page_index);
             }
             crate::logger::backend("DEBUG", &format!(
                 "[DEBUG trigger_agent] agent_id={}, session_pages={:?}",
@@ -606,8 +597,26 @@ impl Scheduler {
         // 发出 typing 事件
         self.emit("agent_typing", serde_json::json!({"agent_id": agent_id}));
 
+        // 快照各 session 当前的 page_index（用于阶段 7 判断是否为触发中重置）
+        let snapshot_pages: HashMap<String, i32> = {
+            let conn = self.db_state.0.lock().await;
+            let mut map = HashMap::new();
+            for session_id in &processed_sessions {
+                let page: i32 = conn.query_row(
+                    "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+                     UNION ALL
+                     SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+                     LIMIT 1",
+                    [session_id],
+                    |row| row.get(0),
+                ).unwrap_or(0);
+                map.insert(session_id.clone(), page);
+            }
+            map
+        };
+
         // 使用 finally 模式：无论内部逻辑成功或失败，总是清除 is_triggering
-        let inner_result = self.trigger_agent_inner(agent_id, pending, session_pages).await;
+        let inner_result = self.trigger_agent_inner(agent_id, pending, session_pages, snapshot_pages).await;
         match &inner_result {
             Ok(_) => crate::logger::backend("DEBUG", &format!(
                 "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner OK", agent_id
@@ -628,7 +637,7 @@ impl Scheduler {
         inner_result
     }
 
-    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>) -> Result<(), String> {
+    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
             agent_id, pending.len(), session_pages
@@ -847,27 +856,18 @@ impl Scheduler {
             agent_id, agent_messages.len()
         ));
         for msg in &agent_messages {
-            // Bug 1 fix: skip emit + distribute if the session was reset during this trigger
-            let (current_page, session_exists): (i32, bool) = {
+            let session_exists: bool = {
                 let conn = self.db_state.0.lock().await;
-                let page: i32 = conn.query_row(
-                    "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
-                     UNION ALL
-                     SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
-                     LIMIT 1",
-                    [&msg.session_id],
-                    |row| row.get(0),
-                ).unwrap_or(0);
-                let exists: bool = conn.query_row(
+                conn.query_row(
                     "SELECT COUNT(*) FROM sessions WHERE id = ?1 AND is_deleted = 0",
                     [&msg.session_id],
                     |row| Ok(row.get::<_, i32>(0)? > 0),
-                ).unwrap_or(false);
-                (page, exists)
+                ).unwrap_or(false)
             };
+            let snapshot_page = snapshot_pages.get(&msg.session_id).copied().unwrap_or(0);
             crate::logger::backend("DEBUG", &format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={} vs current_page={}, session_exists={}",
-                agent_id, msg.session_id, msg.page_index, current_page, session_exists
+                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={} vs snapshot_page={}, session_exists={}",
+                agent_id, msg.session_id, msg.page_index, snapshot_page, session_exists
             ));
             if !session_exists {
                 crate::logger::backend("DEBUG", &format!(
@@ -876,10 +876,10 @@ impl Scheduler {
                 ));
                 continue;
             }
-            if msg.page_index != current_page {
+            if msg.page_index != snapshot_page {
                 crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (page mismatch)",
-                    agent_id, msg.session_id
+                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (page mismatch: msg.page={} vs snapshot_page={})",
+                    agent_id, msg.session_id, msg.page_index, snapshot_page
                 ));
                 continue;
             }

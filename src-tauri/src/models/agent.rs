@@ -117,3 +117,8 @@ pub struct UpdateAgentRequest {
     pub temperature: Option<f64>,
     pub max_tokens: Option<i32>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DeleteAgentRequest {
+    pub id: String,
+}

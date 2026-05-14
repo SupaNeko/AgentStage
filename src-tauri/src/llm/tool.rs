@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use crate::db::connection::DbState;
 use crate::db::session as session_repo;
 use crate::db::message as message_repo;
@@ -80,20 +81,39 @@ impl ToolExecutor {
         &self,
         agent_id: &str,
         tool_calls: Vec<ToolCall>,
+        session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute] START agent_id={}, tool_calls_count={}",
+            agent_id, tool_calls.len()
+        ));
+
         let mut results = Vec::new();
 
-        for tc in tool_calls {
+        for (i, tc) in tool_calls.iter().enumerate() {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG ToolExecutor::execute] processing tool_call[{}]: name={}, args={}",
+                i, tc.name, tc.arguments
+            ));
             match tc.name.as_str() {
                 "send_message" => {
-                    let msg = self.execute_send_message(agent_id, &tc.arguments).await?;
+                    let msg = self.execute_send_message(agent_id, &tc.arguments, session_pages).await?;
+                    crate::logger::backend("DEBUG", &format!(
+                        "[DEBUG ToolExecutor::execute] tool_call[{}] returned message_id={}",
+                        i, msg.id
+                    ));
                     results.push(msg);
                 }
                 _ => {
-                    crate::logger::backend("WARN", &format!("Unknown tool call: {}", tc.name));
+                    crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
                 }
             }
         }
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute] END agent_id={}, results_count={}",
+            agent_id, results.len()
+        ));
 
         Ok(results)
     }
@@ -102,29 +122,53 @@ impl ToolExecutor {
         &self,
         agent_id: &str,
         arguments: &str,
+        session_pages: &HashMap<String, i32>,
     ) -> Result<Message, ToolError> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_send_message] START agent_id={}, args_raw={}",
+            agent_id, arguments
+        ));
+
         let args: serde_json::Value = serde_json::from_str(arguments)
             .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
         let raw_target_id = args["target_id"].as_str().unwrap_or("");
         let content = args["content"].as_str().unwrap_or("");
 
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_send_message] parsed raw_target_id={}, content_len={}",
+            raw_target_id, content.len()
+        ));
+
         if content.is_empty() {
+            crate::logger::backend("WARN", &format!(
+                "[DEBUG ToolExecutor::execute_send_message] Empty content, aborting"
+            ));
             return Err(ToolError::EmptyContent);
         }
 
         // 自动映射 target_id
         let target_id = self.resolve_target_id(agent_id, raw_target_id).await?;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_send_message] resolved target_id={}", target_id
+        ));
+
+        // 使用触发时绑定的 page_index，避免 reset 后的页面漂移
+        let bound_page = session_pages.get(&target_id).copied();
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_send_message] bound_page={:?} for target_id={}",
+            bound_page, target_id
+        ));
 
         // 插入消息
         let conn = self.db_state.0.lock().await;
         let msg = message_repo::insert_message(
-            &conn, &target_id, "agent", agent_id, content, "text",
+            &conn, &target_id, "agent", agent_id, content, "text", bound_page,
         ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG ToolExecutor] wrote message target_id={}, message_id={}",
-            target_id, msg.id
+            "[DEBUG ToolExecutor::execute_send_message] wrote message target_id={}, page_index={}, message_id={}",
+            target_id, msg.page_index, msg.id
         ));
 
         Ok(msg)
@@ -139,23 +183,32 @@ impl ToolExecutor {
 
         // 1. 如果 raw 本身就是合法的 session_id，直接返回
         if let Ok(Some(_)) = session_repo::get_session_by_id(&conn, raw) {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG resolve_target_id] raw='{}' is valid session_id", raw
+            ));
             return Ok(raw.to_string());
         }
 
         // 2. 如果 raw 是 agent_id，查找对应的私聊 session
         if let Ok(Some(session)) = session_repo::get_private_session_by_agent_id(&conn, raw) {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG resolve_target_id] raw='{}' resolved to agent session_id={}", raw, session.id
+            ));
             return Ok(session.id);
         }
 
         // 3. 默认：使用该 agent 的默认私聊 session
         if let Ok(Some(session)) = session_repo::get_private_session_by_agent_id(&conn, agent_id) {
             crate::logger::backend("WARN", &format!(
-                "[DEBUG ToolExecutor] target_id '{}' not found, fallback to agent's default session {}",
+                "[DEBUG resolve_target_id] raw='{}' not found, fallback to agent's default session {}",
                 raw, session.id
             ));
             return Ok(session.id);
         }
 
+        crate::logger::backend("ERROR", &format!(
+            "[DEBUG resolve_target_id] raw='{}' not found for agent_id={}", raw, agent_id
+        ));
         Err(ToolError::TargetNotFound(raw.to_string()))
     }
 }

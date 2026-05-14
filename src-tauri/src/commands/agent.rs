@@ -1,7 +1,7 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
 use crate::db::agent as agent_repo;
-use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest};
+use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest, DeleteAgentRequest};
 
 #[tauri::command]
 pub async fn create_agent(state: State<'_, DbState>, req: CreateAgentRequest) -> Result<AgentResponse, String> {
@@ -40,9 +40,9 @@ pub async fn update_agent(state: State<'_, DbState>, req: UpdateAgentRequest) ->
 }
 
 #[tauri::command]
-pub async fn delete_agent(state: State<'_, DbState>, id: String) -> Result<bool, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG delete_agent] id={}", id));
+pub async fn delete_agent(state: State<'_, DbState>, req: DeleteAgentRequest) -> Result<bool, String> {
+    crate::logger::backend("DEBUG", &format!("[DEBUG delete_agent] id={}", req.id));
 
     let conn = get_db(&state).await?;
-    agent_repo::soft_delete(&conn, &id).map_err(|e| e.to_string())
+    agent_repo::soft_delete(&conn, &req.id).map_err(|e| e.to_string())
 }

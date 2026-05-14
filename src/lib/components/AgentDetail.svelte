@@ -94,7 +94,7 @@
         logger.debug('[DEBUG AgentDetail.handleDelete]', { id: agent.id });
         if (!confirm(`确定要删除角色 "${agent.name}" 吗？此操作不可恢复。`)) return;
         try {
-            await invoke('delete_agent', { id: agent.id });
+            await invoke('delete_agent', { req: { id: agent.id } });
             appState.selectAgent(null);
         } catch (err) {
             logger.error('Failed to delete agent:', err);

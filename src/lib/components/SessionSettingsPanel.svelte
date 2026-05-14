@@ -34,7 +34,7 @@
 
     async function loadConfig() {
         try {
-            const data = await invoke<SessionConfig>('get_session_config', { sessionId, sessionType });
+            const data = await invoke<SessionConfig>('get_session_config', { req: { session_id: sessionId, session_type: sessionType } });
             config = data;
         } catch (err) {
             logger.error('Failed to load session config:', err);

@@ -20,7 +20,7 @@ export function log(level: string, ...args: unknown[]) {
         console.log(`[${level}]`, ...args);
     }
     // Send to backend log file
-    invoke('log_frontend', { level, message }).catch(() => {});
+    invoke('log_frontend', { req: { level, message } }).catch(() => {});
 }
 
 export function debug(...args: unknown[]) {

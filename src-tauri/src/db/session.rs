@@ -56,6 +56,12 @@ pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<Sessi
         (&session_id, agent_id, now),
     )?;
 
+    conn.execute(
+        "INSERT INTO chat_pages (id, session_id, page_index, name, is_active, message_count, created_at, updated_at)
+         VALUES (?1, ?2, 0, '默认', 1, 0, ?3, ?3)",
+        rusqlite::params![&Uuid::new_v4().to_string(), &session_id, now],
+    )?;
+
     init_session_settings(&conn, &session_id, "private")?;
 
     // 自动建立好友关系（该角色与用户）
@@ -141,6 +147,12 @@ pub fn create_group_session(
     conn.execute(
         "INSERT INTO group_sessions (session_id, name, mute_enabled, created_at) VALUES (?1, ?2, 0, ?3)",
         (&session_id, name, now),
+    )?;
+
+    conn.execute(
+        "INSERT INTO chat_pages (id, session_id, page_index, name, is_active, message_count, created_at, updated_at)
+         VALUES (?1, ?2, 0, '默认', 1, 0, ?3, ?3)",
+        rusqlite::params![&Uuid::new_v4().to_string(), &session_id, now],
     )?;
 
     init_session_settings(&conn, &session_id, "group")?;
@@ -700,5 +712,53 @@ mod tests {
             let (sid, page): (String, i32) = row.unwrap();
             eprintln!("group_session: session={} current_chat_page={}", sid, page);
         }
+    }
+
+    #[test]
+    fn test_get_session_messages_with_page_index() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        // Insert messages to page 0 and page 1
+        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Page0", "text", Some(0)).unwrap();
+        let _ = reset_session(&conn, &session.id).unwrap();
+        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Page1", "text", Some(1)).unwrap();
+        
+        let page0_msgs = crate::db::message::get_messages_by_session(&conn, &session.id, 0, 100, 0).unwrap();
+        assert_eq!(page0_msgs.len(), 1);
+        assert_eq!(page0_msgs[0].content, "Page0");
+        
+        let page1_msgs = crate::db::message::get_messages_by_session(&conn, &session.id, 1, 100, 0).unwrap();
+        assert_eq!(page1_msgs.len(), 1);
+        assert_eq!(page1_msgs[0].content, "Page1");
+    }
+
+    #[test]
+    fn test_send_user_message_with_page_index_writes_to_old_page() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        let _ = reset_session(&conn, &session.id).unwrap(); // current_chat_page = 1
+        
+        // Simulate sending to old page 0
+        let msg = crate::db::message::insert_message(&conn, &session.id, "user", "user", "Old page msg", "text", Some(0)).unwrap();
+        assert_eq!(msg.page_index, 0);
+        
+        // current_chat_page should still be 1
+        let current_page: i32 = conn.query_row(
+            "SELECT current_chat_page FROM private_sessions WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(current_page, 1);
     }
 }
