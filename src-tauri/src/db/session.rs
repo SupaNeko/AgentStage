@@ -528,7 +528,7 @@ mod tests {
         let session = create_private_session(&conn, "agent1").unwrap();
         
         // Insert a user message
-        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text").unwrap();
+        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text", None).unwrap();
         
         // Assemble prompt
         let pending = vec![crate::models::message::Message {
@@ -544,9 +544,10 @@ mod tests {
             tool_call_data: None,
             generation_info: None,
             is_deleted: false,
+            page_index: 0,
         }];
         
-        let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", &pending);
+        let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", None, None, &pending);
         assert!(prompt.is_ok(), "PromptAssembler failed: {:?}", prompt.err());
         let prompt_text = prompt.unwrap();
         assert!(prompt_text.contains("Hello!"));
@@ -564,11 +565,11 @@ mod tests {
         let session = create_private_session(&conn, "agent1").unwrap();
         
         // Insert user message
-        let user_msg = crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text").unwrap();
+        let user_msg = crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello!", "text", None).unwrap();
         assert_eq!(user_msg.sender_type, "user");
         
         // Insert agent message
-        let agent_msg = crate::db::message::insert_message(&conn, &session.id, "agent", "agent1", "Hi there!", "text").unwrap();
+        let agent_msg = crate::db::message::insert_message(&conn, &session.id, "agent", "agent1", "Hi there!", "text", None).unwrap();
         assert_eq!(agent_msg.sender_type, "agent");
         
         // Query messages

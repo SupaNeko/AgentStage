@@ -24,6 +24,7 @@ pub struct PendingMessage {
     pub sender_id: String,
     pub content: String,
     pub created_at: i64,
+    pub page_index: i32,
 }
 
 impl From<Message> for PendingMessage {
@@ -34,6 +35,7 @@ impl From<Message> for PendingMessage {
             sender_id: msg.sender_id,
             content: msg.content,
             created_at: msg.created_at,
+            page_index: msg.page_index,
         }
     }
 }
@@ -64,7 +66,19 @@ impl Scheduler {
 
     fn emit(&self, event: &str, payload: impl Serialize + Clone) {
         if let Some(handle) = self.app_handle.lock().unwrap().as_ref() {
-            let _ = handle.emit(event, payload);
+            let result = handle.emit(event, payload.clone());
+            match &result {
+                Ok(_) => crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG emit] event='{}' sent OK", event
+                )),
+                Err(e) => crate::logger::backend("ERROR", &format!(
+                    "[DEBUG emit] event='{}' failed: {}", event, e
+                )),
+            }
+        } else {
+            crate::logger::backend("WARN", &format!(
+                "[DEBUG emit] event='{}' dropped (no app_handle)", event
+            ));
         }
     }
 
@@ -88,7 +102,7 @@ impl Scheduler {
             let conn = self.db_state.0.lock().await;
             let mut stmt = conn.prepare(
                 "SELECT u.session_id, u.agent_id, u.message_id, u.created_at,
-                        m.sender_type, m.sender_id, m.content
+                        m.sender_type, m.sender_id, m.content, m.page_index
                  FROM agent_unread_queue u
                  JOIN messages m ON u.message_id = m.id
                  ORDER BY u.created_at ASC"
@@ -103,6 +117,7 @@ impl Scheduler {
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
+                    row.get::<_, i32>(7)?,
                 ))
             }).map_err(|e| e.to_string())?
               .filter_map(|r| r.ok())
@@ -113,13 +128,14 @@ impl Scheduler {
         let mut unread_messages = self.unread_messages.lock().await;
         let mut agent_notifications = self.agent_notifications.lock().await;
 
-        for (session_id, agent_id, _message_id, created_at, sender_type, sender_id, content) in rows {
+        for (session_id, agent_id, _message_id, created_at, sender_type, sender_id, content, page_index) in rows {
             let pending = PendingMessage {
                 session_id: session_id.clone(),
                 sender_type,
                 sender_id,
                 content,
                 created_at,
+                page_index,
             };
 
             unread_messages
@@ -148,6 +164,11 @@ impl Scheduler {
                 |row| row.get(0),
             )
             .map_err(|e| e.to_string())?;
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG get_target_agents] session_id={}, sender_id={}, session_type={}",
+            session_id, sender_id, session_type
+        ));
 
         let target_agent_ids: Vec<String> = if session_type == "private" {
             let agent_id: String = conn
@@ -180,20 +201,32 @@ impl Scheduler {
             ids
         };
 
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG get_target_agents] session_id={}, target_agents={:?}",
+            session_id, target_agent_ids
+        ));
+
         Ok(target_agent_ids)
     }
 
     pub async fn distribute_message(&self, session_id: &str, message: &Message, sender_id: &str) -> Result<(), String> {
-        // 冻结的 session 不接收新消息（用户消息会在 on_new_message 中先解冻）
-        if self.frozen_sessions.lock().await.contains(session_id) {
-            return Ok(());
-        }
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG distribute_message] START session_id={}, message_id={}, sender_id={}",
+            session_id, message.id, sender_id
+        ));
 
+        // Bug 2 fix: Distribution is never blocked by frozen state.
+        // Freezing only pauses automatic triggers (handled in trigger_agent), not message enqueue.
         let target_agents = self.get_target_agents(session_id, sender_id).await?;
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG distribute_message] target_agents_count={}, agents={:?}",
+            target_agents.len(), target_agents
+        ));
 
         let conn = self.db_state.0.lock().await;
 
-        for agent_id in target_agents {
+        for agent_id in &target_agents {
             // 1. 插入内存
             {
                 let mut unread = self.unread_messages.lock().await;
@@ -213,8 +246,17 @@ impl Scheduler {
             }
 
             // 3. 写入数据库
-            let _ = agent_unread_repo::insert_unread(&conn, session_id, &agent_id, &message.id, message.created_at);
+            let insert_result = agent_unread_repo::insert_unread(&conn, session_id, agent_id, &message.id, message.created_at);
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG distribute_message] agent_id={}, db_insert={}",
+                agent_id, if insert_result.is_ok() { "OK" } else { "ERR" }
+            ));
         }
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG distribute_message] END session_id={}, distributed_to={} agents",
+            session_id, target_agents.len()
+        ));
 
         Ok(())
     }
@@ -257,6 +299,51 @@ impl Scheduler {
         self.frozen_sessions.lock().await.remove(session_id);
     }
 
+    /// 重置会话时调用：清理该会话在调度器中的所有内存状态
+    pub async fn cancel_session(&self, session_id: &str) {
+        // 1. 清除 unread 队列
+        let agent_ids: Vec<String> = {
+            let mut unread = self.unread_messages.lock().await;
+            if let Some(session_map) = unread.remove(session_id) {
+                let ids: Vec<String> = session_map.keys().cloned().collect();
+                drop(session_map);
+                ids
+            } else {
+                Vec::new()
+            }
+        };
+
+        // 2. 无论 unread 中是否存在，都清除 notifications（防止残留）
+        {
+            let mut notifications = self.agent_notifications.lock().await;
+            let all_agent_ids: Vec<String> = if agent_ids.is_empty() {
+                // 如果 unread 中没有，扫描所有 notifications 查找该 session
+                notifications.iter()
+                    .filter(|(_, sessions)| sessions.contains(session_id))
+                    .map(|(agent_id, _)| agent_id.clone())
+                    .collect()
+            } else {
+                agent_ids
+            };
+
+            for agent_id in all_agent_ids {
+                if let Some(sessions) = notifications.get_mut(&agent_id) {
+                    sessions.remove(session_id);
+                    if sessions.is_empty() {
+                        notifications.remove(&agent_id);
+                    }
+                }
+            }
+        }
+
+        // 3. 清除 frozen 状态
+        self.frozen_sessions.lock().await.remove(session_id);
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG cancel_session] session_id={} cleaned", session_id
+        ));
+    }
+
     /// 当有新消息到达时调用（用户发送消息或角色发送消息）
     pub async fn on_new_message(
         &self,
@@ -264,8 +351,8 @@ impl Scheduler {
         message: &Message,
     ) -> Result<(), String> {
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG on_new_message] session_id={}, sender_type={}",
-            session_id, message.sender_type
+            "[DEBUG on_new_message] START session_id={}, message_id={}, sender_type={}, sender_id={}",
+            session_id, message.id, message.sender_type, message.sender_id
         ));
 
         let conn = self.db_state.0.lock().await;
@@ -277,6 +364,9 @@ impl Scheduler {
             conn.execute("UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2", (now, session_id)).unwrap_or_default();
             let _ = frozen_state_repo::remove_frozen(&conn, session_id);
             self.frozen_sessions.lock().await.remove(session_id);
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG on_new_message] user message resets counters and unfreezes session_id={}", session_id
+            ));
         }
 
         drop(conn);
@@ -286,14 +376,29 @@ impl Scheduler {
 
         // 触发目标 agents
         let target_agents = self.get_target_agents(session_id, &message.sender_id).await?;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG on_new_message] will try_trigger {} agents: {:?}",
+            target_agents.len(), target_agents
+        ));
         for agent_id in target_agents {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG on_new_message] calling try_trigger_agent agent_id={}", agent_id
+            ));
             let _ = self.try_trigger_agent(&agent_id).await;
         }
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG on_new_message] END session_id={}, message_id={}", session_id, message.id
+        ));
 
         Ok(())
     }
 
     pub async fn try_trigger_agent(&self, agent_id: &str) -> Result<(), String> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG try_trigger_agent] START agent_id={}", agent_id
+        ));
+
         let conn = self.db_state.0.lock().await;
 
         // 检查是否正在触发中（防止并发）
@@ -351,15 +456,27 @@ impl Scheduler {
         ));
 
         if now - last_trigger >= interval_ms {
-            self.trigger_agent(agent_id).await
+            let result = self.trigger_agent(agent_id).await;
+            match &result {
+                Ok(_) => crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG try_trigger_agent] END agent_id={}, trigger_agent OK", agent_id
+                )),
+                Err(e) => crate::logger::backend("ERROR", &format!(
+                    "[DEBUG try_trigger_agent] END agent_id={}, trigger_agent FAILED: {}", agent_id, e
+                )),
+            }
+            result
         } else {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG try_trigger_agent] END agent_id={}, skipped (interval not met)", agent_id
+            ));
             Ok(())
         }
     }
 
     pub async fn trigger_agent(&self, agent_id: &str) -> Result<(), String> {
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG trigger_agent] agent_id={}", agent_id
+            "[DEBUG trigger_agent] START agent_id={}", agent_id
         ));
 
         // === 阶段 1：从 agent_notifications 获取 session_ids ===
@@ -368,7 +485,15 @@ impl Scheduler {
             notifications.remove(agent_id).unwrap_or_default()
         };
 
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent] agent_id={}, notification_sessions={:?}, count={}",
+            agent_id, session_ids, session_ids.len()
+        ));
+
         if session_ids.is_empty() {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent] END agent_id={}, no sessions in notifications", agent_id
+            ));
             return Ok(());
         }
 
@@ -408,15 +533,23 @@ impl Scheduler {
                 .collect()
         };
 
-        if !frozen_sessions_to_requeue.is_empty() {
+        let requeue_count = frozen_sessions_to_requeue.len();
+        if requeue_count > 0 {
             let mut notifications = self.agent_notifications.lock().await;
             let entry = notifications.entry(agent_id.to_string()).or_insert_with(HashSet::new);
             for sid in frozen_sessions_to_requeue {
                 entry.insert(sid);
             }
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent] agent_id={}, requeued_frozen_sessions_count={}",
+                agent_id, requeue_count
+            ));
         }
 
         if pending.is_empty() {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent] END agent_id={}, pending is empty after filtering", agent_id
+            ));
             return Ok(());
         }
 
@@ -436,6 +569,28 @@ impl Scheduler {
             }
         }
 
+        // 读取各 session 当前的 page_index（用于绑定到本次触发）
+        let session_pages: HashMap<String, i32> = {
+            let conn = self.db_state.0.lock().await;
+            let mut map = HashMap::new();
+            for session_id in &processed_sessions {
+                let page: i32 = conn.query_row(
+                    "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+                     UNION ALL
+                     SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+                     LIMIT 1",
+                    [session_id],
+                    |row| row.get(0),
+                ).unwrap_or(0);
+                map.insert(session_id.clone(), page);
+            }
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent] agent_id={}, session_pages={:?}",
+                agent_id, map
+            ));
+            map
+        };
+
         // 设置触发中标志
         {
             let conn = self.db_state.0.lock().await;
@@ -452,7 +607,15 @@ impl Scheduler {
         self.emit("agent_typing", serde_json::json!({"agent_id": agent_id}));
 
         // 使用 finally 模式：无论内部逻辑成功或失败，总是清除 is_triggering
-        let inner_result = self.trigger_agent_inner(agent_id, pending).await;
+        let inner_result = self.trigger_agent_inner(agent_id, pending, session_pages).await;
+        match &inner_result {
+            Ok(_) => crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner OK", agent_id
+            )),
+            Err(e) => crate::logger::backend("ERROR", &format!(
+                "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner FAILED: {}", agent_id, e
+            )),
+        }
 
         // 防御性清除：即使 inner_result 是 Err，也要清除标志
         if let Err(e) = self.clear_triggering_flag(agent_id).await {
@@ -465,7 +628,12 @@ impl Scheduler {
         inner_result
     }
 
-    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>) -> Result<(), String> {
+    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>) -> Result<(), String> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
+            agent_id, pending.len(), session_pages
+        ));
+
         // === 阶段 2：检查 muted sessions ===
         let muted_sessions: Vec<String> = {
             let conn = self.db_state.0.lock().await;
@@ -486,6 +654,11 @@ impl Scheduler {
         let pending: Vec<PendingMessage> = pending.into_iter()
             .filter(|p| !muted_sessions.contains(&p.session_id))
             .collect();
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] agent_id={}, after_mute_filter pending_count={}",
+            agent_id, pending.len()
+        ));
 
         if pending.is_empty() {
             return Ok(());
@@ -514,16 +687,24 @@ impl Scheduler {
                     tool_call_data: None,
                     generation_info: None,
                     is_deleted: false,
+                    page_index: p.page_index,
                 })
                 .collect();
 
+            let trigger_msg = pending.first();
             let prompt =
-                PromptAssembler::assemble(&conn, agent_id, &messages_for_prompt)
-                    .map_err(|e| e.to_string())?;
+                PromptAssembler::assemble(
+                    &conn,
+                    agent_id,
+                    trigger_msg.map(|m| m.session_id.as_str()),
+                    trigger_msg.map(|m| m.page_index),
+                    &messages_for_prompt,
+                )
+                .map_err(|e| e.to_string())?;
 
             crate::logger::backend("DEBUG", &format!(
-                "[DEBUG trigger_agent] agent_id={}, prompt_len={}",
-                agent_id, prompt.len()
+                "[DEBUG trigger_agent_inner] agent_id={}, prompt_len={}, model={:?}, base_url={:?}",
+                agent_id, prompt.len(), agent.model_name, agent.base_url
             ));
 
             (agent, prompt)
@@ -534,6 +715,9 @@ impl Scheduler {
             crate::crypto::decrypt(&encrypted)
                 .map_err(|e| format!("Failed to decrypt API key: {}", e))?
         } else {
+            crate::logger::backend("ERROR", &format!(
+                "[DEBUG trigger_agent_inner] agent_id={}, no API key configured", agent_id
+            ));
             self.restore_pending(agent_id, pending).await;
             return Err("Agent has no API key configured".to_string());
         };
@@ -554,14 +738,20 @@ impl Scheduler {
         let response = match Self::call_llm(&provider, &prompt, vec![]).await {
             Ok(resp) => {
                 crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent] agent_id={}, tool_calls_count={}",
-                    agent_id, resp.tool_calls.len()
+                    "[DEBUG trigger_agent_inner] agent_id={}, llm_ok, tool_calls_count={}, content_present={}",
+                    agent_id, resp.tool_calls.len(), resp.content.is_some()
                 ));
+                for (i, tc) in resp.tool_calls.iter().enumerate() {
+                    crate::logger::backend("DEBUG", &format!(
+                        "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
+                        agent_id, i, tc.name, tc.arguments
+                    ));
+                }
                 resp
             }
             Err(e) => {
                 crate::logger::backend("ERROR", &format!(
-                    "[DEBUG trigger_agent] agent_id={}, llm_call_failed={}",
+                    "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed={}",
                     agent_id, e
                 ));
                 self.restore_pending(agent_id, pending).await;
@@ -575,7 +765,7 @@ impl Scheduler {
 
         // === 阶段 5：执行 Tool Calls ===
         let executor = ToolExecutor::new(self.db_state.clone());
-        let agent_messages = match executor.execute(agent_id, response.tool_calls).await {
+        let agent_messages = match executor.execute(agent_id, response.tool_calls, &session_pages).await {
             Ok(msgs) => msgs,
             Err(e) => {
                 crate::logger::backend("ERROR", &format!(
@@ -592,9 +782,15 @@ impl Scheduler {
         };
 
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG trigger_agent] agent_id={}, agent_messages_count={}",
+            "[DEBUG trigger_agent_inner] agent_id={}, agent_messages_count={}",
             agent_id, agent_messages.len()
         ));
+        for (i, msg) in agent_messages.iter().enumerate() {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent_inner] agent_id={}, agent_message[{}]: session_id={}, content_preview={}",
+                agent_id, i, msg.session_id, crate::scheduler::truncate_preview(&msg.content, 80)
+            ));
+        }
 
         // === 阶段 6：更新计数器和会话预览 ===
         let sessions_to_check: Vec<String> = {
@@ -646,7 +842,52 @@ impl Scheduler {
         }
 
         // === 阶段 7：触发链 ===
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] agent_id={}, entering stage7 (emit+distribute), agent_messages={}",
+            agent_id, agent_messages.len()
+        ));
         for msg in &agent_messages {
+            // Bug 1 fix: skip emit + distribute if the session was reset during this trigger
+            let (current_page, session_exists): (i32, bool) = {
+                let conn = self.db_state.0.lock().await;
+                let page: i32 = conn.query_row(
+                    "SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+                     UNION ALL
+                     SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+                     LIMIT 1",
+                    [&msg.session_id],
+                    |row| row.get(0),
+                ).unwrap_or(0);
+                let exists: bool = conn.query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE id = ?1 AND is_deleted = 0",
+                    [&msg.session_id],
+                    |row| Ok(row.get::<_, i32>(0)? > 0),
+                ).unwrap_or(false);
+                (page, exists)
+            };
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={} vs current_page={}, session_exists={}",
+                agent_id, msg.session_id, msg.page_index, current_page, session_exists
+            ));
+            if !session_exists {
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (session deleted)",
+                    agent_id, msg.session_id
+                ));
+                continue;
+            }
+            if msg.page_index != current_page {
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (page mismatch)",
+                    agent_id, msg.session_id
+                ));
+                continue;
+            }
+
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, emitting new_message message_id={}",
+                agent_id, msg.session_id, msg.id
+            ));
             self.emit("new_message", msg);
             self.distribute_message(&msg.session_id, msg, agent_id).await?;
         }
@@ -654,6 +895,9 @@ impl Scheduler {
         // 消息已推入各角色的 unread，由后台扫描在下次 tick 时触发
         //（避免 async fn 递归调用问题）
 
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] END agent_id={}, emitting agent_completed", agent_id
+        ));
         self.emit(
             "agent_completed",
             serde_json::json!({"agent_id": agent_id}),
@@ -801,6 +1045,10 @@ mod tests {
         session_repo::create_private_session(conn, agent_id).unwrap().id
     }
 
+    fn create_test_group_session(conn: &Connection, agent_ids: &[String]) -> String {
+        session_repo::create_group_session(conn, "Test Group", agent_ids).unwrap().id
+    }
+
     fn create_test_message(session_id: &str, sender_type: &str, sender_id: &str, content: &str, created_at: i64) -> Message {
         Message {
             id: format!("msg-{}", uuid::Uuid::new_v4()),
@@ -815,6 +1063,7 @@ mod tests {
             tool_call_data: None,
             generation_info: None,
             is_deleted: false,
+            page_index: 0,
         }
     }
 
@@ -844,7 +1093,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_frozen_session_blocks_new_distributions() {
+    async fn test_frozen_session_does_not_block_distribution() {
         let conn = init_test_db();
         create_test_agent(&conn, "agent-1");
         let session_id = create_test_private_session(&conn, "agent-1");
@@ -856,11 +1105,19 @@ mod tests {
         let message = create_test_message(&session_id, "user", "user", "Hello", 1000);
         scheduler.distribute_message(&session_id, &message, "user").await.unwrap();
 
+        // Bug 2 fix: frozen session should NOT block distribution.
+        // Messages always land in the inbox; freezing only pauses automatic triggers.
         let unread = scheduler.unread_messages.lock().await;
-        assert!(!unread.contains_key(&session_id));
+        assert!(unread.contains_key(&session_id));
+        let session_unread = unread.get(&session_id).unwrap();
+        assert!(session_unread.contains_key("agent-1"));
+        let agent_unread = session_unread.get("agent-1").unwrap();
+        assert_eq!(agent_unread.len(), 1);
+        assert_eq!(agent_unread[0].content, "Hello");
 
         let notifications = scheduler.agent_notifications.lock().await;
-        assert!(!notifications.contains_key("agent-1"));
+        assert!(notifications.contains_key("agent-1"));
+        assert!(notifications.get("agent-1").unwrap().contains(&session_id));
     }
 
     #[tokio::test]
@@ -894,6 +1151,7 @@ mod tests {
                     sender_id: "user".to_string(),
                     content: "Hello".to_string(),
                     created_at: 1000,
+                    page_index: 0,
                 });
         }
         {
@@ -938,6 +1196,7 @@ mod tests {
                         sender_id: "user".to_string(),
                         content: "Second".to_string(),
                         created_at: 2000,
+                        page_index: 0,
                     },
                     PendingMessage {
                         session_id: session_id.clone(),
@@ -945,6 +1204,7 @@ mod tests {
                         sender_id: "user".to_string(),
                         content: "First".to_string(),
                         created_at: 1000,
+                        page_index: 0,
                     },
                     PendingMessage {
                         session_id: session_id.clone(),
@@ -952,6 +1212,7 @@ mod tests {
                         sender_id: "user".to_string(),
                         content: "Third".to_string(),
                         created_at: 3000,
+                        page_index: 0,
                     },
                 ]);
         }
@@ -1063,5 +1324,72 @@ mod tests {
         conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY)", []).unwrap();
         let count: i32 = conn.query_row("SELECT COUNT(*) FROM test", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_session_clears_memory_state() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        create_test_agent(&conn, "agent-2");
+        let session_id = create_test_group_session(&conn, &["agent-1".into(), "agent-2".into()]);
+        let db_state = make_db_state(conn);
+
+        let scheduler = Scheduler::new(db_state);
+        let message = create_test_message(&session_id, "user", "user", "Hello", 1000);
+        scheduler.distribute_message(&session_id, &message, "user").await.unwrap();
+
+        // Verify unread and notifications exist before cancel
+        {
+            let unread = scheduler.unread_messages.lock().await;
+            assert!(unread.contains_key(&session_id));
+        }
+
+        // Cancel the session
+        scheduler.cancel_session(&session_id).await;
+
+        // Verify cleared
+        let unread = scheduler.unread_messages.lock().await;
+        assert!(!unread.contains_key(&session_id));
+
+        let notifications = scheduler.agent_notifications.lock().await;
+        if let Some(sessions) = notifications.get("agent-1") {
+            assert!(!sessions.contains(&session_id));
+        }
+        if let Some(sessions) = notifications.get("agent-2") {
+            assert!(!sessions.contains(&session_id));
+        }
+    }
+
+    #[test]
+    fn test_insert_message_with_bound_page_index() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        let session_id = create_test_private_session(&conn, "agent-1");
+
+        // Update current_chat_page to 5
+        conn.execute(
+            "UPDATE private_sessions SET current_chat_page = 5 WHERE session_id = ?1",
+            [&session_id],
+        ).unwrap();
+
+        // Insert with bound page_index = 3
+        let msg = crate::db::message::insert_message(
+            &conn, &session_id, "agent", "agent-1", "Hello", "text", Some(3)
+        ).unwrap();
+        assert_eq!(msg.page_index, 3);
+
+        // Verify in DB
+        let db_page: i32 = conn.query_row(
+            "SELECT page_index FROM messages WHERE id = ?1",
+            [&msg.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(db_page, 3);
+
+        // Insert without bound page_index (should use current_chat_page = 5)
+        let msg2 = crate::db::message::insert_message(
+            &conn, &session_id, "agent", "agent-1", "Hello2", "text", None
+        ).unwrap();
+        assert_eq!(msg2.page_index, 5);
     }
 }
