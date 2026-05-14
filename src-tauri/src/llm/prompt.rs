@@ -424,7 +424,7 @@ mod tests {
             (
                 &msg.id, &msg.session_id, &msg.sender_type, &msg.sender_id, &msg.content,
                 msg.created_at, &msg.message_type, &msg.tool_call_data, &msg.generation_info,
-                if msg.is_deleted { 1 } else { 0 }, 0i32,
+                if msg.is_deleted { 1 } else { 0 }, msg.page_index,
             ),
         ).unwrap();
     }
@@ -532,5 +532,48 @@ mod tests {
         let pos1 = prompt.find("First message").expect("First message not found");
         let pos2 = prompt.find("Second message").expect("Second message not found");
         assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", prompt);
+    }
+
+    #[test]
+    fn test_prompt_assemble_uses_trigger_page_for_trigger_session() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Agent One", "Persona 1");
+        
+        // Create private session for agent1 (page 0)
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+        
+        // Insert message to page 0
+        let msg0 = Message {
+            id: "msg0".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Page0 message".to_string(), created_at: 1000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
+        };
+        insert_message(&conn, &msg0);
+        
+        // Simulate reset: create page 1 and insert message there
+        let msg1 = Message {
+            id: "msg1".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Page1 message".to_string(), created_at: 2000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 1,
+        };
+        insert_message(&conn, &msg1);
+        
+        // Trigger from page 0: prompt should contain "Page0 message" but NOT "Page1 message"
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[]).unwrap();
+        assert!(prompt.contains("Page0 message"), "Prompt should contain page 0 message");
+        assert!(!prompt.contains("Page1 message"), "Prompt should NOT contain page 1 message when triggered from page 0");
+        
+        // Trigger from page 1: prompt should contain "Page1 message" but NOT "Page0 message"
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[]).unwrap();
+        assert!(prompt.contains("Page1 message"), "Prompt should contain page 1 message");
+        assert!(!prompt.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
     }
 }

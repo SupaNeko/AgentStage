@@ -626,6 +626,44 @@ mod tests {
     }
 
     #[test]
+    fn test_list_chat_pages_returns_pages_in_desc_order() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        // Reset once to create page 1
+        let _ = reset_session(&conn, &session.id).unwrap();
+        
+        let pages = crate::db::chat_page::list_chat_pages(&conn, &session.id).unwrap();
+        assert_eq!(pages.len(), 2, "Expected 2 pages (default + reset), got {}", pages.len());
+        assert_eq!(pages[0].page_index, 1); // DESC order: newest first
+        assert_eq!(pages[1].page_index, 0);
+    }
+
+    #[test]
+    fn test_list_chat_pages_aggregates_message_stats() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        // Insert message to page 0
+        crate::db::message::insert_message(&conn, &session.id, "user", "user", "Hello", "text", Some(0)).unwrap();
+        
+        let pages = crate::db::chat_page::list_chat_pages(&conn, &session.id).unwrap();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].message_count, 1);
+        assert!(pages[0].updated_at > pages[0].created_at, "updated_at should reflect last message time");
+    }
+
+    #[test]
     #[ignore]
     fn diagnose_real_db() {
         let conn = rusqlite::Connection::open(r"D:\code_project\AgentStage\data\agentstage.db").unwrap();
