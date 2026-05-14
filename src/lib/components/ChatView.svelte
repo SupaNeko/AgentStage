@@ -218,22 +218,23 @@
             const payload = event.payload as { agent_id?: string };
             logger.debug('[DEBUG ChatView.listen agent_typing]', { agentId: payload.agent_id });
             if (payload.agent_id) {
+                const agentId = payload.agent_id;
                 const next = new Set(typingAgents);
-                next.add(payload.agent_id);
+                next.add(agentId);
                 typingAgents = next;
                 // Defense: 5-minute timeout in case agent_completed is lost
-                const existing = typingTimeouts.get(payload.agent_id);
+                const existing = typingTimeouts.get(agentId);
                 if (existing) clearTimeout(existing);
                 const t = setTimeout(() => {
                     const n = new Set(typingAgents);
-                    n.delete(payload.agent_id);
+                    n.delete(agentId);
                     typingAgents = n;
                     const nextTimeouts = new Map(typingTimeouts);
-                    nextTimeouts.delete(payload.agent_id);
+                    nextTimeouts.delete(agentId);
                     typingTimeouts = nextTimeouts;
                 }, 5 * 60 * 1000);
                 const nextTimeouts = new Map(typingTimeouts);
-                nextTimeouts.set(payload.agent_id, t);
+                nextTimeouts.set(agentId, t);
                 typingTimeouts = nextTimeouts;
             }
         }).then((fn) => unlistenFns.push(fn));
