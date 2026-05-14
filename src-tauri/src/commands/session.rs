@@ -3,7 +3,9 @@ use crate::db::connection::{get_db, DbState};
 use crate::db::session as session_repo;
 use crate::db::frozen_state as frozen_state_repo;
 use crate::db::agent_unread as agent_unread_repo;
-use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse};
+use crate::models::chat_page::{ChatPage, ListChatPagesRequest};
+use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse, GetSessionConfigRequest, ResetMessageCountRequest, DisbandGroupRequest};
+use crate::db::chat_page as chat_page_repo;
 use crate::scheduler::Scheduler;
 
 #[tauri::command]
@@ -81,11 +83,10 @@ pub async fn get_group_members(
 #[tauri::command]
 pub async fn get_session_config(
     state: State<'_, DbState>,
-    session_id: String,
-    session_type: String,
+    req: GetSessionConfigRequest,
 ) -> Result<crate::models::session::SessionConfig, String> {
     let conn = get_db(&state).await?;
-    session_repo::get_session_config(&conn, &session_id, &session_type)
+    session_repo::get_session_config(&conn, &req.session_id, &req.session_type)
         .map_err(|e| e.to_string())
 }
 
@@ -102,31 +103,34 @@ pub async fn update_session_config(
 #[tauri::command]
 pub async fn reset_session(
     state: State<'_, DbState>,
+    scheduler: State<'_, Scheduler>,
     req: crate::models::session::ResetSessionRequest,
 ) -> Result<String, String> {
     let conn = get_db(&state).await?;
-    session_repo::reset_session(&conn, &req.session_id)
-        .map_err(|e| e.to_string())
+    let result = session_repo::reset_session(&conn, &req.session_id)
+        .map_err(|e| e.to_string())?;
+    scheduler.cancel_session(&req.session_id).await;
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn reset_message_count(
     state: State<'_, DbState>,
     scheduler: State<'_, Scheduler>,
-    session_id: String,
+    req: ResetMessageCountRequest,
 ) -> Result<(), String> {
     let conn = get_db(&state).await?;
 
     // 1. 重置计数器
-    session_repo::reset_message_count(&conn, &session_id)
+    session_repo::reset_message_count(&conn, &req.session_id)
         .map_err(|e| e.to_string())?;
 
     // 2. 解除冻结
-    let _ = frozen_state_repo::remove_frozen(&conn, &session_id);
-    scheduler.unfreeze_session(&session_id).await;
+    let _ = frozen_state_repo::remove_frozen(&conn, &req.session_id);
+    scheduler.unfreeze_session(&req.session_id).await;
 
     // 3. 触发有未读消息的 agents
-    let agents_with_unread = agent_unread_repo::get_agents_with_unread(&conn, &session_id)
+    let agents_with_unread = agent_unread_repo::get_agents_with_unread(&conn, &req.session_id)
         .map_err(|e| e.to_string())?;
 
     drop(conn);
@@ -141,11 +145,14 @@ pub async fn reset_message_count(
 #[tauri::command]
 pub async fn disband_group(
     state: State<'_, DbState>,
-    session_id: String,
+    scheduler: State<'_, Scheduler>,
+    req: DisbandGroupRequest,
 ) -> Result<bool, String> {
     let conn = get_db(&state).await?;
-    session_repo::disband_group(&conn, &session_id)
-        .map_err(|e| e.to_string())
+    let result = session_repo::disband_group(&conn, &req.session_id)
+        .map_err(|e| e.to_string())?;
+    scheduler.cancel_session(&req.session_id).await;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -166,4 +173,16 @@ pub async fn remove_group_member(
     let conn = get_db(&state).await?;
     session_repo::remove_group_member(&conn, &req.session_id, &req.agent_id)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_chat_pages(
+    state: State<'_, DbState>,
+    req: ListChatPagesRequest,
+) -> Result<Vec<ChatPage>, String> {
+    crate::logger::backend("DEBUG", &format!("[DEBUG list_chat_pages] session_id={}", req.session_id));
+    let conn = get_db(&state).await?;
+    let pages = chat_page_repo::list_chat_pages(&conn, &req.session_id)
+        .map_err(|e| e.to_string())?;
+    Ok(pages)
 }
