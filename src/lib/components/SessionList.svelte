@@ -14,6 +14,7 @@
 
     function handleSessionClick(sessionId: string) {
         sessionStore.selectSession(sessionId);
+        sessionStore.clearUnreadCount(sessionId);
         appState.switchView('chat');
     }
 </script>

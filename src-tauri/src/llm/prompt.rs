@@ -1,6 +1,6 @@
 use chrono::{Local, LocalResult, TimeZone};
 use rusqlite::Connection;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::llm::prompt_templates;
 use crate::models::message::Message;
@@ -40,7 +40,7 @@ impl PromptAssembler {
 
         // Layer 4: Chat History — per session with individual history limits
         let mut session_order: Vec<String> = Vec::new();
-        let mut grouped: HashMap<String, Vec<Message>> = HashMap::new();
+        let mut grouped: std::collections::HashMap<String, Vec<Message>> = std::collections::HashMap::new();
         
         {
             let mut stmt = conn.prepare(
@@ -115,7 +115,6 @@ impl PromptAssembler {
                 filtered_messages.extend(msgs.drain(start..));
             }
         }
-        filtered_messages.sort_by_key(|m| m.created_at);
         
         if !filtered_messages.is_empty() {
             let mut layer = String::from(prompt_templates::LAYER_HISTORY_TITLE);
@@ -249,78 +248,95 @@ impl PromptAssembler {
         conn: &Connection,
         agent_id: &str,
     ) -> Result<Vec<(String, String, String)>, String> {
-        let mut participants: Vec<(String, String, String)> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         seen.insert(agent_id.to_string());
 
-        // Friends (including user relationships via participant_type_2 = 'user')
+        let mut participant_ids: Vec<String> = Vec::new();
+        let mut private_ids: HashSet<String> = HashSet::new();
+
+        // 1. 收集私聊对象 agent_id
         let mut stmt = conn
             .prepare(
-                "SELECT f.participant_type_2, a.id, a.name, a.simplified_persona 
-                 FROM friendships f 
-                 LEFT JOIN agents a ON a.id = CASE WHEN f.agent_id_1 = ?1 THEN f.agent_id_2 ELSE f.agent_id_1 END 
-                 WHERE ?1 IN (f.agent_id_1, COALESCE(f.agent_id_2, '')) AND (a.is_deleted = 0 OR f.participant_type_2 = 'user')",
+                "SELECT DISTINCT ps.agent_id 
+                 FROM private_sessions ps
+                 JOIN sessions s ON ps.session_id = s.id
+                 WHERE ps.session_id IN (
+                     SELECT session_id FROM private_sessions WHERE agent_id = ?1
+                 ) AND ps.agent_id != ?1 AND s.is_deleted = 0"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([agent_id], |row| {
-                let pt: String = row.get(0)?;
-                if pt == "user" {
-                    Ok((
-                        "user".to_string(),
-                        "用户".to_string(),
-                        "正在与你聊天的真实用户".to_string(),
-                    ))
-                } else {
-                    Ok((
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
-                }
+                Ok(row.get::<_, String>(0)?)
             })
             .map_err(|e| e.to_string())?;
-
         for row in rows {
-            let (id, name, persona) = row.map_err(|e| e.to_string())?;
-            if id == "user" {
-                participants.push((name, "私聊对象".to_string(), persona));
-            } else if seen.insert(id) {
-                participants.push((name, "好友".to_string(), persona));
+            let id = row.map_err(|e| e.to_string())?;
+            if seen.insert(id.clone()) {
+                participant_ids.push(id.clone());
+                private_ids.insert(id);
             }
         }
         drop(stmt);
 
-        // Group mates
+        // 2. 收集群聊成员 agent_id
         let mut stmt = conn
             .prepare(
-                "SELECT a.id, a.name, a.simplified_persona 
-                 FROM agents a
-                 WHERE a.id IN (
-                     SELECT gm2.participant_id
-                     FROM group_members gm1
-                     JOIN group_members gm2 ON gm1.session_id = gm2.session_id
-                     WHERE gm1.participant_id = ?1 AND gm1.participant_type = 'agent'
-                     AND gm2.participant_type = 'agent'
-                     AND gm2.participant_id != ?1
-                 )
-                 AND a.is_deleted = 0",
+                "SELECT DISTINCT gm.participant_id 
+                 FROM group_members gm
+                 JOIN sessions s ON gm.session_id = s.id
+                 WHERE gm.session_id IN (
+                     SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent'
+                 ) AND gm.participant_type = 'agent' AND gm.participant_id != ?1 AND s.is_deleted = 0"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([agent_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
+                Ok(row.get::<_, String>(0)?)
             })
             .map_err(|e| e.to_string())?;
-
         for row in rows {
-            let (id, name, persona) = row.map_err(|e| e.to_string())?;
-            if seen.insert(id) {
-                participants.push((name, "群友".to_string(), persona));
+            let id = row.map_err(|e| e.to_string())?;
+            if seen.insert(id.clone()) {
+                participant_ids.push(id);
+            }
+        }
+        drop(stmt);
+
+        // 3. 统一读取角色设定信息并拼接
+        let mut participants: Vec<(String, String, String)> = Vec::new();
+        participants.push((
+            "用户".to_string(),
+            "私聊对象".to_string(),
+            "正在与你聊天的真实用户".to_string(),
+        ));
+
+        if !participant_ids.is_empty() {
+            let placeholders = participant_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT id, name, simplified_persona FROM agents WHERE id IN ({}) AND is_deleted = 0",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map(
+                rusqlite::params_from_iter(participant_ids.iter().map(|s| s.as_str())),
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                }
+            ).map_err(|e| e.to_string())?;
+
+            for row in rows {
+                let (id, name, persona) = row.map_err(|e| e.to_string())?;
+                let relation = if private_ids.contains(&id) {
+                    "私聊对象".to_string()
+                } else {
+                    "群友".to_string()
+                };
+                participants.push((name, relation, persona));
             }
         }
 
@@ -379,7 +395,7 @@ impl PromptAssembler {
 
     pub(crate) fn format_time(timestamp_ms: i64) -> String {
         match Local.timestamp_millis_opt(timestamp_ms) {
-            LocalResult::Single(dt) => dt.format("%H:%M").to_string(),
+            LocalResult::Single(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
             _ => "??".to_string(),
         }
     }

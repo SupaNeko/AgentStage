@@ -17,9 +17,9 @@ impl HistoryPromptAssembler {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Agent not found: {}", agent_id))?;
 
-        // 2. 格式化当前 session + page 的消息历史
+        // 2. 格式化当前 session + page 的消息历史（反转使旧消息在上，新消息在下）
         let mut context = String::new();
-        for msg in history_messages {
+        for msg in history_messages.iter().rev() {
             let time = crate::llm::prompt::PromptAssembler::format_time(msg.created_at);
             let sender = if msg.sender_type == "agent" && msg.sender_id == agent_id {
                 agent.name.clone()
@@ -29,13 +29,24 @@ impl HistoryPromptAssembler {
             context.push_str(&format!("[{}] {}: {}\n", time, sender, msg.content));
         }
 
-        // 3. 组装完整 prompt
+        // 3. 获取会话类型
+        let session_type = crate::db::session::get_session_by_id(conn, session_id)
+            .map_err(|e| e.to_string())?
+            .map(|s| s.session_type)
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // 4. 组装完整 prompt（注入工具使用说明，要求模型必须使用 send_message 工具回复）
+        let instruction = format!(
+            "请基于以上对话上下文继续回复。注意：你正在回顾或补充一段历史对话。\n\n【工具使用说明】\n你可以使用 send_message 工具向指定会话发送消息。\n当前你正在以下会话中聊天：\n- session_id: {}, 类型: {}\n\n请根据上下文决定是否需要回复。如果需要回复，请调用 send_message 工具，参数如下：\n- target_type: \"{}\"\n- target_id: \"{}\"\n- content: 你要发送的消息内容\n\n注意：target_id 必须是上面列出的 session_id，不能使用名称或其他 ID。",
+            session_id, session_type, session_type, session_id
+        );
+
         let full_prompt = format!(
             "{}\n\n{}\n\n{}\n\n{}",
             prompt_templates::SYSTEM_PROMPT,
             agent.detailed_persona,
             context,
-            "请基于以上对话上下文继续回复。注意：你正在回顾或补充一段历史对话。"
+            instruction
         );
 
         // 4. 记录完整 prompt 到日志
@@ -234,5 +245,19 @@ mod tests {
         assert!(prompt.contains("Page0 message"));
         // The prompt should contain the session and page info in the log, but the actual
         // prompt content doesn't differ by page_index for a given message list
+    }
+
+    #[test]
+    fn test_history_prompt_contains_tool_instruction() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Alice", "Persona 1");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+
+        let prompt = HistoryPromptAssembler::assemble(&conn, "agent1", "sess1", 0, &[]).unwrap();
+        assert!(prompt.contains("send_message"), "Prompt should contain send_message tool instruction");
+        assert!(prompt.contains("sess1"), "Prompt should contain session_id");
+        assert!(prompt.contains("private"), "Prompt should contain session_type");
+        assert!(prompt.contains("target_id"), "Prompt should contain target_id instruction");
     }
 }

@@ -5,12 +5,19 @@ use crate::db::session as session_repo;
 use crate::db::message as message_repo;
 use crate::models::message::Message;
 
+pub fn split_br_tags(content: &str) -> Vec<String> {
+    content.split("<br/>")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 pub fn send_message_tool_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "function",
         "function": {
             "name": "send_message",
-            "description": "向指定会话发送一条消息。target_id 必须是系统提供的 session_id，不能使用会话名称或其他 ID。",
+            "description": "向指定会话发送一条消息。你可以在 content 中使用 <br/> 标签进行换行。target_id 必须是系统提供的 session_id，不能使用会话名称或其他 ID。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -97,12 +104,14 @@ impl ToolExecutor {
             ));
             match tc.name.as_str() {
                 "send_message" => {
-                    let msg = self.execute_send_message(agent_id, &tc.arguments, session_pages).await?;
-                    crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG ToolExecutor::execute] tool_call[{}] returned message_id={}",
-                        i, msg.id
-                    ));
-                    results.push(msg);
+                    let msgs = self.execute_send_message(agent_id, &tc.arguments, session_pages).await?;
+                    for msg in &msgs {
+                        crate::logger::backend("DEBUG", &format!(
+                            "[DEBUG ToolExecutor::execute] tool_call[{}] returned message_id={}",
+                            i, msg.id
+                        ));
+                    }
+                    results.extend(msgs);
                 }
                 _ => {
                     crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
@@ -123,7 +132,7 @@ impl ToolExecutor {
         agent_id: &str,
         arguments: &str,
         session_pages: &HashMap<String, i32>,
-    ) -> Result<Message, ToolError> {
+    ) -> Result<Vec<Message>, ToolError> {
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG ToolExecutor::execute_send_message] START agent_id={}, args_raw={}",
             agent_id, arguments
@@ -160,18 +169,23 @@ impl ToolExecutor {
             bound_page, target_id
         ));
 
-        // 插入消息
+        // 按 <br/> 拆分内容，每条拆分段作为独立消息插入
+        let contents = split_br_tags(content);
         let conn = self.db_state.0.lock().await;
-        let msg = message_repo::insert_message(
-            &conn, &target_id, "agent", agent_id, content, "text", bound_page,
-        ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        let mut messages = Vec::new();
+        for c in &contents {
+            let msg = message_repo::insert_message(
+                &conn, &target_id, "agent", agent_id, c, "text", bound_page,
+            ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            messages.push(msg);
+        }
 
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG ToolExecutor::execute_send_message] wrote message target_id={}, page_index={}, message_id={}",
-            target_id, msg.page_index, msg.id
+            "[DEBUG ToolExecutor::execute_send_message] wrote {} messages target_id={}, page_index={:?}",
+            messages.len(), target_id, bound_page
         ));
 
-        Ok(msg)
+        Ok(messages)
     }
 
     async fn resolve_target_id(

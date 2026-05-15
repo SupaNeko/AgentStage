@@ -338,6 +338,12 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
     // 解除冻结
     conn.execute("DELETE FROM session_frozen_states WHERE session_id = ?1", [session_id])?;
 
+    // 清空会话最后消息预览（新 page 没有消息）
+    conn.execute(
+        "UPDATE sessions SET last_message_preview = '', updated_at = ?1 WHERE id = ?2",
+        (now, session_id),
+    )?;
+
     tx.commit()?;
     Ok(page_id)
 }

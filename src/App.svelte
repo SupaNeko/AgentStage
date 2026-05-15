@@ -22,7 +22,7 @@
 
         listen('new_message', (event) => {
             const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string };
-            const isCurrentSession = msg.session_id === sessionStore.selectedSessionId;
+            const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
             logger.debug('[DEBUG App.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), isCurrentSession });
             // 更新会话列表（未读数、预览）
             sessionStore.sessions = sessionStore.sessions.map((s) =>
@@ -35,10 +35,6 @@
                         }
                     : s
             );
-            // 兜底：即使当前会话，也刷新消息列表（防止事件丢失）
-            if (isCurrentSession && msg.id) {
-                messageStore.loadMessages(msg.session_id);
-            }
         }).then((fn) => unlistenFns.push(fn));
 
         listen('system_notice', (event) => {
@@ -56,10 +52,7 @@
         listen('agent_completed', (event) => {
             const payload = event.payload as { agent_id?: string; session_id?: string };
             logger.debug('[DEBUG App.listen agent_completed]', { agentId: payload.agent_id });
-            // Agent 完成后刷新当前会话消息（兜底）
-            if (sessionStore.selectedSessionId) {
-                messageStore.loadMessages(sessionStore.selectedSessionId);
-            }
+            // 消息追加由 ChatView 的 new_message 事件处理，此处不再兜底刷新
         }).then((fn) => unlistenFns.push(fn));
 
         return () => {

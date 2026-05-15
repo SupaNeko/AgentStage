@@ -8,7 +8,13 @@ export class SessionStore {
 
     async loadSessions() {
         try {
-            this.sessions = await invoke<Session[]>('list_sessions');
+            const fresh = await invoke<Session[]>('list_sessions');
+            // 保留已有的 unread_count，因为后端不维护实时未读计数
+            const existingUnread = new Map(this.sessions.map(s => [s.id, s.unread_count]));
+            this.sessions = fresh.map(s => ({
+                ...s,
+                unread_count: existingUnread.get(s.id) ?? s.unread_count,
+            }));
             logger.debug('[DEBUG sessionStore.loadSessions]', { count: this.sessions.length });
         } catch (err) {
             logger.debug('[DEBUG sessionStore.loadSessions] error', { error: err });
@@ -34,13 +40,29 @@ export class SessionStore {
         );
     }
 
+    incrementUnreadCount(sessionId: string) {
+        this.sessions = this.sessions.map(s =>
+            s.id === sessionId
+                ? { ...s, unread_count: s.unread_count + 1 }
+                : s
+        );
+    }
+
+    clearUnreadCount(sessionId: string) {
+        this.sessions = this.sessions.map(s =>
+            s.id === sessionId
+                ? { ...s, unread_count: 0 }
+                : s
+        );
+    }
+
     async resetSession(sessionId: string): Promise<string> {
         try {
             const pageId = await invoke<string>('reset_session', { req: { session_id: sessionId } });
             await this.loadSessions();
             this.sessions = this.sessions.map(s =>
                 s.id === sessionId
-                    ? { ...s, last_message_preview: '' }
+                    ? { ...s, last_message_preview: '', unread_count: 0 }
                     : s
             );
             // 清空前端消息列表，强制重新加载

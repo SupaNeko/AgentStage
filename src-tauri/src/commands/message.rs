@@ -211,20 +211,52 @@ pub async fn send_history_message(
             agent.max_tokens,
         );
 
-        // 调用 LLM（History 模式不提供 tools，prompt 作为 user message）
+        // 调用 LLM（History 模式也要求使用 send_message 工具回复，避免模型输出自由文本携带 think 标签）
+        let tools = vec![crate::llm::tool::send_message_tool_schema()];
         let llm_messages = vec![serde_json::json!({
             "role": "user",
             "content": &prompt
         })];
 
-        match provider.chat("", llm_messages, vec![]).await {
+        match provider.chat("", llm_messages, tools).await {
             Ok(resp) => {
-                if let Some(content) = resp.content {
-                    if !content.trim().is_empty() {
-                        let agent_msg = message_repo::insert_message(
-                            &conn, &req.session_id, "agent", &agent_id, &content, "text", Some(req.page_index),
-                        ).map_err(|e| e.to_string())?;
-                        all_messages.push(agent_msg);
+                // 优先解析 tool_calls，提取 content
+                let mut content_extracted = false;
+                for tc in &resp.tool_calls {
+                    if tc.name == "send_message" {
+                        if let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.arguments) {
+                            let content = args["content"].as_str().unwrap_or("").trim();
+                            if !content.is_empty() {
+                                let contents = crate::llm::tool::split_br_tags(content);
+                                for c in &contents {
+                                    let agent_msg = message_repo::insert_message(
+                                        &conn, &req.session_id, "agent", &agent_id, c, "text", Some(req.page_index),
+                                    ).map_err(|e| e.to_string())?;
+                                    all_messages.push(agent_msg);
+                                }
+                                content_extracted = true;
+                                break; // 只处理第一个有效的 send_message
+                            }
+                        } else {
+                            crate::logger::backend("WARN", &format!(
+                                "[DEBUG send_history_message] Failed to parse tool call arguments for agent {}: {}", agent_id, tc.arguments
+                            ));
+                        }
+                    }
+                }
+                // fallback: 如果模型没有使用工具，直接使用 content
+                if !content_extracted {
+                    if let Some(content) = resp.content {
+                        let trimmed = content.trim();
+                        if !trimmed.is_empty() {
+                            let contents = crate::llm::tool::split_br_tags(&trimmed);
+                            for c in &contents {
+                                let agent_msg = message_repo::insert_message(
+                                    &conn, &req.session_id, "agent", &agent_id, c, "text", Some(req.page_index),
+                                ).map_err(|e| e.to_string())?;
+                                all_messages.push(agent_msg);
+                            }
+                        }
                     }
                 }
             }

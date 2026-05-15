@@ -1,7 +1,7 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { listen } from '@tauri-apps/api/event';
-    import { onMount } from 'svelte';
+    import { onMount, untrack } from 'svelte';
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
@@ -18,6 +18,7 @@
     let { mode = 'chat' }: Props = $props();
 
     let inputText = $state('');
+    let inputBySession = $state<Map<string, string>>(new Map());
     let sending = $state(false);
     let typingAgents = $state<Set<string>>(new Set());
     let typingTimeouts = $state<Map<string, number>>(new Map());
@@ -67,6 +68,12 @@
         const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         prevMsgCount = 0;
+        // 恢复该会话的输入内容
+        if (id) {
+            inputText = inputBySession.get(id) || '';
+        } else {
+            inputText = '';
+        }
     });
 
     $effect(() => {
@@ -78,9 +85,11 @@
             } else {
                 messageStore.loadMessages(id);
             }
-            const session = mode === 'chat'
-                ? sessionStore.sessions.find(s => s.id === id)
-                : historyStore.sessions.find(s => s.id === id);
+            const session = untrack(() =>
+                mode === 'chat'
+                    ? sessionStore.sessions.find(s => s.id === id)
+                    : historyStore.sessions.find(s => s.id === id)
+            );
             currentAgentId = session?.agent_id;
             if (session) {
                 loadSessionConfig(id, session.session_type);
@@ -154,6 +163,9 @@
             if (pageIdx == null) return;
             sending = true;
             inputText = '';
+            const nextInput = new Map(inputBySession);
+            nextInput.set(sessionId, '');
+            inputBySession = nextInput;
 
             // 乐观更新：立即在 UI 中显示用户消息
             const optimisticMsg: import('$lib/types').Message = {
@@ -177,7 +189,7 @@
             } catch (err) {
                 logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
                 // 发送失败时移除乐观消息
-                messageStore.messages = messageStore.messages.filter((m) => m.id !== optimisticMsg.id);
+                messageStore.removeMessage(sessionId, optimisticMsg.id);
             } finally {
                 sending = false;
             }
@@ -187,6 +199,9 @@
         // Chat 模式：保持原有逻辑（Scheduler + new_message 事件）
         sending = true;
         inputText = '';
+        const nextInput = new Map(inputBySession);
+        nextInput.set(sessionId, '');
+        inputBySession = nextInput;
 
         // 乐观更新：立即在 UI 中显示用户消息
         const optimisticMsg: import('$lib/types').Message = {
@@ -219,7 +234,7 @@
         } catch (err) {
             logger.debug('[DEBUG ChatView.handleSend] chat mode failed', { error: err });
             // 发送失败时移除乐观消息
-            messageStore.messages = messageStore.messages.filter((m) => m.id !== optimisticMsg.id);
+            messageStore.removeMessage(sessionId, optimisticMsg.id);
         } finally {
             sending = false;
         }
@@ -240,14 +255,20 @@
         // History 模式：消息更新通过 send_history_message 的返回值同步获取
         if (mode === 'chat') {
             listen('new_message', (event) => {
-                const msg = event.payload as { session_id: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
+                const msg = event.payload as { session_id: string; sender_type?: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
                 logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50) });
-                const shouldAdd = msg.session_id === sessionStore.selectedSessionId;
-                if (shouldAdd) {
-                    // 去重：如果消息已存在，不重复添加
-                    const exists = messageStore.messages.some((m) => m.id === msg.id);
-                    if (!exists) {
-                        messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+
+                // 将消息添加到对应会话的存储中（后台更新，绑定对应会话）
+                const exists = messageStore.messagesBySession.get(msg.session_id)?.some((m) => m.id === msg.id);
+                if (!exists) {
+                    messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+                }
+
+                // 当 agent 消息到达且用户正在查看该会话时，刷新 sessionConfig
+                if (msg.session_id === messageStore.currentSessionId && msg.sender_type === 'agent') {
+                    const session = untrack(() => sessionStore.sessions.find(s => s.id === msg.session_id));
+                    if (session) {
+                        loadSessionConfig(msg.session_id, session.session_type);
                     }
                 }
             }).then((fn) => unlistenFns.push(fn));
@@ -439,19 +460,24 @@
                     {/each}
                     {#if isAgentTyping}
                         <div class="flex px-4 justify-start" data-testid="typing-indicator">
-                            <div class="flex gap-2 max-w-[80%]">
-                                <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
-                                    {#if selectedSession.agent_avatar}
-                                        <img src={selectedSession.agent_avatar} alt={selectedSession.agent_name || 'Agent'} class="w-full h-full object-cover" />
-                                    {:else}
-                                        <Bot size={16} />
-                                    {/if}
-                                </div>
-                                <div class="flex flex-col">
-                                    <div class="text-xs text-text-secondary mb-1">{selectedSession.agent_name || 'Agent'}</div>
-                                    <div class="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2 text-text-secondary text-sm">
-                                        正在输入中...
+                            <div class="flex flex-col max-w-[80%] items-start">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
+                                        {#if selectedSession.agent_avatar}
+                                            <img src={selectedSession.agent_avatar} alt={selectedSession.agent_name || 'Agent'} class="w-full h-full object-cover" />
+                                        {:else}
+                                            <Bot size={16} />
+                                        {/if}
                                     </div>
+                                    <div class="flex flex-col justify-center h-8">
+                                        <span class="text-xs text-text-secondary leading-none">{selectedSession.agent_name || 'Agent'}</span>
+                                        <span class="text-[10px] text-text-secondary opacity-70 leading-none mt-0.5">正在输入中...</span>
+                                    </div>
+                                </div>
+                                <div class="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2 text-text-secondary text-sm">
+                                    <span class="inline-block animate-bounce">.</span>
+                                    <span class="inline-block animate-bounce" style="animation-delay: 0.2s">.</span>
+                                    <span class="inline-block animate-bounce" style="animation-delay: 0.4s">.</span>
                                 </div>
                             </div>
                         </div>
@@ -477,7 +503,16 @@
             <div class="shrink-0 border-t border-border p-4 bg-surface">
                 <div class="flex items-end gap-2">
                     <textarea
-                        bind:value={inputText}
+                        value={inputText}
+                        oninput={(e) => {
+                            inputText = e.currentTarget.value;
+                            const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+                            if (id) {
+                                const next = new Map(inputBySession);
+                                next.set(id, e.currentTarget.value);
+                                inputBySession = next;
+                            }
+                        }}
                         onkeydown={handleKeydown}
                         placeholder="输入消息..."
                         rows={3}
