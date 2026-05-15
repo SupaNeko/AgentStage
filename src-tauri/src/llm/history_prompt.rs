@@ -72,6 +72,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
         conn
     }
 
@@ -91,8 +92,8 @@ mod tests {
 
     fn insert_private_session(conn: &Connection, session_id: &str, agent_id: &str, page: i32) {
         conn.execute(
-            "INSERT INTO private_sessions (session_id, agent_id, created_at, current_chat_page) VALUES (?1, ?2, ?3, ?4)",
-            (session_id, agent_id, 0i64, page),
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            (session_id, "user", "user", "agent", agent_id, 0i64, page),
         ).unwrap();
     }
 

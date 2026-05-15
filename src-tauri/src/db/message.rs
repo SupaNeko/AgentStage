@@ -106,7 +106,7 @@ pub fn get_visible_messages_for_agent(conn: &Connection, agent_id: &str) -> Resu
         "SELECT {} FROM messages \
          WHERE is_deleted = 0 \
          AND session_id IN ( \
-             SELECT session_id FROM private_sessions WHERE agent_id = ?1 \
+             SELECT session_id FROM private_sessions WHERE (participant_1_type = 'agent' AND participant_1_id = ?1) OR (participant_2_type = 'agent' AND participant_2_id = ?1) \
              UNION \
              SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent' \
          ) \
@@ -127,7 +127,7 @@ pub fn get_pending_messages_for_agent(
         "SELECT {} FROM messages \
          WHERE is_deleted = 0 \
          AND session_id IN ( \
-             SELECT session_id FROM private_sessions WHERE agent_id = ?1 \
+             SELECT session_id FROM private_sessions WHERE (participant_1_type = 'agent' AND participant_1_id = ?1) OR (participant_2_type = 'agent' AND participant_2_id = ?1) \
              UNION \
              SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent' \
          ) \

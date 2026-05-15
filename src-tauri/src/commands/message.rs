@@ -106,7 +106,7 @@ fn resolve_history_target_agents(conn: &rusqlite::Connection, session_id: &str) 
     let mut agents = Vec::new();
     if session_type == "private" {
         let agent_id: String = conn.query_row(
-            "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
+            "SELECT participant_2_id FROM private_sessions WHERE session_id = ?1 AND participant_2_type = 'agent'",
             [session_id],
             |row| row.get(0),
         ).map_err(|e| e.to_string())?;
@@ -288,6 +288,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
         conn
     }
 
@@ -299,11 +300,7 @@ mod tests {
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES ('s1', 'private', 0, 0)",
-            [],
-        ).unwrap();
-        conn.execute(
-            "INSERT INTO private_sessions (session_id, agent_id, created_at, current_chat_page) VALUES ('s1', 'a1', 0, 0)",
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES ('s1', 'user', 'user', 'agent', 'a1', 0, 0)",
             [],
         ).unwrap();
 
@@ -356,7 +353,7 @@ mod tests {
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO private_sessions (session_id, agent_id, created_at, current_chat_page) VALUES ('s1', 'a1', 0, 0)",
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES ('s1', 'user', 'user', 'agent', 'a1', 0, 0)",
             [],
         ).unwrap();
 

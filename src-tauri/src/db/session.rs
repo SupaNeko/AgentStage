@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::session::SessionResponse;
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count, ps.agent_id, a.name, a.avatar_path, gs.name, gs.avatar_path, gs.mute_enabled";
+const SELECT_COLUMNS: &str = "s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count, ps.participant_2_id, a.name, a.avatar_path, gs.name, gs.avatar_path, gs.mute_enabled";
 
 fn row_to_session_response(row: &Row) -> Result<SessionResponse> {
     Ok(SessionResponse {
@@ -25,9 +25,9 @@ pub fn get_private_session_by_agent_id(conn: &Connection, agent_id: &str) -> Res
         &format!(
             "SELECT {} FROM sessions s \
              LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.agent_id = a.id \
+             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
              LEFT JOIN group_sessions gs ON s.id = gs.session_id \
-             WHERE s.is_deleted = 0 AND ps.agent_id = ?1 AND s.session_type = 'private'",
+             WHERE s.is_deleted = 0 AND ps.participant_2_id = ?1 AND ps.participant_2_type = 'agent' AND s.session_type = 'private'",
             SELECT_COLUMNS
         )
     )?;
@@ -52,7 +52,7 @@ pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<Sessi
     )?;
 
     conn.execute(
-        "INSERT INTO private_sessions (session_id, agent_id, message_limit_enabled, created_at) VALUES (?1, ?2, 1, ?3)",
+        "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, message_limit_enabled, created_at) VALUES (?1, 'user', 'user', 'agent', ?2, 1, ?3)",
         (&session_id, agent_id, now),
     )?;
 
@@ -80,7 +80,7 @@ pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<S
         &format!(
             "SELECT {} FROM sessions s \
              LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.agent_id = a.id \
+             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
              LEFT JOIN group_sessions gs ON s.id = gs.session_id \
              WHERE s.id = ?1 AND s.is_deleted = 0",
             SELECT_COLUMNS
@@ -95,7 +95,7 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
         &format!(
             "SELECT {} FROM sessions s \
              LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.agent_id = a.id \
+             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
              LEFT JOIN group_sessions gs ON s.id = gs.session_id \
              WHERE s.is_deleted = 0 \
              ORDER BY s.last_message_at DESC",
@@ -413,6 +413,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
         conn
     }
 

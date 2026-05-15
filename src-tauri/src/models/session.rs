@@ -16,11 +16,15 @@ pub struct Session {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrivateSession {
     pub session_id: String,
-    pub agent_id: String,
+    pub participant_1_type: String,
+    pub participant_1_id: String,
+    pub participant_2_type: String,
+    pub participant_2_id: String,
     pub message_limit: Option<i32>,
     pub message_limit_enabled: bool,
     pub agent_message_count: i32,
     pub last_reset_at: i64,
+    pub current_chat_page: i32,
     pub created_at: i64,
 }
 
@@ -65,7 +69,7 @@ impl From<(Session, PrivateSession)> for SessionResponse {
             last_message_at: session.last_message_at,
             last_message_preview: session.last_message_preview,
             unread_count: session.unread_count,
-            agent_id: Some(ps.agent_id),
+            agent_id: Some(ps.participant_2_id),
             agent_name: None, // populated by handler
             agent_avatar: None,
             group_name: None,

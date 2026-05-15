@@ -356,3 +356,42 @@ CREATE TABLE IF NOT EXISTS agent_unread_queue (
 CREATE INDEX IF NOT EXISTS idx_agent_unread_session_agent ON agent_unread_queue(session_id, agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_unread_agent ON agent_unread_queue(agent_id);
 "#;
+
+pub const MIGRATION_V7: &str = r#"
+-- V7: 私聊会话对称重构
+CREATE TABLE private_sessions_new (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    participant_1_type TEXT NOT NULL CHECK(participant_1_type IN ('user', 'agent')),
+    participant_1_id TEXT NOT NULL,
+    participant_2_type TEXT NOT NULL CHECK(participant_2_type IN ('user', 'agent')),
+    participant_2_id TEXT NOT NULL,
+    message_limit INTEGER,
+    message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    agent_message_count INTEGER DEFAULT 0,
+    last_reset_at INTEGER DEFAULT 0,
+    current_chat_page INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    UNIQUE(participant_1_type, participant_1_id, participant_2_type, participant_2_id)
+);
+
+INSERT INTO private_sessions_new (
+    session_id, 
+    participant_1_type, participant_1_id,
+    participant_2_type, participant_2_id,
+    message_limit, message_limit_enabled, agent_message_count, last_reset_at, current_chat_page,
+    created_at
+)
+SELECT 
+    session_id,
+    'user', 'user',
+    'agent', agent_id,
+    message_limit, message_limit_enabled, agent_message_count, last_reset_at, current_chat_page,
+    created_at
+FROM private_sessions;
+
+DROP TABLE private_sessions;
+ALTER TABLE private_sessions_new RENAME TO private_sessions;
+
+CREATE INDEX idx_private_sessions_p1 ON private_sessions(participant_1_type, participant_1_id);
+CREATE INDEX idx_private_sessions_p2 ON private_sessions(participant_2_type, participant_2_id);
+"#;

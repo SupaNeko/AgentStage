@@ -34,7 +34,6 @@ impl PromptAssembler {
             for (name, relation, persona) in participants {
                 layer.push_str(&format!("- {}（{}）：{}\n", name, relation, persona));
             }
-            layer.push_str(prompt_templates::LAYER_PARTICIPANTS_USER_LINE);
             layers.push(layer);
         }
 
@@ -123,7 +122,7 @@ impl PromptAssembler {
             for msg in &filtered_messages {
                 if msg.session_id != current_session {
                     current_session = msg.session_id.clone();
-                    let session_name = Self::get_session_name(conn, &current_session)?;
+                    let session_name = Self::get_session_name(conn, &current_session, agent_id)?;
                     layer.push_str(&format!("\n--- {} ---\n", session_name));
                 }
                 let time = Self::format_time(msg.created_at);
@@ -185,19 +184,42 @@ impl PromptAssembler {
     ) -> Result<Vec<(String, String, String)>, String> {
         let mut sessions = Vec::new();
 
-        // 私聊会话
+        // Private sessions
         let mut stmt = conn
             .prepare(
-                "SELECT s.id, a.name, 'private' 
-                 FROM sessions s 
-                 JOIN private_sessions ps ON s.id = ps.session_id 
-                 JOIN agents a ON ps.agent_id = a.id 
-                 WHERE ps.agent_id = ?1 AND s.is_deleted = 0"
+                "SELECT s.id, ps.participant_1_type, ps.participant_1_id, ps.participant_2_type, ps.participant_2_id \
+                 FROM sessions s \
+                 JOIN private_sessions ps ON s.id = ps.session_id \
+                 WHERE s.is_deleted = 0 \
+                 AND ((ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1) \
+                   OR (ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1))"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([agent_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                let sid: String = row.get(0)?;
+                let p1_type: String = row.get(1)?;
+                let p1_id: String = row.get(2)?;
+                let p2_type: String = row.get(3)?;
+                let p2_id: String = row.get(4)?;
+                
+                let other = if p1_type == "agent" && p1_id == agent_id {
+                    (p2_type, p2_id)
+                } else {
+                    (p1_type, p1_id)
+                };
+                
+                let other_name = if other.0 == "user" {
+                    Self::get_user_persona(conn).0
+                } else {
+                    conn.query_row(
+                        "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
+                        [other.1],
+                        |row| row.get(0),
+                    ).unwrap_or_else(|_| prompt_templates::UNKNOWN_SESSION.to_string())
+                };
+                
+                Ok((sid, other_name, "private".to_string()))
             })
             .map_err(|e| e.to_string())?;
         for row in rows {
@@ -205,13 +227,13 @@ impl PromptAssembler {
         }
         drop(stmt);
 
-        // 群聊会话
+        // Group sessions (unchanged logic)
         let mut stmt = conn
             .prepare(
-                "SELECT s.id, gs.name, 'group' 
-                 FROM sessions s 
-                 JOIN group_sessions gs ON s.id = gs.session_id 
-                 JOIN group_members gm ON s.id = gm.session_id 
+                "SELECT s.id, gs.name, 'group' \
+                 FROM sessions s \
+                 JOIN group_sessions gs ON s.id = gs.session_id \
+                 JOIN group_members gm ON s.id = gm.session_id \
                  WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent' AND s.is_deleted = 0"
             )
             .map_err(|e| e.to_string())?;
@@ -225,6 +247,21 @@ impl PromptAssembler {
         }
 
         Ok(sessions)
+    }
+
+    fn get_user_persona(conn: &Connection) -> (String, String) {
+        let result: Result<(String, Option<String>), rusqlite::Error> = conn.query_row(
+            "SELECT name, description FROM user_personas WHERE is_default = 1 LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+        match result {
+            Ok((name, desc)) => (name, desc.unwrap_or_else(|| prompt_templates::USER_PERSONA_DEFAULT.to_string())),
+            Err(_) => (
+                prompt_templates::USER_NAME_DEFAULT.to_string(),
+                prompt_templates::USER_PERSONA_DEFAULT.to_string(),
+            ),
+        }
     }
 
     /// 变量替换：{{char}} → agent_name, {{user}} → 用户名称
@@ -249,44 +286,71 @@ impl PromptAssembler {
         agent_id: &str,
     ) -> Result<Vec<(String, String, String)>, String> {
         let mut seen: HashSet<String> = HashSet::new();
-        seen.insert(agent_id.to_string());
+        let mut participants: Vec<(String, String, String)> = Vec::new();
 
-        let mut participant_ids: Vec<String> = Vec::new();
-        let mut private_ids: HashSet<String> = HashSet::new();
-
-        // 1. 收集私聊对象 agent_id
+        // 1. Collect private chat partners
         let mut stmt = conn
             .prepare(
-                "SELECT DISTINCT ps.agent_id 
-                 FROM private_sessions ps
-                 JOIN sessions s ON ps.session_id = s.id
-                 WHERE ps.session_id IN (
-                     SELECT session_id FROM private_sessions WHERE agent_id = ?1
-                 ) AND ps.agent_id != ?1 AND s.is_deleted = 0"
+                "SELECT ps.participant_1_type, ps.participant_1_id, ps.participant_2_type, ps.participant_2_id \
+                 FROM private_sessions ps \
+                 JOIN sessions s ON ps.session_id = s.id \
+                 WHERE s.is_deleted = 0 \
+                 AND ((ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1) \
+                   OR (ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1))"
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([agent_id], |row| {
-                Ok(row.get::<_, String>(0)?)
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
             })
             .map_err(|e| e.to_string())?;
+
+        let (user_name, user_persona) = Self::get_user_persona(conn);
+
         for row in rows {
-            let id = row.map_err(|e| e.to_string())?;
-            if seen.insert(id.clone()) {
-                participant_ids.push(id.clone());
-                private_ids.insert(id);
+            let (p1_type, p1_id, p2_type, p2_id) = row.map_err(|e| e.to_string())?;
+            let other = if p1_type == "agent" && p1_id == agent_id {
+                (p2_type, p2_id)
+            } else {
+                (p1_type, p1_id)
+            };
+
+            if other.0 == "user" {
+                if seen.insert("__user__".to_string()) {
+                    participants.push((user_name.clone(), "好友".to_string(), user_persona.clone()));
+                }
+            } else if seen.insert(other.1.clone()) {
+                let other_id = other.1.clone();
+                let name: Result<String, rusqlite::Error> = conn.query_row(
+                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
+                    [&other_id],
+                    |row| row.get(0),
+                );
+                if let Ok(name) = name {
+                    let persona: Result<String, rusqlite::Error> = conn.query_row(
+                        "SELECT simplified_persona FROM agents WHERE id = ?1 AND is_deleted = 0",
+                        [&other_id],
+                        |row| row.get(0),
+                    );
+                    participants.push((name, "好友".to_string(), persona.unwrap_or_default()));
+                }
             }
         }
         drop(stmt);
 
-        // 2. 收集群聊成员 agent_id
+        // 2. Collect group chat members
         let mut stmt = conn
             .prepare(
-                "SELECT DISTINCT gm.participant_id 
-                 FROM group_members gm
-                 JOIN sessions s ON gm.session_id = s.id
-                 WHERE gm.session_id IN (
-                     SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent'
+                "SELECT DISTINCT gm.participant_id \
+                 FROM group_members gm \
+                 JOIN sessions s ON gm.session_id = s.id \
+                 WHERE gm.session_id IN ( \
+                     SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent' \
                  ) AND gm.participant_type = 'agent' AND gm.participant_id != ?1 AND s.is_deleted = 0"
             )
             .map_err(|e| e.to_string())?;
@@ -298,63 +362,31 @@ impl PromptAssembler {
         for row in rows {
             let id = row.map_err(|e| e.to_string())?;
             if seen.insert(id.clone()) {
-                participant_ids.push(id);
-            }
-        }
-        drop(stmt);
-
-        // 3. 统一读取角色设定信息并拼接
-        let mut participants: Vec<(String, String, String)> = Vec::new();
-        participants.push((
-            "用户".to_string(),
-            "私聊对象".to_string(),
-            "正在与你聊天的真实用户".to_string(),
-        ));
-
-        if !participant_ids.is_empty() {
-            let placeholders = participant_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!(
-                "SELECT id, name, simplified_persona FROM agents WHERE id IN ({}) AND is_deleted = 0",
-                placeholders
-            );
-            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-            let rows = stmt.query_map(
-                rusqlite::params_from_iter(participant_ids.iter().map(|s| s.as_str())),
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
+                let name: Result<String, rusqlite::Error> = conn.query_row(
+                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
+                    [&id],
+                    |row| row.get(0),
+                );
+                if let Ok(name) = name {
+                    let persona: Result<String, rusqlite::Error> = conn.query_row(
+                        "SELECT simplified_persona FROM agents WHERE id = ?1 AND is_deleted = 0",
+                        [&id],
+                        |row| row.get(0),
+                    );
+                    participants.push((name, "好友".to_string(), persona.unwrap_or_default()));
                 }
-            ).map_err(|e| e.to_string())?;
-
-            for row in rows {
-                let (id, name, persona) = row.map_err(|e| e.to_string())?;
-                let relation = if private_ids.contains(&id) {
-                    "私聊对象".to_string()
-                } else {
-                    "群友".to_string()
-                };
-                participants.push((name, relation, persona));
             }
         }
 
         Ok(participants)
     }
 
-    fn get_session_name(conn: &Connection, session_id: &str) -> Result<String, String> {
-        // Try private session first
-        let result: Result<String, rusqlite::Error> = conn.query_row(
-            "SELECT a.name FROM private_sessions ps JOIN agents a ON ps.agent_id = a.id WHERE ps.session_id = ?1",
-            [session_id],
-            |row| row.get(0),
-        );
-        if let Ok(name) = result {
-            return Ok(name);
-        }
-
-        // Try group session
+    fn get_session_name(
+        conn: &Connection,
+        session_id: &str,
+        viewer_agent_id: &str,
+    ) -> Result<String, String> {
+        // Try group session first
         let result: Result<String, rusqlite::Error> = conn.query_row(
             "SELECT name FROM group_sessions WHERE session_id = ?1",
             [session_id],
@@ -362,6 +394,36 @@ impl PromptAssembler {
         );
         if let Ok(name) = result {
             return Ok(name);
+        }
+
+        // Private session: show from viewer's perspective
+        let result: Result<(String, String, String, String), rusqlite::Error> = conn.query_row(
+            "SELECT participant_1_type, participant_1_id, participant_2_type, participant_2_id \
+             FROM private_sessions WHERE session_id = ?1",
+            [session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        );
+
+        if let Ok((p1_type, p1_id, p2_type, p2_id)) = result {
+            let other = if p1_type == "agent" && p1_id == viewer_agent_id {
+                (p2_type, p2_id)
+            } else if p2_type == "agent" && p2_id == viewer_agent_id {
+                (p1_type, p1_id)
+            } else {
+                (p2_type, p2_id)
+            };
+
+            let other_name = if other.0 == "user" {
+                Self::get_user_persona(conn).0
+            } else {
+                conn.query_row(
+                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
+                    [other.1],
+                    |row| row.get(0),
+                ).unwrap_or_else(|_| prompt_templates::UNKNOWN_SESSION.to_string())
+            };
+
+            return Ok(format!("和{}的私聊", other_name));
         }
 
         Ok(prompt_templates::UNKNOWN_SESSION.to_string())
@@ -414,6 +476,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
         conn
     }
 
@@ -433,7 +496,7 @@ mod tests {
 
     fn insert_private_session(conn: &Connection, session_id: &str, agent_id: &str, page: i32) {
         conn.execute(
-            "INSERT INTO private_sessions (session_id, agent_id, created_at, current_chat_page) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES (?1, 'user', 'user', 'agent', ?2, ?3, ?4)",
             (session_id, agent_id, 0i64, page),
         ).unwrap();
     }
@@ -679,5 +742,80 @@ mod tests {
         let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
         assert!(prompt.contains("Active session message"), "Prompt should contain active session message");
         assert!(!prompt.contains("Deleted group message"), "Prompt should NOT contain deleted session message, but got:\n{}", prompt);
+    }
+
+    #[test]
+    fn test_private_session_name_from_agent_perspective() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "远坂凛", "远坂家的继承人");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let msg = Message {
+            id: "msg1".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Hello".to_string(), created_at: 1000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
+        };
+        insert_message(&conn, &msg);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        assert!(prompt.contains("和用户的私聊"), "Private session name should be '和用户的私聊' from agent perspective, got:\n{}", prompt);
+        assert!(!prompt.contains("远坂凛"), "Prompt should NOT contain agent name as session name");
+    }
+
+    #[test]
+    fn test_user_persona_replacement() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "远坂凛", "远坂家的继承人");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        // Insert user persona
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, is_default, created_at, updated_at) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
+            ("persona1", "伊莉雅", "魔伊世界观中的小学生魔术师", 0i64),
+        ).unwrap();
+
+        let msg = Message {
+            id: "msg1".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Hello".to_string(), created_at: 1000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
+        };
+        insert_message(&conn, &msg);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        assert!(prompt.contains("和伊莉雅的私聊"), "Private session name should use persona name");
+        assert!(prompt.contains("伊莉雅（好友）：魔伊世界观中的小学生魔术师"), "Participant list should use persona");
+    }
+
+    #[test]
+    fn test_no_duplicate_user_entry() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "远坂凛", "远坂家的继承人");
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let msg = Message {
+            id: "msg1".to_string(), session_id: "sess1".to_string(),
+            sender_type: "user".to_string(), sender_id: "user".to_string(),
+            content: "Hello".to_string(), created_at: 1000,
+            message_type: "text".to_string(), tool_call_data: None,
+            generation_info: None, is_deleted: false,
+            sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
+        };
+        insert_message(&conn, &msg);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let user_count = prompt.matches("用户（好友）").count();
+        assert_eq!(user_count, 1, "User entry should appear exactly once in participants, got {} occurrences", user_count);
     }
 }

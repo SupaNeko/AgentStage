@@ -4,7 +4,6 @@ pub const LAYER_PERSONA_TITLE: &str = "【你的角色设定】";
 
 pub const LAYER_PARTICIPANTS_TITLE: &str = "【你认识的参与者】";
 pub const LAYER_PARTICIPANTS_FORMAT: &str = "- {}（{}）：{}\n";
-pub const LAYER_PARTICIPANTS_USER_LINE: &str = "- 用户（真实用户）：正在与你聊天的真实用户。";
 
 pub const LAYER_HISTORY_TITLE: &str = "【历史聊天记录】";
 pub const LAYER_HISTORY_SESSION_SEPARATOR: &str = "\n--- {} ---\n";
@@ -26,6 +25,8 @@ pub const TOOL_INSTRUCTION_TEMPLATE: &str = r#"你可以使用 send_message 工�
 pub const INSTRUCTION_CONTEXT_LIST_FORMAT: &str = "- session_id: {}, 名称: {}, 类型: {}\n";
 
 pub const UNKNOWN_SESSION: &str = "未知会话";
+pub const USER_NAME_DEFAULT: &str = "用户";
+pub const USER_PERSONA_DEFAULT: &str = "正在与你聊天的真实用户";
 pub const USER_NAME: &str = "用户";
 pub const SYSTEM_NAME: &str = "系统";
 pub const UNKNOWN_AGENT_PREFIX: &str = "未知角色(";
