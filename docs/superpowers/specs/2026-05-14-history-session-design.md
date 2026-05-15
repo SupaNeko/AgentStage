@@ -731,3 +731,426 @@ Chat 视图也收到事件 → loadMessages 查 current_chat_page → 不包含�
 | `PromptAssembler` SQL 修改引入性能问题 | `CASE WHEN` 只在 JOIN 条件中使用，对已有索引影响小。如性能下降，可将 `trigger_session_id` 的 page 预查出并 UNION 到子查询中 |
 | `new_message` 事件缺少 `page_index` 导致 History 模式漏消息 | 后端 emit 时务必包含 `page_index`；前端做兜底：若缺失，不过滤直接显示 |
 | 旧 page 继续对话导致 agent context 混乱 | 这是设计意图。`PromptAssembler` 对该 session 使用该 page 的上下文，对其他 session 用 current page，行为一致且可控 |
+| History 模式与 Chat 模式共享调度链路导致竞态空白 | 见第 9 节：已决定彻底分离两套链路 |
+| 已删除群聊消息泄漏到 Prompt | 见第 9.2 节：已在 SQL 中增加 `s.is_deleted = 0` 过滤 |
+
+---
+
+## 9. 需求补充与 Bug 修复（2026-05-15）
+
+### 9.0 背景
+
+当前 History 会话功能虽然已实现 page 级隔离，但在实际测试中发现以下问题：
+1. **Bug 1**：在历史群聊中发送消息后，前端消息列表短暂空白，角色回复后才恢复。
+2. **Bug 2**：已删除的群聊消息仍然出现在 Agent 的 Prompt 中。
+3. **需求补充**：需要更清晰地分离当前会话和历史会话的调度逻辑；需要在前端增加常驻提示语；需要在后端日志中记录完整的 LLM prompt。
+
+本节对原有设计进行**补充和修正**，替代原有设计中存在问题的部分。
+
+---
+
+### 9.1 历史会话与当前会话的调度逻辑彻底分离（替代原 §3.1 / §3.2 / §4.4）
+
+#### 问题分析
+
+当前设计让 History 模式复用了 `send_user_message` → `scheduler.on_new_message` → `distribute_message` → `try_trigger_agent` → LLM → `new_message` 事件广播 这一整套 Chat 模式的异步调度链路。`page_index` 仅作为可选参数在关键环节透传。
+
+这导致 History 模式下：
+- `send_user_message` 触发 Scheduler，Scheduler 可能触发多个 Agent。
+- 前端 `handleSend` 中 `loadMessages` 的全量刷新与 `new_message` 事件的增量更新产生竞态。
+- 当 `page_index` 参数在某一环节丢失或匹配失败时，前端消息列表被错误地重置或查询了错误的 page，表现为"短暂空白"。
+- 修复难度大：需要让 Scheduler、ToolExecutor、`PromptAssembler` 的每一个环节都 100% page-aware，且前端事件过滤逻辑必须零失误。
+
+#### 决策：两套完全独立的调度逻辑
+
+| 维度 | Chat 模式（当前会话） | History 模式（历史会话） |
+|------|----------------------|-------------------------|
+| **后端命令** | `send_user_message` | **新增 `send_history_message`** |
+| **调度器** | 使用 `Scheduler`（全局状态机、unread queue、自动触发链） | **不使用 Scheduler**，直接调用 LLM |
+| **Prompt 组装** | `PromptAssembler`（注入所有 session 的上下文 + pending messages） | **简化版 Assembler**（仅注入当前 session + 当前 page 的消息） |
+| **消息存储** | 写入 DB，`current_chat_page` 可能变化 | 写入 DB，**固定写入指定的 `page_index`** |
+| **前端更新** | 监听 `new_message` 事件 | **直接等待命令返回值**，不监听事件 |
+| **并发触发** | 支持多 Agent 并发触发、跨 session 触发 | **单 session 单轮对话**，不支持跨 session 触发 |
+| **适用场景** | 日常聊天、群聊、Agent 间自然触发 | 回顾历史、在旧 page 中补充对话 |
+
+#### 9.1.1 新增后端命令：`send_history_message`
+
+```rust
+// src-tauri/src/models/message.rs
+#[derive(Debug, Clone, Deserialize)]
+pub struct SendHistoryMessageRequest {
+    pub session_id: String,
+    pub content: String,
+    pub page_index: i32,  // 必填，History 模式必须指定 page
+}
+```
+
+```rust
+// src-tauri/src/commands/message.rs
+#[tauri::command]
+pub async fn send_history_message(
+    state: State<'_, DbState>,
+    req: SendHistoryMessageRequest,
+) -> Result<Vec<Message>, String> {
+    let conn = get_db(&state).await?;
+    
+    // 1. 插入用户消息到指定 page
+    let user_msg = message_repo::insert_message(
+        &conn, &req.session_id, "user", "user", &req.content, "text", Some(req.page_index),
+    ).map_err(|e| e.to_string())?;
+    
+    // 2. 更新会话最后消息预览
+    let preview = crate::scheduler::truncate_preview(&req.content, 100);
+    let _ = session_repo::update_session_last_message(&conn, &req.session_id, &preview);
+    
+    // 3. 查询该 session + 该 page 的所有历史消息作为上下文
+    let history_msgs = message_repo::get_messages_by_session(&conn, &req.session_id, req.page_index, 1000, 0)
+        .map_err(|e| e.to_string())?;
+    
+    // 4. 确定该 session 中需要回复的 Agent（私聊 = 对方 Agent；群聊 = 所有群成员 Agent）
+    let target_agents = resolve_history_target_agents(&conn, &req.session_id)?;
+    
+    // 5. 为每个目标 Agent 组装简化 Prompt（仅包含当前 session + page 的消息）
+    let mut replies: Vec<Message> = vec![user_msg];
+    for agent_id in target_agents {
+        let prompt = HistoryPromptAssembler::assemble(&conn, &agent_id, &req.session_id, req.page_index, &history_msgs)?;
+        
+        // 6. 调用 LLM
+        let llm_response = call_llm(&agent_id, &prompt).await?;
+        
+        // 7. 插入 Agent 回复到同一 page
+        let agent_msg = message_repo::insert_message(
+            &conn, &req.session_id, "agent", &agent_id, &llm_response, "text", Some(req.page_index),
+        ).map_err(|e| e.to_string())?;
+        
+        replies.push(agent_msg);
+    }
+    
+    Ok(replies)
+}
+```
+
+**关键区别**：
+- **不调用 `scheduler.on_new_message`**：没有 unread queue、没有自动触发链、没有 `is_triggering` 状态机。
+- **不 emit `new_message` 事件**：命令直接返回 `Vec<Message>`（包含用户消息和所有 Agent 回复），前端通过 `await` 获取完整结果。
+- **Prompt 仅包含当前 session + page**：见 9.1.2。
+
+#### 9.1.2 新增：`HistoryPromptAssembler`
+
+这是一个**简化版**的 Prompt 组装器，专门用于 History 模式。
+
+```rust
+// src-tauri/src/llm/history_prompt.rs
+pub struct HistoryPromptAssembler;
+
+impl HistoryPromptAssembler {
+    pub fn assemble(
+        conn: &Connection,
+        agent_id: &str,
+        session_id: &str,
+        page_index: i32,
+        history_messages: &[Message],
+    ) -> Result<String, String> {
+        // Layer 1: Agent 自我设定
+        let layer1 = get_agent_system_prompt(conn, agent_id)?;
+        
+        // Layer 2: 当前 session + page 的消息历史（即 history_messages 参数）
+        // 不需要再查 DB，直接传入
+        let layer2 = format_messages_as_context(history_messages, agent_id);
+        
+        // Layer 3: 本次对话的引导语
+        let layer3 = "请基于以上对话上下文继续回复。注意：你正在回顾或补充一段历史对话。";
+        
+        let full_prompt = format!("{}\n\n{}\n\n{}", layer1, layer2, layer3);
+        
+        // 新增需求：记录完整 prompt 到日志
+        log::info!(
+            "[HistoryPromptAssembler] Full prompt for agent {} (session={}, page={}):\n---PROMPT START---\n{}\n---PROMPT END---",
+            agent_id, session_id, page_index, full_prompt
+        );
+        
+        Ok(full_prompt)
+    }
+}
+```
+
+**与 `PromptAssembler` 的核心差异**：
+
+| 特性 | `PromptAssembler` (Chat 模式) | `HistoryPromptAssembler` (History 模式) |
+|------|------------------------------|----------------------------------------|
+| 查询范围 | 所有关联 session 的 `current_chat_page` + pending messages | **仅当前 session + 指定 page** |
+| Layer 2 (其他 session 消息) | 包含 | **不包含** |
+| Layer 4 (pending messages) | 包含 | **不包含**（History 模式没有 pending queue） |
+| SQL 复杂度 | 多表 JOIN + CASE WHEN | 无复杂 JOIN，直接传入已查询的消息列表 |
+| 调用时机 | Scheduler 触发 | `send_history_message` 直接调用 |
+| 日志 | 分段记录 | **记录完整 prompt**（见 9.3） |
+
+#### 9.1.3 前端 History 模式改造
+
+**`ChatView.svelte`（History 模式）发送逻辑**：
+
+```typescript
+async function handleSend() {
+    const content = inputText.trim();
+    const sessionId = historyStore.selectedSessionId;
+    const pageIdx = historyStore.selectedPageIndex;
+    
+    if (!content || !sessionId || pageIdx == null) return;
+    
+    // 乐观更新：立即显示用户消息
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+        id: tempId,
+        session_id: sessionId,
+        sender_id: 'user',
+        sender_type: 'user',
+        sender_name: '用户',
+        content,
+        msg_type: 'text',
+        created_at: Date.now(),
+        page_index: pageIdx,
+    };
+    messageStore.addMessage(optimisticMsg);
+    inputText = '';
+    
+    try {
+        // 调用新的 History 专用命令
+        const replies = await invoke<Message[]>('send_history_message', {
+            req: { session_id: sessionId, content, page_index: pageIdx },
+        });
+        
+        // 移除乐观更新的临时消息
+        messageStore.messages = messageStore.messages.filter(m => m.id !== tempId);
+        
+        // 将后端返回的完整消息列表（用户消息 + Agent 回复）设置为当前列表
+        messageStore.messages = replies;
+        
+    } catch (err) {
+        logger.error('Failed to send history message:', err);
+        // 保留乐观更新的消息，显示错误提示
+    }
+}
+```
+
+**`ChatView.svelte`（History 模式）事件监听**：
+
+History 模式**不再监听 `new_message` 事件**。所有消息更新都通过 `send_history_message` 的返回值同步获取。
+
+```typescript
+onMount(() => {
+    // Chat 模式才需要监听 new_message
+    if (mode === 'chat') {
+        listen('new_message', ...).then(fn => unlistenFns.push(fn));
+        listen('agent_typing', ...).then(fn => unlistenFns.push(fn));
+        listen('agent_completed', ...).then(fn => unlistenFns.push(fn));
+        listen('agent_error', ...).then(fn => unlistenFns.push(fn));
+    }
+    // History 模式：无需监听任何事件
+});
+```
+
+**常驻提示语（前端 UI）**：
+
+在 History 模式的 `ChatView` 标题栏下方、消息列表上方，增加一个常驻的提示横幅：
+
+```svelte
+{#if mode === 'history'}
+    <div class="px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm flex items-center gap-2">
+        <Clock size={16} />
+        <span>当前处于<strong>历史会话</strong>模式。此处的对话仅基于当前会话的历史记录，不会影响其他会话，也不会触发跨会话的 Agent 互动。</span>
+    </div>
+{/if}
+```
+
+CSS 建议（Tailwind v4）：
+```css
+/* 使用 Tailwind v4 @theme token 或 inline */
+bg-amber-50, border-amber-200, text-amber-800
+```
+
+#### 9.1.4 数据流对比图
+
+**Chat 模式（不变）**：
+```
+User → send_user_message → insert_message → scheduler.on_new_message
+                                                    ↓
+                                          distribute_message → unread queues
+                                                    ↓
+                                          try_trigger_agent → LLM
+                                                    ↓
+                                          ToolExecutor → insert_message
+                                                    ↓
+                                          emit('new_message') → 所有监听者
+                                                    ↓
+                                          Frontend (ChatView) 刷新列表
+```
+
+**History 模式（新）**：
+```
+User → send_history_message → insert_message (指定 page)
+                                  ↓
+                          查询该 page 历史消息
+                                  ↓
+                          HistoryPromptAssembler (仅当前 session)
+                                  ↓
+                          LLM 调用（同步等待）
+                                  ↓
+                          insert_message (Agent 回复，同一 page)
+                                  ↓
+                          返回 Vec<Message> 给前端
+                                  ↓
+                          Frontend (ChatView) 直接渲染返回结果
+```
+
+---
+
+### 9.2 Bug 修复：已删除群聊消息泄漏到 Prompt（替代原 §3.1 SQL）
+
+#### 问题
+
+`PromptAssembler` 的 Layer 2（其他 session 的最近 10 条消息）和 Layer 3/Layer 4 的 SQL 查询中，JOIN `sessions` 表时未过滤 `is_deleted = 0`。导致已解散（soft-deleted）的群聊消息仍然被注入到 Agent 的 Prompt 中。
+
+#### 修复
+
+在所有涉及 `sessions` 表 JOIN 的 `PromptAssembler` SQL 中，增加 `s.is_deleted = 0` 条件。
+
+**Layer 2 修复后**：
+```sql
+SELECT m.*, s.session_type
+FROM messages m
+JOIN sessions s ON m.session_id = s.session_id
+WHERE m.session_id != ?1 
+  AND m.sender_id != ?2
+  AND m.is_deleted = 0
+  AND s.is_deleted = 0   -- <-- 新增
+ORDER BY m.created_at DESC
+LIMIT 10
+```
+
+**Layer 3 修复后**（Agent 自己的 session 消息）：
+```sql
+SELECT m.*, s.session_type
+FROM messages m
+JOIN sessions s ON m.session_id = s.session_id
+WHERE m.session_id = ?1
+  AND m.sender_id != ?2
+  AND m.is_deleted = 0
+  AND s.is_deleted = 0   -- <-- 新增
+ORDER BY m.created_at DESC
+LIMIT 50
+```
+
+**Layer 4 修复后**（所有关联 session 消息）：
+```sql
+-- 子查询 sp 已经通过 private_sessions / group_sessions 关联，
+-- 但最外层 JOIN sessions 时同样需要过滤
+SELECT m.*, s.session_type
+FROM messages m
+JOIN sessions s ON m.session_id = s.session_id
+JOIN (...) sp ON m.session_id = sp.session_id AND ...
+WHERE m.is_deleted = 0
+  AND s.is_deleted = 0   -- <-- 新增
+ORDER BY m.created_at ASC
+```
+
+> **注意**：`HistoryPromptAssembler` 由于直接传入 `history_messages` 参数，不涉及跨 session 查询，因此**不受此 bug 影响**。这也是分离两套逻辑的优势之一。
+
+---
+
+### 9.3 新增需求：后端日志记录完整 LLM Prompt
+
+#### 需求描述
+
+在 `PromptAssembler::assemble` 和 `HistoryPromptAssembler::assemble` 中，将最终发送给 LLM 的完整 prompt 字符串记录到后端日志，以便调试和分析。
+
+#### 实现规范
+
+```rust
+// 在 PromptAssembler::assemble 末尾（拼接完 final_prompt 后）
+log::info!(
+    "[PromptAssembler] Full prompt for agent {} | trigger_session={:?} | trigger_page={:?} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
+    agent_id,
+    trigger_session_id,
+    trigger_page_index,
+    final_prompt.len(),
+    final_prompt
+);
+```
+
+```rust
+// 在 HistoryPromptAssembler::assemble 末尾
+log::info!(
+    "[HistoryPromptAssembler] Full prompt for agent {} | session={} | page={} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
+    agent_id,
+    session_id,
+    page_index,
+    full_prompt.len(),
+    full_prompt
+);
+```
+
+**规范**：
+- 日志级别：`INFO`（确保默认可见，无需开启 DEBUG/TRACE）。
+- 包含元数据：`agent_id`、`session_id`、`page_index`、prompt 字符长度。
+- 使用 `---PROMPT START---` / `---PROMPT END---` 包裹，便于脚本提取。
+- **安全**：prompt 内容只包含公开的消息文本和系统设定，**不包含 API Key**（API Key 在 LLM client 层使用，不会出现在 prompt 中）。
+
+---
+
+### 9.4 更新后的实现顺序
+
+基于本节补充，实现顺序调整为：
+
+#### Phase 1: 后端修复与新增
+1. **修复** `PromptAssembler` 所有 SQL：增加 `s.is_deleted = 0` 过滤（Bug 2）。
+2. **新增** `HistoryPromptAssembler`（`src-tauri/src/llm/history_prompt.rs`）。
+3. **新增** `send_history_message` Tauri 命令（`src-tauri/src/commands/message.rs`）。
+4. **新增** `SendHistoryMessageRequest` DTO（`src-tauri/src/models/message.rs`）。
+5. **新增** `log::info!` 完整 prompt 日志（`PromptAssembler` + `HistoryPromptAssembler`）。
+6. **注册** 新命令到 `src-tauri/src/lib.rs`。
+7. **测试**：后端 Rust 单元测试（`send_history_message`、`HistoryPromptAssembler`、`is_deleted` 过滤）。
+
+#### Phase 2: 前端改造
+8. **修改** `ChatView.svelte`：
+   - History 模式下 `handleSend` 改用 `send_history_message`。
+   - History 模式下移除 `new_message` / `agent_typing` / `agent_completed` 事件监听。
+   - 新增常驻提示语横幅（历史会话模式说明）。
+9. **修改** `messageStore.svelte.ts`：History 模式下不再依赖事件驱动更新。
+10. **样式**：确保提示语横幅使用 Tailwind v4 的 amber 色板。
+
+#### Phase 3: 测试
+11. **Vitest**：History 模式 `handleSend` 调用正确命令、不监听事件。
+12. **Playwright E2E**：
+    - 历史群聊发送消息后列表不空白。
+    - 常驻提示语可见。
+    - 已删除群聊消息不出现在新会话的 Agent Prompt 中（需要通过 mock 验证 prompt 内容）。
+
+---
+
+### 9.5 状态更新
+
+| 项目 | 原状态 | 新状态 |
+|------|--------|--------|
+| 方案 A（Page 级隔离） | 已实现 | **部分重构**（History 链路独立） |
+| `send_user_message` + `page_index` | 方案设计 | **History 模式弃用**，仅 Chat 模式保留 |
+| `PromptAssembler` CASE WHEN | 已实现 | **Chat 模式保留**，History 模式使用新 Assembler |
+| `new_message` 事件（History） | 方案设计 | **History 模式弃用** |
+| `sessions.is_deleted` 过滤 | 未涉及 | **新增需求** |
+| 完整 Prompt 日志 | 未涉及 | **新增需求** |
+| 前端常驻提示语 | 未涉及 | **新增需求** |
+
+---
+
+## 10. 风险与回退（更新）
+
+| 风险 | 缓解措施 |
+|------|----------|
+| `HistoryPromptAssembler` 过于简化，导致 Agent 回复质量下降 | 明确告知用户"历史模式"仅用于回顾/补充，不保证与当前会话完全一致的角色互动体验。如需要完整上下文，引导用户回到 Chat 模式 |
+| `send_history_message` 同步调用 LLM，群聊中多 Agent 时延迟较高 | 可考虑并行调用多个 Agent 的 LLM（`join_all`）。如延迟不可接受，再评估是否恢复 Scheduler 方案 |
+| 删除 `new_message` 监听后，History 模式无法实时感知其他用户/Agent 在当前 page 的操作 | 这是设计意图。History 模式是"单用户回顾/补充"场景，不支持多用户并发编辑同一历史 page。如需要，未来可添加轮询机制 |
+| `s.is_deleted = 0` 过滤影响 PromptAssembler 性能 | `sessions.session_id` 是主键，`is_deleted` 过滤不会阻止索引使用。如大规模数据下性能下降，可在 `sessions(is_deleted)` 上加索引 |
+
+---
+
+*文档版本：v2（2026-05-15）*
+*原始版本：v1（2026-05-14）*

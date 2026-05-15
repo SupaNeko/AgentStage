@@ -5,7 +5,7 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
-    import { Send, MessageSquare, User, Settings, Bot } from 'lucide-svelte';
+    import { Send, MessageSquare, User, Settings, Bot, Clock } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import type { GroupMember, SessionConfig } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
@@ -146,9 +146,45 @@
         const content = inputText.trim();
         const sessionId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : undefined;
-        logger.debug('[DEBUG ChatView.handleSend]', { sessionId, content });
+        logger.debug('[DEBUG ChatView.handleSend]', { sessionId, content, mode });
         if (!content || !sessionId) return;
 
+        // History 模式：使用独立的 send_history_message 命令，不走 Scheduler + new_message 事件
+        if (mode === 'history') {
+            if (pageIdx == null) return;
+            sending = true;
+            inputText = '';
+
+            // 乐观更新：立即在 UI 中显示用户消息
+            const optimisticMsg: import('$lib/types').Message = {
+                id: 'optimistic-' + Date.now(),
+                session_id: sessionId,
+                sender_type: 'user',
+                sender_id: 'user',
+                sender_name: '用户',
+                content,
+                created_at: Date.now(),
+                message_type: 'text',
+            };
+            messageStore.addMessage(optimisticMsg);
+
+            try {
+                await invoke('send_history_message', {
+                    req: { session_id: sessionId, content, page_index: pageIdx },
+                });
+                logger.debug('[DEBUG ChatView.handleSend] history mode success');
+                await messageStore.loadMessages(sessionId, pageIdx);
+            } catch (err) {
+                logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
+                // 发送失败时移除乐观消息
+                messageStore.messages = messageStore.messages.filter((m) => m.id !== optimisticMsg.id);
+            } finally {
+                sending = false;
+            }
+            return;
+        }
+
+        // Chat 模式：保持原有逻辑（Scheduler + new_message 事件）
         sending = true;
         inputText = '';
 
@@ -174,14 +210,14 @@
                 req.page_index = pageIdx;
             }
             await invoke('send_user_message', { req });
-            logger.debug('[DEBUG ChatView.handleSend] success');
+            logger.debug('[DEBUG ChatView.handleSend] chat mode success');
             if (pageIdx != null) {
                 await messageStore.loadMessages(sessionId, pageIdx);
             } else {
                 await messageStore.loadMessages(sessionId);
             }
         } catch (err) {
-            logger.debug('[DEBUG ChatView.handleSend] failed', { error: err });
+            logger.debug('[DEBUG ChatView.handleSend] chat mode failed', { error: err });
             // 发送失败时移除乐观消息
             messageStore.messages = messageStore.messages.filter((m) => m.id !== optimisticMsg.id);
         } finally {
@@ -200,79 +236,81 @@
     onMount(() => {
         const unlistenFns: (() => void)[] = [];
 
-        listen('new_message', (event) => {
-            const msg = event.payload as { session_id: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
-            logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50) });
-            const shouldAdd = mode === 'chat'
-                ? msg.session_id === sessionStore.selectedSessionId
-                : msg.session_id === historyStore.selectedSessionId && msg.page_index === historyStore.selectedPageIndex;
-            if (shouldAdd) {
-                // 去重：如果消息已存在，不重复添加
-                const exists = messageStore.messages.some((m) => m.id === msg.id);
-                if (!exists) {
-                    messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+        // Chat 模式才需要监听 new_message / agent_typing / agent_completed / agent_error
+        // History 模式：消息更新通过 send_history_message 的返回值同步获取
+        if (mode === 'chat') {
+            listen('new_message', (event) => {
+                const msg = event.payload as { session_id: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
+                logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50) });
+                const shouldAdd = msg.session_id === sessionStore.selectedSessionId;
+                if (shouldAdd) {
+                    // 去重：如果消息已存在，不重复添加
+                    const exists = messageStore.messages.some((m) => m.id === msg.id);
+                    if (!exists) {
+                        messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+                    }
                 }
-            }
-        }).then((fn) => unlistenFns.push(fn));
+            }).then((fn) => unlistenFns.push(fn));
 
-        listen('agent_typing', (event) => {
-            const payload = event.payload as { agent_id?: string };
-            logger.debug('[DEBUG ChatView.listen agent_typing]', { agentId: payload.agent_id });
-            if (payload.agent_id) {
-                const agentId = payload.agent_id;
-                const next = new Set(typingAgents);
-                next.add(agentId);
-                typingAgents = next;
-                // Defense: 5-minute timeout in case agent_completed is lost
-                const existing = typingTimeouts.get(agentId);
-                if (existing) clearTimeout(existing);
-                const t = setTimeout(() => {
-                    const n = new Set(typingAgents);
-                    n.delete(agentId);
-                    typingAgents = n;
+            listen('agent_typing', (event) => {
+                const payload = event.payload as { agent_id?: string };
+                logger.debug('[DEBUG ChatView.listen agent_typing]', { agentId: payload.agent_id });
+                if (payload.agent_id) {
+                    const agentId = payload.agent_id;
+                    const next = new Set(typingAgents);
+                    next.add(agentId);
+                    typingAgents = next;
+                    // Defense: 5-minute timeout in case agent_completed is lost
+                    const existing = typingTimeouts.get(agentId);
+                    if (existing) clearTimeout(existing);
+                    const t = setTimeout(() => {
+                        const n = new Set(typingAgents);
+                        n.delete(agentId);
+                        typingAgents = n;
+                        const nextTimeouts = new Map(typingTimeouts);
+                        nextTimeouts.delete(agentId);
+                        typingTimeouts = nextTimeouts;
+                    }, 5 * 60 * 1000);
                     const nextTimeouts = new Map(typingTimeouts);
-                    nextTimeouts.delete(agentId);
-                    typingTimeouts = nextTimeouts;
-                }, 5 * 60 * 1000);
-                const nextTimeouts = new Map(typingTimeouts);
-                nextTimeouts.set(agentId, t);
-                typingTimeouts = nextTimeouts;
-            }
-        }).then((fn) => unlistenFns.push(fn));
-
-        listen('agent_completed', (event) => {
-            const payload = event.payload as { agent_id?: string };
-            logger.debug('[DEBUG ChatView.listen agent_completed]', { agentId: payload.agent_id });
-            if (payload.agent_id) {
-                const next = new Set(typingAgents);
-                next.delete(payload.agent_id);
-                typingAgents = next;
-                const existing = typingTimeouts.get(payload.agent_id);
-                if (existing) {
-                    clearTimeout(existing);
-                    const nextTimeouts = new Map(typingTimeouts);
-                    nextTimeouts.delete(payload.agent_id);
+                    nextTimeouts.set(agentId, t);
                     typingTimeouts = nextTimeouts;
                 }
-            }
-        }).then((fn) => unlistenFns.push(fn));
+            }).then((fn) => unlistenFns.push(fn));
 
-        listen('agent_error', (event) => {
-            const payload = event.payload as { agent_id?: string; error?: string };
-            logger.debug('[DEBUG ChatView.listen agent_error]', { agentId: payload.agent_id });
-            if (payload.agent_id) {
-                const next = new Set(typingAgents);
-                next.delete(payload.agent_id);
-                typingAgents = next;
-                const existing = typingTimeouts.get(payload.agent_id);
-                if (existing) {
-                    clearTimeout(existing);
-                    const nextTimeouts = new Map(typingTimeouts);
-                    nextTimeouts.delete(payload.agent_id);
-                    typingTimeouts = nextTimeouts;
+            listen('agent_completed', (event) => {
+                const payload = event.payload as { agent_id?: string };
+                logger.debug('[DEBUG ChatView.listen agent_completed]', { agentId: payload.agent_id });
+                if (payload.agent_id) {
+                    const next = new Set(typingAgents);
+                    next.delete(payload.agent_id);
+                    typingAgents = next;
+                    const existing = typingTimeouts.get(payload.agent_id);
+                    if (existing) {
+                        clearTimeout(existing);
+                        const nextTimeouts = new Map(typingTimeouts);
+                        nextTimeouts.delete(payload.agent_id);
+                        typingTimeouts = nextTimeouts;
+                    }
                 }
-            }
-        }).then((fn) => unlistenFns.push(fn));
+            }).then((fn) => unlistenFns.push(fn));
+
+            listen('agent_error', (event) => {
+                const payload = event.payload as { agent_id?: string; error?: string };
+                logger.debug('[DEBUG ChatView.listen agent_error]', { agentId: payload.agent_id });
+                if (payload.agent_id) {
+                    const next = new Set(typingAgents);
+                    next.delete(payload.agent_id);
+                    typingAgents = next;
+                    const existing = typingTimeouts.get(payload.agent_id);
+                    if (existing) {
+                        clearTimeout(existing);
+                        const nextTimeouts = new Map(typingTimeouts);
+                        nextTimeouts.delete(payload.agent_id);
+                        typingTimeouts = nextTimeouts;
+                    }
+                }
+            }).then((fn) => unlistenFns.push(fn));
+        }
 
         function handleDocumentClick(e: MouseEvent) {
             if (settingsOpen) {
@@ -366,6 +404,14 @@
                 </h2>
             {/if}
         </header>
+
+        <!-- History mode banner -->
+        {#if mode === 'history'}
+            <div class="px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm flex items-center gap-2">
+                <Clock size={16} />
+                <span>当前处于<strong>历史会话</strong>模式。此处的对话仅基于当前会话的历史记录，不会影响其他会话，也不会触发跨会话的 Agent 互动。</span>
+            </div>
+        {/if}
 
         <!-- Message list -->
         {#if !selectedSession}

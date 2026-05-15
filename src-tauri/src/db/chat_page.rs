@@ -15,6 +15,12 @@ pub fn list_chat_pages(conn: &Connection, session_id: &str) -> Result<Vec<ChatPa
             GROUP BY session_id, page_index
         ) msg_stats ON cp.session_id = msg_stats.session_id AND cp.page_index = msg_stats.page_index
         WHERE cp.session_id = ?1
+          AND cp.page_index < (
+              SELECT COALESCE(current_chat_page, 0) FROM private_sessions WHERE session_id = ?1
+              UNION ALL
+              SELECT COALESCE(current_chat_page, 0) FROM group_sessions WHERE session_id = ?1
+              LIMIT 1
+          )
         ORDER BY cp.page_index DESC"
     )?;
     

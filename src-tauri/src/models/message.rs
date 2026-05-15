@@ -61,3 +61,10 @@ pub struct GetSessionMessagesRequest {
     pub offset: i32,
     pub page_index: Option<i32>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SendHistoryMessageRequest {
+    pub session_id: String,
+    pub content: String,
+    pub page_index: i32,
+}

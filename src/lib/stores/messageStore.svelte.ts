@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '$lib/logger';
+import { sessionStore } from '$lib/stores/sessionStore.svelte';
 import type { Message } from '$lib/types';
 
 export class MessageStore {
@@ -17,6 +18,17 @@ export class MessageStore {
             logger.debug('[DEBUG messageStore.loadMessages]', { sessionId, pageIndex, count: result.length });
             this.messages = result.reverse();
             this.currentSessionId = sessionId;
+
+            // 只有在加载当前 page（未指定 pageIndex）时才同步更新 sessionStore 预览，
+            // 避免 History 模式加载旧 page 时污染当前 page 的预览
+            if (pageIndex === undefined) {
+                const lastMsg = this.messages[this.messages.length - 1];
+                if (lastMsg && lastMsg.sender_type !== 'system') {
+                    sessionStore.updateSessionPreview(sessionId, lastMsg.content, lastMsg.created_at);
+                } else if (this.messages.length === 0) {
+                    sessionStore.updateSessionPreview(sessionId, '', 0);
+                }
+            }
         } catch (err) {
             logger.debug('[DEBUG messageStore.loadMessages] error', { sessionId, pageIndex, error: err });
             this.messages = [];

@@ -49,15 +49,19 @@ impl PromptAssembler {
                         COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
                         a.avatar_path as sender_avatar,
                         m.page_index
-                 FROM messages m
-                 JOIN (
-                     SELECT session_id, COALESCE(current_chat_page, 0) as page FROM private_sessions WHERE agent_id = ?1
-                     UNION
-                     SELECT gs.session_id, COALESCE(gs.current_chat_page, 0) as page 
-                     FROM group_sessions gs
-                     JOIN group_members gm ON gs.session_id = gm.session_id
-                     WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent'
-                  ) sp ON m.session_id = sp.session_id 
+                  FROM messages m
+                  JOIN (
+                      SELECT ps.session_id, COALESCE(ps.current_chat_page, 0) as page 
+                      FROM private_sessions ps
+                      JOIN sessions s ON ps.session_id = s.id
+                      WHERE ps.agent_id = ?1 AND s.is_deleted = 0
+                      UNION
+                      SELECT gs.session_id, COALESCE(gs.current_chat_page, 0) as page 
+                      FROM group_sessions gs
+                      JOIN group_members gm ON gs.session_id = gm.session_id
+                      JOIN sessions s ON gs.session_id = s.id
+                      WHERE gm.participant_id = ?1 AND gm.participant_type = 'agent' AND s.is_deleted = 0
+                   ) sp ON m.session_id = sp.session_id
                       AND m.page_index = CASE 
                           WHEN ?2 IS NOT NULL AND m.session_id = ?2 THEN ?3 
                           ELSE sp.page 
@@ -140,6 +144,13 @@ impl PromptAssembler {
         let prompt_with_vars = Self::apply_variables(&prompt, &agent.name);
 
         crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, total_chars={}", agent_id, prompt_with_vars.len()));
+        
+        // 记录完整 prompt 内容到日志（新增需求）
+        crate::logger::backend("INFO", &format!(
+            "[PromptAssembler] Full prompt for agent {} | trigger_session={:?} | trigger_page={:?} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
+            agent_id, trigger_session_id, trigger_page_index, prompt_with_vars.len(), prompt_with_vars
+        ));
+        
         Ok(prompt_with_vars)
     }
 
@@ -340,7 +351,7 @@ impl PromptAssembler {
         Ok(prompt_templates::UNKNOWN_SESSION.to_string())
     }
 
-    fn get_sender_name(
+    pub(crate) fn get_sender_name(
         conn: &Connection,
         sender_type: &str,
         sender_id: &str,
@@ -366,7 +377,7 @@ impl PromptAssembler {
         }
     }
 
-    fn format_time(timestamp_ms: i64) -> String {
+    pub(crate) fn format_time(timestamp_ms: i64) -> String {
         match Local.timestamp_millis_opt(timestamp_ms) {
             LocalResult::Single(dt) => dt.format("%H:%M").to_string(),
             _ => "??".to_string(),
@@ -415,6 +426,27 @@ mod tests {
         conn.execute(
             "INSERT INTO session_settings (session_id, history_limit, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
             (session_id, history_limit, 0i64),
+        ).unwrap();
+    }
+
+    fn insert_group_session(conn: &Connection, session_id: &str, name: &str, page: i32) {
+        conn.execute(
+            "INSERT INTO group_sessions (session_id, name, created_at, current_chat_page) VALUES (?1, ?2, ?3, ?4)",
+            (session_id, name, 0i64, page),
+        ).unwrap();
+    }
+
+    fn insert_group_member(conn: &Connection, session_id: &str, participant_id: &str, participant_type: &str) {
+        conn.execute(
+            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES (?1, ?2, ?3, ?4)",
+            (session_id, participant_id, participant_type, 0i64),
+        ).unwrap();
+    }
+
+    fn soft_delete_session(conn: &Connection, session_id: &str) {
+        conn.execute(
+            "UPDATE sessions SET is_deleted = 1 WHERE id = ?1",
+            [session_id],
         ).unwrap();
     }
 
@@ -575,5 +607,61 @@ mod tests {
         let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[]).unwrap();
         assert!(prompt.contains("Page1 message"), "Prompt should contain page 1 message");
         assert!(!prompt.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
+    }
+
+    #[test]
+    fn test_prompt_excludes_deleted_session_messages() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Test Agent", "A test persona");
+        
+        // Create active private session
+        insert_session(&conn, "sess_active", "private");
+        insert_private_session(&conn, "sess_active", "agent1", 0);
+        insert_session_settings(&conn, "sess_active", 50);
+        
+        let active_msg = Message {
+            id: "msg_active".to_string(),
+            session_id: "sess_active".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "Active session message".to_string(),
+            created_at: 1000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+            page_index: 0,
+        };
+        insert_message(&conn, &active_msg);
+        
+        // Create deleted group session that agent1 participates in
+        insert_session(&conn, "sess_deleted", "group");
+        insert_group_session(&conn, "sess_deleted", "Deleted Group", 0);
+        insert_group_member(&conn, "sess_deleted", "agent1", "agent");
+        insert_session_settings(&conn, "sess_deleted", 50);
+        soft_delete_session(&conn, "sess_deleted");
+        
+        let deleted_msg = Message {
+            id: "msg_deleted".to_string(),
+            session_id: "sess_deleted".to_string(),
+            sender_type: "user".to_string(),
+            sender_id: "user".to_string(),
+            content: "Deleted group message".to_string(),
+            created_at: 2000,
+            message_type: "text".to_string(),
+            tool_call_data: None,
+            generation_info: None,
+            is_deleted: false,
+            sender_name: "用户".to_string(),
+            sender_avatar: None,
+            page_index: 0,
+        };
+        insert_message(&conn, &deleted_msg);
+        
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        assert!(prompt.contains("Active session message"), "Prompt should contain active session message");
+        assert!(!prompt.contains("Deleted group message"), "Prompt should NOT contain deleted session message, but got:\n{}", prompt);
     }
 }

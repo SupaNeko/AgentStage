@@ -4,7 +4,8 @@ import { tick } from 'svelte';
 import ChatView from './ChatView.svelte';
 import { sessionStore } from '$lib/stores/sessionStore.svelte';
 import { messageStore } from '$lib/stores/messageStore.svelte';
-import type { Message, Session, SessionConfig } from '$lib/types';
+import { historyStore } from '$lib/stores/historyStore.svelte';
+import type { Message, Session, SessionConfig, ChatPage } from '$lib/types';
 
 const eventCallbacks = new Map<string, ((event: { payload: unknown }) => void)>();
 
@@ -26,6 +27,10 @@ describe('ChatView', () => {
         sessionStore.sessions = [];
         messageStore.messages = [];
         messageStore.currentSessionId = null;
+        historyStore.selectedSessionId = null;
+        historyStore.selectedPageIndex = null;
+        historyStore.chatPages = [];
+        historyStore.sessions = [];
         eventCallbacks.clear();
         vi.clearAllMocks();
         mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
@@ -34,6 +39,9 @@ describe('ChatView', () => {
             }
             if (cmd === 'send_user_message') {
                 return Promise.resolve(undefined);
+            }
+            if (cmd === 'send_history_message') {
+                return Promise.resolve([]);
             }
             if (cmd === 'get_session_config') {
                 const payload = args as { req?: { session_id?: string } };
@@ -47,6 +55,9 @@ describe('ChatView', () => {
                 } as SessionConfig);
             }
             if (cmd === 'get_group_members') {
+                return Promise.resolve([]);
+            }
+            if (cmd === 'list_chat_pages') {
                 return Promise.resolve([]);
             }
             return Promise.resolve(undefined);
@@ -525,5 +536,194 @@ describe('ChatView', () => {
         await tick();
 
         expect(screen.queryByText('正在输入中...')).not.toBeInTheDocument();
+    });
+
+    // History mode tests
+    it('calls send_history_message in history mode when sending a message', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 0, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+        await tick();
+
+        const textarea = screen.getByPlaceholderText('输入消息...');
+        (textarea as HTMLTextAreaElement).value = 'Hello history';
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        await tick();
+
+        // Find send button (the one with SVG that is not the settings button in header)
+        const buttons = screen.getAllByRole('button');
+        const sendBtn = buttons.find(b => b.querySelector('svg') && !b.hasAttribute('title'));
+        expect(sendBtn).toBeDefined();
+        sendBtn!.click();
+        await tick();
+
+        expect(mockInvoke).toHaveBeenCalledWith('send_history_message', {
+            req: { session_id: 's1', content: 'Hello history', page_index: 0 },
+        });
+    });
+
+    it('does not register event listeners in history mode', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 0, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+        await tick();
+
+        expect(eventCallbacks.has('new_message')).toBe(false);
+        expect(eventCallbacks.has('agent_typing')).toBe(false);
+        expect(eventCallbacks.has('agent_completed')).toBe(false);
+        expect(eventCallbacks.has('agent_error')).toBe(false);
+    });
+
+    it('shows history mode banner in history mode', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 0, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+        await tick();
+
+        expect(screen.getByText(/历史会话/)).toBeInTheDocument();
+    });
+
+    it('does not register event listeners in history mode', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 0, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+        await tick();
+
+        expect(eventCallbacks.has('new_message')).toBe(false);
+        expect(eventCallbacks.has('agent_typing')).toBe(false);
+        expect(eventCallbacks.has('agent_completed')).toBe(false);
+        expect(eventCallbacks.has('agent_error')).toBe(false);
+    });
+
+    it('shows history mode banner in history mode', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 0, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+        await tick();
+
+        expect(screen.getByText(/历史会话/)).toBeInTheDocument();
+    });
+
+    it('loads messages with page_index in history mode', async () => {
+        const session: Session = {
+            id: 's1',
+            session_type: 'private',
+            agent_name: 'Test Agent',
+            unread_count: 0,
+            last_message_at: null,
+            last_message_preview: null,
+        };
+
+        mockInvoke.mockImplementation((cmd: string) => {
+            if (cmd === 'get_session_messages') {
+                return Promise.resolve([
+                    {
+                        id: 'm1',
+                        session_id: 's1',
+                        sender_type: 'user',
+                        sender_id: 'u1',
+                        content: 'History msg',
+                        created_at: Date.now(),
+                        message_type: 'text',
+                        sender_name: 'User',
+                    },
+                ]);
+            }
+            if (cmd === 'list_chat_pages') {
+                return Promise.resolve([
+                    { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 1, created_at: 0, updated_at: 0 },
+                ] as ChatPage[]);
+            }
+            return Promise.resolve(undefined);
+        });
+
+        historyStore.sessions = [session];
+        historyStore.selectedSessionId = 's1';
+        historyStore.selectedPageIndex = 0;
+        historyStore.chatPages = [
+            { id: 'cp1', session_id: 's1', page_index: 0, name: '默认', is_active: true, message_count: 1, created_at: 0, updated_at: 0 },
+        ];
+
+        render(ChatView, { props: { mode: 'history' } });
+
+        await waitFor(() => {
+            expect(mockInvoke).toHaveBeenCalledWith('get_session_messages', {
+                req: { session_id: 's1', limit: 50, offset: 0, page_index: 0 },
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('History msg')).toBeInTheDocument();
+        });
     });
 });

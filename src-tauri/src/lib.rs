@@ -8,7 +8,7 @@ pub mod scheduler;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};
 use commands::log::log_frontend;
-use commands::message::{get_session_messages, send_user_message};
+use commands::message::{get_session_messages, send_user_message, send_history_message};
 use commands::session::{
     create_group_session, create_private_session, delete_session, get_group_members,
     get_session, list_sessions, get_session_config, update_session_config,
@@ -129,6 +129,7 @@ pub fn run() {
             remove_group_member,
             list_chat_pages,
             send_user_message,
+            send_history_message,
             get_session_messages,
             log_frontend,
             get_settings,
