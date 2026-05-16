@@ -45,12 +45,17 @@
                     last_message_at: msg.created_at || Date.now(),
                 };
             });
+            // 如果会话不存在（如 Agent-Agent 新建会话），刷新列表
+            const exists = sessionStore.sessions.some(s => s.id === msg.session_id);
+            if (!exists) {
+                sessionStore.loadSessions();
+            }
         }).then((fn) => unlistenFns.push(fn));
 
         listen('system_notice', (event) => {
             const payload = event.payload as { content?: string };
             logger.debug('[DEBUG App.listen system_notice]', { content: payload.content });
-            toastStore.show(payload.content || '系统通知', 'info');
+            toastStore.show(payload.content || '系统通知', 'info', true, 10000);
         }).then((fn) => unlistenFns.push(fn));
 
         listen('agent_error', (event) => {
@@ -102,17 +107,24 @@
 <div class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
     {#each toastStore.items as toast (toast.id)}
         <div
-            class="pointer-events-auto px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-all animate-in slide-in-from-top-2 {toast.type === 'error' ? 'bg-red-500 text-white' : toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-surface text-text border border-border'}"
+            class="pointer-events-auto relative overflow-hidden rounded-lg shadow-lg text-sm font-medium flex flex-col transition-all animate-in slide-in-from-top-2 {toast.type === 'error' ? 'bg-red-500 text-white' : toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-surface text-text border border-border'}"
         >
-            {#if toast.type === 'error'}
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
-            {:else if toast.type === 'success'}
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <div class="flex items-center gap-2 px-4 py-2.5">
+                {#if toast.type === 'error'}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
+                {:else if toast.type === 'success'}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                {/if}
+                <span>{toast.message}</span>
+                <button onclick={() => toastStore.remove(toast.id)} class="ml-1 opacity-70 hover:opacity-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            {#if toast.autoDismiss}
+                <div class="h-0.5 w-full bg-gray-200/30">
+                    <div class="h-full {toast.type === 'error' ? 'bg-red-300' : toast.type === 'success' ? 'bg-green-300' : 'bg-blue-400'} transition-all duration-100 ease-linear" style="width: {toast.progress}%"></div>
+                </div>
             {/if}
-            <span>{toast.message}</span>
-            <button onclick={() => toastStore.remove(toast.id)} class="ml-1 opacity-70 hover:opacity-100">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
         </div>
     {/each}
 </div>

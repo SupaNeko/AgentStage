@@ -1,5 +1,5 @@
 class AppState {
-    currentView = $state<'agents' | 'chat' | 'history'>('agents');
+    currentView = $state<'agents' | 'chat' | 'history'>('chat');
     selectedAgentId = $state<string | null>(null);
     selectedSessionId = $state<string | null>(null);
     settingsOpen = $state(false);
