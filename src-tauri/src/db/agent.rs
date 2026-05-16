@@ -8,7 +8,7 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
         id: row.get(0)?,
         name: row.get(1)?,
-        avatar_path: row.get(2)?,
+        avatar_path: crate::db::resolve_avatar_path(row.get(2)?),
         detailed_persona: row.get(3)?,
         simplified_persona: row.get(4)?,
         personality: row.get(5)?,

@@ -29,7 +29,7 @@ fn resolve_participant(
             participant_type: participant_type.to_string(),
             participant_id: participant_id.to_string(),
             name,
-            avatar_path,
+            avatar_path: crate::db::resolve_avatar_path(avatar_path),
         })
     }
 }
@@ -88,7 +88,7 @@ fn build_session_response_from_row(row: &rusqlite::Row) -> Result<SessionRespons
         unread_count: row.get(4)?,
         participants: Vec::new(),
         group_name: row.get(7)?,
-        group_avatar: row.get(8)?,
+        group_avatar: crate::db::resolve_avatar_path(row.get(8)?),
         mute_enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0),
         current_chat_page: row.get(5)?,
         is_dissolved: row.get::<_, Option<i32>>(9)?.map(|v| v != 0).unwrap_or(false),
@@ -329,7 +329,7 @@ pub fn get_group_members(
             participant_type: row.get(0)?,
             participant_id: row.get(1)?,
             name: row.get(2)?,
-            avatar_path: row.get(3)?,
+            avatar_path: crate::db::resolve_avatar_path(row.get(3)?),
         })
     })?;
     rows.collect()

@@ -23,7 +23,7 @@ use tauri::Manager;
 
 /// 获取应用数据目录
 /// 所有数据（数据库、日志、WebView2）统一放在程序目录下，不在任何用户目录放东西
-fn get_data_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+pub fn get_data_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     let exe_path = std::env::current_exe()?;
     let exe_dir = exe_path.parent().ok_or("Failed to get exe directory")?;
 

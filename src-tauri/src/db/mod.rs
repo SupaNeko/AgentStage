@@ -9,3 +9,11 @@ pub mod session;
 pub mod message;
 pub mod settings;
 pub mod trigger_state;
+
+/// Resolve a relative avatar path to an absolute path using the data directory
+pub fn resolve_avatar_path(relative_path: Option<String>) -> Option<String> {
+    let relative = relative_path?;
+    let data_dir = crate::get_data_dir().ok()?;
+    let absolute = data_dir.join(&relative);
+    Some(absolute.to_string_lossy().to_string())
+}
