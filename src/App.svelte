@@ -21,20 +21,30 @@
         const unlistenFns: (() => void)[] = [];
 
         listen('new_message', (event) => {
-            const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string };
-            const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
-            logger.debug('[DEBUG App.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), isCurrentSession });
+            const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string; page_index?: number };
+            logger.debug('[DEBUG App.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), pageIndex: msg.page_index });
             // 更新会话列表（未读数、预览）
-            sessionStore.sessions = sessionStore.sessions.map((s) =>
-                s.id === msg.session_id
-                    ? {
-                            ...s,
-                            unread_count: isCurrentSession ? s.unread_count : s.unread_count + 1,
-                            last_message_preview: msg.content || s.last_message_preview,
-                            last_message_at: msg.created_at || Date.now(),
-                        }
-                    : s
-            );
+            sessionStore.sessions = sessionStore.sessions.map((s) => {
+                if (s.id !== msg.session_id) return s;
+                
+                // 未读语义：当前页面有新消息
+                const isCurrentPage = msg.page_index !== undefined 
+                                      && msg.page_index === s.current_chat_page;
+                
+                // 当前会话且当前页面 = 用户正在看，不增加未读
+                const isCurrentlyViewing = msg.session_id === sessionStore.selectedSessionId
+                                            && appState.currentView === 'chat'
+                                            && isCurrentPage;
+                
+                return {
+                    ...s,
+                    unread_count: (isCurrentPage && !isCurrentlyViewing) 
+                        ? s.unread_count + 1 
+                        : s.unread_count,
+                    last_message_preview: msg.content || s.last_message_preview,
+                    last_message_at: msg.created_at || Date.now(),
+                };
+            });
         }).then((fn) => unlistenFns.push(fn));
 
         listen('system_notice', (event) => {
