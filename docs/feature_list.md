@@ -74,11 +74,11 @@
 | CHAT-17 | LLM 错误提示优化 | LLM 调用失败时不使用 alert 弹窗，改用可关闭的 Toast；取消重试机制避免多次报错 | P1 | ✅ 已实现 | Toast 通知替代 alert，错误保留便于调试 |
 | CHAT-18 | 重试机制控制 | 移除 LLM 的 3 次重试逻辑，失败一次即停止并提示用户 | P1 | ✅ 已实现 | 减少 API 调用成本和用户干扰 |
 | CHAT-19 | SSE 服务端事件推送 | 调度器通过 Server-Sent Events 向前端推送 `agent_typing`、`new_message`、`agent_completed`、`agent_error` | P0 | ✅ 已实现 | Tauri v2 Event 机制 |
-| CHAT-20 | 前端 Toast 通知 | 全局 Toast 组件，支持成功/错误/信息提示，自动消失 | P1 | ✅ 已实现 | 替代原生 alert |
+| CHAT-20 | 前端 Toast 通知 | 全局 Toast 组件，支持成功/错误/信息提示；系统提示自动消失（带倒计时进度条），报错信息需手动关闭 | P1 | ✅ 已实现 | 替代原生 alert；系统提示 10s 自动消失，报错不自动消失 |
 | CHAT-21 | 会话去重 | 创建私聊时自动检测是否已存在同角色会话，避免重复创建 | P0 | ✅ 已实现 | 返回已有会话而非新建 |
 | CHAT-22 | 消息发送者信息展示 | 后端 JOIN `agents` 表获取 `sender_name` 和 `sender_avatar`，群聊中正确显示发言角色名称和头像 | P0 | ✅ 已实现 | 避免 N+1 查询 |
 | CHAT-23 | 扩展 Tool Calling 能力 | 为角色提供除 `send_message` 外的更多工具，如文件读取、网页搜索、本地命令执行等，实现本地助手能力 | P2 | ⬜ 待实现 | 需评估安全性和权限控制 |
-| CHAT-24 | 聊天窗口滚动位置控制 | 进入聊天窗口时自动滚动到最新消息位置；用户发送消息后自动滚动到底部；收到新消息时不自动滚动 | P2 | ✅ 已实现 | Batch 2 已实现 |
+| CHAT-24 | 聊天窗口滚动位置控制 | 进入聊天窗口时自动滚动到最新消息位置；批量加载消息时自动滚动到底部；单条新消息到达时，仅在用户已在底部时自动滚动 | P2 | ✅ 已实现 | 新增 `isNearBottom` 判断，避免打断用户浏览历史 |
 | CHAT-25 | 消息上限重置按钮 | 消息达到上限后，在输入框上方显示"重置限制"按钮；点击后计数归0，解除冻结，自动触发有未读消息的角色回复（遵循CD） | P1 | ✅ 已实现 | 重置后无需用户发新消息即可恢复对话 |
 | CHAT-27 | Session Inbox 架构重构 | 用按 session×agent 的未读消息层替代 pending_queue，支持上限冻结持久化；上限到达后新消息不再进入未读队列，重置后恢复 | P0 | ✅ 已实现 | Migration V6 + scheduler 重构 + frozen_states + agent_unread_queue |
 | CHAT-28 | Prompt 模板常量化 | 将 System Prompt、Layer 标题、引导语等所有硬编码提示词提取到独立文件（`prompt_templates.rs`），方便后续修改 | P1 | ✅ 已实现 | PromptAssembler 已去掉 Layer 5 改为单层时序排序，全部模板在 prompt_templates.rs |
@@ -87,6 +87,8 @@
 | CHAT-30 | 提示词视角化名称 | PromptAssembler 中私聊名称从角色视角显示为"和{对方}的私聊"；用户人设运行时替换 | P1 | ✅ 已实现 | get_user_persona() + get_session_name() 视角化改造；Layer 3 用户条目 relation 改为"好友" |
 | CHAT-31 | 未读消息计数与会话隔离 | messageStore 按会话隔离存储；未读计数-badge；SessionList 点击清除未读 | P1 | ✅ 已实现 | Map<string, Message[]> 重构 + incrementUnreadCount / clearUnreadCount |
 | CHAT-32 | 历史会话模式 | 支持查看历史 chat_page 的聊天记录，独立 HistoryPromptAssembler  bypass Scheduler | P1 | ✅ 已实现 | HistorySessionList + ChatView mode="history" + send_history_message 命令 |
+| CHAT-33 | Agent-to-Agent 私聊 | 角色可自主通过 `start_private_chat` Tool 开启与其他角色的私聊并发送第一句话；用户可旁观所有角色间私聊；会话列表和标题显示双头像；消息固定站位；用户不可输入 | P0 | ✅ 已实现 | `start_private_chat` Tool + symmetric private session + 双头像 UI + 禁用输入 + 自动互加好友 |
+| CHAT-34 | 历史消息不污染当前预览 | 历史会话模式中发送的消息不更新 `sessions.last_message_preview`，避免当前 page 为空时预览显示历史消息 | P1 | ✅ 已实现 | `send_history_message` 不更新 preview；前端历史模式不移除 `updateSessionPreview` |
 
 ---
 
@@ -154,14 +156,16 @@
 - [x] 乐观更新 → 用户消息立即显示，失败自动移除（CHAT-15）
 - [x] 消息发送者信息 → 后端 JOIN 查询，群聊正确显示头像和名称（CHAT-22）
 - [x] SSE 事件推送 → typing / new_message / completed / error（CHAT-19）
-- [x] Toast 通知 → 替代 alert（CHAT-20）
+- [x] Toast 通知 → 替代 alert；系统提示带倒计时自动消失，报错手动关闭（CHAT-20）
 - [x] 会话去重 → 同角色私聊自动返回已有会话（CHAT-21）
 - [x] 聊天记录分页加载 → 已实现（CHAT-04）
+- [x] Agent-to-Agent 私聊 → `start_private_chat` Tool + 双头像 + 固定站位 + 禁用输入（CHAT-33）
+- [x] 历史消息不污染预览 → `send_history_message` 不更新 preview（CHAT-34）
 - [ ] 消息复制/重新生成/引用 → 待实现（CHAT-07~08）
 - [ ] 上下文查看 → 待实现（CHAT-09）
 - [ ] 扩展 Tool Calling → 待实现（CHAT-23）
-- [x] 聊天窗口滚动位置控制 → 已实现（CHAT-24）
-- [x] 消息上限重置按钮 → 已实现（CHAT-25）
+- [x] 聊天窗口滚动位置控制 → 仅在底部时自动滚动（CHAT-24）
+- [x] 消息上限重置按钮 → 已实现，乐观更新立即消失（CHAT-25）
 - [x] 模型调用详细日志 → 已实现（CHAT-26）
 - [x] Session Inbox 架构重构 → 已实现（CHAT-27）
 - [x] Prompt 模板常量化 → 已实现（CHAT-28）
@@ -187,6 +191,8 @@
 - [x] **Bug-重置后预览未清空**：已修复 — `resetSession` 成功后手动清空 `last_message_preview`（Batch 1）
 - [x] **Bug-正在输入不消失**：已修复 — `onMount` 闭包改用 `$state` 变量 `currentAgentId` 做比较（Batch 1）
 - [x] **优化-正在输入缺头像**：已修复 — typing indicator 添加角色头像（Batch 1）
+- [x] **Bug-消息发送人显示未知**：已修复 — `get_message_by_id` 改用 JOIN agents 表获取 `sender_name`（Agent-Agent 私聊）
+- [x] **Bug-历史消息污染当前预览**：已修复 — `send_history_message` 不再更新 `last_message_preview`（CHAT-34）
 
 ---
 
@@ -209,7 +215,13 @@
    - 群聊消息上限、简易人设同步、可见消息历史维护
    - **待完善**：会话配置面板（禁言/消息限制/成员管理）、群聊解散
 
-4. **V1.1（待排期）**
+4. **阶段四：Agent-to-Agent 私聊（已完成）**
+   - `start_private_chat` Tool：角色自主开启与其他角色的私聊
+   - Symmetric private session 支持 Agent-Agent
+   - 用户视角旁观所有角色间私聊（双头像、固定站位、禁用输入）
+   - 自动互加好友、消息上限、历史提示条数、重置会话均支持
+
+5. **V1.1（待排期）**
    - 会话管理增强：配置面板、置顶、归档、搜索、续开、解散群聊
    - API 连通性测试、头像上传、API 配置向导（AGT-12）
    - AI 辅助生成人设（AGT-13）、角色好友关系管理（AGT-14）
@@ -217,7 +229,7 @@
    - 消息重新生成、上下文查看、主题切换、聊天记录分页加载（CHAT-04）
    - 安装包构建（APP-01）、数据备份恢复（APP-04）
 
-5. **V2.0（待排期）**
+6. **V2.0（待排期）**
    - 用户角色扮演系统完整版（USR-01~04）
    - 扩展 Tool Calling（文件读取、网页搜索等本地助手能力）
    - 图片/文件消息支持
@@ -225,6 +237,10 @@
 
 ---
 
-*文档版本：V1.8*  
+*文档版本：V1.9*  
 *编写日期：2026-05-16*  
-*更新说明：修正 CHAT-04/24/26/27/28 状态为已实现；新增 CHAT-29~32（私聊对称重构、提示词视角化、未读计数、历史会话模式）；新增 APP-08（数据库初始化优化）；USR-01 改为部分实现；USR-03 改为已实现；更新完整性检查清单*
+*更新说明：
+- 新增 CHAT-33（Agent-to-Agent 私聊）、CHAT-34（历史消息不污染预览）
+- 更新 CHAT-20（Toast 系统提示自动消失 + 进度条）、CHAT-24（仅在底部时自动滚动）
+- 新增阶段四：Agent-to-Agent 私聊已完成
+- 更新完整性检查清单和已知问题列表*

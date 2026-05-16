@@ -40,4 +40,6 @@ npm-debug.log*
 # Git worktrees
 /.worktrees/
 
+# docs
 docs/reference.md
+docs/superpowers/uncertainties/
