@@ -5,6 +5,7 @@
     import { formatTime } from '$lib/utils';
     import { Search, MessageSquare, Plus } from 'lucide-svelte';
     import CreateGroupModal from './CreateGroupModal.svelte';
+    import type { Session } from '$lib/types';
 
     let showCreateGroup = $state(false);
 
@@ -16,6 +17,37 @@
         sessionStore.selectSession(sessionId);
         sessionStore.clearUnreadCount(sessionId);
         appState.switchView('chat');
+    }
+
+    function getSessionDisplay(session: Session) {
+        const userParticipant = session.participants.find(p => p.participant_type === 'user');
+        const agentParticipants = session.participants.filter(p => p.participant_type === 'agent');
+
+        if (session.session_type === 'group') {
+            return {
+                avatar: session.group_avatar || null,
+                agents: [] as typeof agentParticipants,
+                name: session.group_name || '群聊',
+                isAgentAgent: false,
+            };
+        }
+
+        if (userParticipant) {
+            const agent = agentParticipants[0];
+            return {
+                avatar: agent?.avatar_path || null,
+                agents: [] as typeof agentParticipants,
+                name: agent?.name || '未命名',
+                isAgentAgent: false,
+            };
+        }
+
+        return {
+            avatar: null as string | null,
+            agents: agentParticipants,
+            name: `${agentParticipants[0]?.name || 'Agent1'}-${agentParticipants[1]?.name || 'Agent2'}`,
+            isAgentAgent: true,
+        };
     }
 </script>
 
@@ -51,16 +83,40 @@
         {:else}
             <div class="divide-y divide-border">
                 {#each sessionStore.sessions as session (session.id)}
+                    {@const display = getSessionDisplay(session)}
                     <button
                         class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {sessionStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                         onclick={() => handleSessionClick(session.id)}
                     >
                         <!-- Avatar -->
                         <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
-                            {#if session.agent_avatar || session.group_avatar}
+                            {#if display.isAgentAgent && display.agents.length >= 2}
+                                <div class="relative w-full h-full">
+                                    <!-- 左半边头像 -->
+                                    <div class="absolute left-0 top-0 w-1/2 h-full overflow-hidden">
+                                        {#if display.agents[0]?.avatar_path}
+                                            <img src={display.agents[0].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
+                                        {:else}
+                                            <div class="w-10 h-10 bg-primary/20 flex items-center justify-center text-primary text-xs font-bold" style="padding-right: 0.5rem;">
+                                                {display.agents[0]?.name?.charAt(0) || 'A'}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                    <!-- 右半边头像 -->
+                                    <div class="absolute right-0 top-0 w-1/2 h-full overflow-hidden border-l-2 border-white">
+                                        {#if display.agents[1]?.avatar_path}
+                                            <img src={display.agents[1].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
+                                        {:else}
+                                            <div class="w-10 h-10 bg-secondary/20 flex items-center justify-center text-secondary text-xs font-bold" style="padding-left: 0.5rem;">
+                                                {display.agents[1]?.name?.charAt(0) || 'B'}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                </div>
+                            {:else if display.avatar}
                                 <img
-                                    src={session.agent_avatar || session.group_avatar}
-                                    alt={session.agent_name || session.group_name || '会话'}
+                                    src={display.avatar}
+                                    alt={display.name}
                                     class="w-full h-full object-cover"
                                 />
                             {:else}
@@ -72,7 +128,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between">
                                 <h3 class="font-medium text-sm text-text truncate">
-                                    {session.agent_name || session.group_name || '未命名会话'}
+                                    {display.name}
                                 </h3>
                                 {#if session.last_message_at}
                                     <span class="text-xs text-text-secondary shrink-0 ml-2">

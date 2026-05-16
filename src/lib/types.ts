@@ -25,17 +25,22 @@ export interface Agent {
     updated_at: number;
 }
 
+export interface SessionParticipant {
+    participant_type: 'user' | 'agent';
+    participant_id: string;
+    name: string;
+    avatar_path: string | null;
+}
+
 export interface Session {
     id: string;
     session_type: string;
+    participants: SessionParticipant[];
+    group_name?: string;
+    group_avatar?: string | null;
     last_message_at: number | null;
     last_message_preview: string | null;
     unread_count: number;
-    agent_id?: string;
-    agent_name?: string;
-    agent_avatar?: string;
-    group_name?: string;
-    group_avatar?: string;
     mute_enabled?: boolean;
     current_chat_page?: number;
 }

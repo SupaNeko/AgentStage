@@ -8,6 +8,21 @@ vi.mock('$lib/logger', () => ({ logger: { debug: vi.fn(), error: vi.fn() } }));
 
 const mockInvoke = vi.mocked(invoke);
 
+function makeSession(overrides: Partial<Session> = {}): Session {
+    return {
+        id: '1',
+        session_type: 'single',
+        last_message_at: null,
+        last_message_preview: null,
+        unread_count: 0,
+        participants: [
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+        ],
+        ...overrides,
+    };
+}
+
 describe('SessionStore', () => {
     let store: SessionStore;
 
@@ -16,37 +31,19 @@ describe('SessionStore', () => {
     });
 
     it('adds a session to the array', () => {
-        const session: Session = {
-            id: '1',
-            session_type: 'single',
-            last_message_at: null,
-            last_message_preview: null,
-            unread_count: 0,
-            agent_name: 'Test Agent',
-        };
+        const session = makeSession();
 
         store.addSession(session);
 
         expect(store.sessions).toHaveLength(1);
         expect(store.sessions[0].id).toBe('1');
-        expect(store.sessions[0].agent_name).toBe('Test Agent');
+        const agentParticipant = store.sessions[0].participants.find(p => p.participant_type === 'agent');
+        expect(agentParticipant?.name).toBe('Test Agent');
     });
 
     it('prepends new sessions', () => {
-        const session1: Session = {
-            id: '1',
-            session_type: 'single',
-            last_message_at: null,
-            last_message_preview: null,
-            unread_count: 0,
-        };
-        const session2: Session = {
-            id: '2',
-            session_type: 'single',
-            last_message_at: null,
-            last_message_preview: null,
-            unread_count: 0,
-        };
+        const session1 = makeSession({ id: '1' });
+        const session2 = makeSession({ id: '2' });
 
         store.addSession(session1);
         store.addSession(session2);
@@ -72,13 +69,7 @@ describe('SessionStore', () => {
     });
 
     it('updates preview and time via updateSessionPreview', () => {
-        const session: Session = {
-            id: '1',
-            session_type: 'single',
-            last_message_at: 1000,
-            last_message_preview: 'Old preview',
-            unread_count: 0,
-        };
+        const session = makeSession({ id: '1', last_message_at: 1000, last_message_preview: 'Old preview' });
 
         store.addSession(session);
         store.updateSessionPreview('1', 'New preview', 2000);
@@ -90,20 +81,8 @@ describe('SessionStore', () => {
     });
 
     it('does not affect other sessions when updating preview', () => {
-        const session1: Session = {
-            id: '1',
-            session_type: 'single',
-            last_message_at: 1000,
-            last_message_preview: 'Preview 1',
-            unread_count: 0,
-        };
-        const session2: Session = {
-            id: '2',
-            session_type: 'single',
-            last_message_at: 2000,
-            last_message_preview: 'Preview 2',
-            unread_count: 0,
-        };
+        const session1 = makeSession({ id: '1', last_message_at: 1000, last_message_preview: 'Preview 1' });
+        const session2 = makeSession({ id: '2', last_message_at: 2000, last_message_preview: 'Preview 2' });
 
         store.addSession(session1);
         store.addSession(session2);
@@ -115,13 +94,7 @@ describe('SessionStore', () => {
     });
 
     it('clears last_message_preview after resetSession', async () => {
-        const session: Session = {
-            id: '1',
-            session_type: 'single',
-            last_message_at: 1000,
-            last_message_preview: 'Old message',
-            unread_count: 0,
-        };
+        const session = makeSession({ id: '1', last_message_at: 1000, last_message_preview: 'Old message' });
 
         mockInvoke.mockImplementation(async (cmd: string) => {
             if (cmd === 'reset_session') {

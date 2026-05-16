@@ -5,6 +5,21 @@ import SessionList from './SessionList.svelte';
 import { sessionStore } from '$lib/stores/sessionStore.svelte';
 import type { Session } from '$lib/types';
 
+function makeSession(overrides: Partial<Session> = {}): Session {
+    return {
+        id: 's1',
+        session_type: 'single',
+        last_message_at: null,
+        last_message_preview: null,
+        unread_count: 0,
+        participants: [
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+        ],
+        ...overrides,
+    };
+}
+
 describe('SessionList', () => {
     beforeEach(() => {
         sessionStore.sessions = [];
@@ -27,7 +42,10 @@ describe('SessionList', () => {
             last_message_at: Date.now(),
             last_message_preview: 'Hello there',
             unread_count: 2,
-            agent_name: 'Agent One',
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null },
+            ],
         };
         const session2: Session = {
             id: 's2',
@@ -35,7 +53,10 @@ describe('SessionList', () => {
             last_message_at: Date.now(),
             last_message_preview: 'General Kenobi',
             unread_count: 0,
-            agent_name: 'Agent Two',
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null },
+            ],
         };
 
         sessionStore.sessions = [session1, session2];
@@ -56,7 +77,10 @@ describe('SessionList', () => {
             last_message_at: Date.now(),
             last_message_preview: 'Click me',
             unread_count: 1,
-            agent_name: 'Clickable Agent',
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Clickable Agent', avatar_path: null },
+            ],
         };
 
         sessionStore.sessions = [session];
@@ -79,7 +103,10 @@ describe('SessionList', () => {
             last_message_at: Date.now(),
             last_message_preview: 'New message',
             unread_count: 5,
-            agent_name: 'Unread Agent',
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Unread Agent', avatar_path: null },
+            ],
         };
 
         sessionStore.sessions = [session];
@@ -97,7 +124,10 @@ describe('SessionList', () => {
             last_message_at: Date.now(),
             last_message_preview: 'Read message',
             unread_count: 0,
-            agent_name: 'Read Agent',
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Read Agent', avatar_path: null },
+            ],
         };
 
         sessionStore.sessions = [session];
