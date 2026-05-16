@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::agent::{Agent, CreateAgentRequest, UpdateAgentRequest};
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, api_key_encrypted, is_deleted, deleted_at, created_at, updated_at";
+const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, api_key_encrypted, thinking_mode, is_deleted, deleted_at, created_at, updated_at";
 
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
@@ -26,10 +26,11 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
         presence_penalty: row.get(17)?,
         frequency_penalty: row.get(18)?,
         api_key_encrypted: row.get(19)?,
-        is_deleted: row.get::<_, i32>(20)? != 0,
-        deleted_at: row.get(21)?,
-        created_at: row.get(22)?,
-        updated_at: row.get(23)?,
+        thinking_mode: row.get::<_, i32>(20)? != 0,
+        is_deleted: row.get::<_, i32>(21)? != 0,
+        deleted_at: row.get(22)?,
+        created_at: row.get(23)?,
+        updated_at: row.get(24)?,
     })
 }
 
@@ -43,13 +44,13 @@ pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
         r#"INSERT INTO agents (
             id, name, avatar_path, detailed_persona, simplified_persona,
             personality, scenario, model_provider, model_name, base_url,
-            temperature, max_tokens, api_key_encrypted, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"#,
+            temperature, max_tokens, api_key_encrypted, thinking_mode, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"#,
         (
             &id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature.unwrap_or(0.7), req.max_tokens.unwrap_or(2048),
-            &api_key_encrypted, now, now,
+            &api_key_encrypted, req.thinking_mode.unwrap_or(false) as i32, now, now,
         ),
     )?;
     
@@ -93,13 +94,15 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
             temperature = COALESCE(?11, temperature),
             max_tokens = COALESCE(?12, max_tokens),
             api_key_encrypted = COALESCE(?13, api_key_encrypted),
-            updated_at = ?14
+            thinking_mode = COALESCE(?14, thinking_mode),
+            updated_at = ?15
         WHERE id = ?1 AND is_deleted = 0"#,
         (
             &req.id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature, req.max_tokens,
             api_key_encrypted,
+            req.thinking_mode.map(|v| v as i32),
             now,
         ),
     )?;

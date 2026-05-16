@@ -43,6 +43,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "private_session_symmetric",
         sql: super::schema::MIGRATION_V7,
     },
+    Migration {
+        version: 8,
+        name: "agent_thinking_mode",
+        sql: super::schema::MIGRATION_V8,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {

@@ -395,3 +395,8 @@ ALTER TABLE private_sessions_new RENAME TO private_sessions;
 CREATE INDEX idx_private_sessions_p1 ON private_sessions(participant_1_type, participant_1_id);
 CREATE INDEX idx_private_sessions_p2 ON private_sessions(participant_2_type, participant_2_id);
 "#;
+
+pub const MIGRATION_V8: &str = r#"
+-- V8: agents 表添加 thinking_mode 字段
+ALTER TABLE agents ADD COLUMN thinking_mode INTEGER DEFAULT 0 CHECK(thinking_mode IN (0, 1));
+"#;

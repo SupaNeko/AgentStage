@@ -18,6 +18,7 @@ export interface Agent {
     top_p: number;
     presence_penalty: number;
     frequency_penalty: number;
+    thinking_mode?: boolean;
     is_deleted: boolean;
     deleted_at: number | null;
     created_at: number;

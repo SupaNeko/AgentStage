@@ -35,6 +35,7 @@
                 base_url: form.base_url || null,
                 temperature: form.temperature,
                 max_tokens: form.max_tokens,
+                thinking_mode: form.thinking_mode,
             };
             await invoke('create_agent', { req });
             open = false;

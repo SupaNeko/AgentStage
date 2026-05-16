@@ -23,6 +23,7 @@
         api_key: '',
         temperature: 0.7,
         max_tokens: 2048,
+        thinking_mode: false,
     });
 
     async function loadAgent(id: string) {
@@ -44,6 +45,7 @@
                     api_key: '', // Don't populate encrypted key
                     temperature: result.temperature,
                     max_tokens: result.max_tokens,
+                    thinking_mode: result.thinking_mode ?? false,
                 };
             }
         } catch (err) {
@@ -71,6 +73,7 @@
                 base_url: form.base_url || null,
                 temperature: form.temperature,
                 max_tokens: form.max_tokens,
+                thinking_mode: form.thinking_mode,
             };
             if (form.api_key.trim()) {
                 updateReq.api_key = form.api_key;
@@ -251,6 +254,11 @@
                             <label class="block text-sm font-medium mb-1">Max Tokens</label>
                             <input type="number" bind:value={form.max_tokens} min={1} max={32768}
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                        </div>
+                        <div class="col-span-2 flex items-center gap-2">
+                            <input id="ad-thinking" type="checkbox" bind:checked={form.thinking_mode}
+                                class="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
+                            <label for="ad-thinking" class="text-sm">启用思考模式（如模型支持）</label>
                         </div>
                     </div>
                 </div>
