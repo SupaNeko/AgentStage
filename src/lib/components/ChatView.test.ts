@@ -228,7 +228,7 @@ describe('ChatView', () => {
         expect(typingIndicator).toBeInTheDocument();
         const avatarImg = typingIndicator.querySelector('img');
         expect(avatarImg).not.toBeNull();
-        expect(avatarImg).toHaveAttribute('src', '/avatar.png');
+        expect(avatarImg).toHaveAttribute('src', 'http://localhost:3000/@fs//avatar.png');
         expect(avatarImg).toHaveAttribute('alt', 'Test Agent');
     });
 

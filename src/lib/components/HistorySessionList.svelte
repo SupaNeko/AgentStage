@@ -65,6 +65,7 @@
                 agents: [] as typeof agentParticipants,
                 name: session.group_name || '群聊',
                 isAgentAgent: false,
+                isDeleted: false,
             };
         }
 
@@ -75,6 +76,7 @@
                 agents: [] as typeof agentParticipants,
                 name: agent?.name || '未命名',
                 isAgentAgent: false,
+                isDeleted: agent?.is_deleted || false,
             };
         }
 
@@ -83,6 +85,7 @@
             agents: agentParticipants,
             name: `${agentParticipants[0]?.name || 'Agent1'}-${agentParticipants[1]?.name || 'Agent2'}`,
             isAgentAgent: true,
+            isDeleted: false,
         };
     }
 </script>
@@ -147,9 +150,14 @@
                                     <MessageSquare size={20} />
                                 {/if}
                             </div>
-                            <div class="min-w-0 flex-1">
+                                <div class="min-w-0 flex-1">
                                 <div class="flex items-center justify-between">
-                                    <h3 class="font-medium text-sm truncate">{display.name}</h3>
+                                    <h3 class="font-medium text-sm truncate">
+                                        {display.name}
+                                        {#if display.isDeleted}
+                                            <span class="text-xs text-text-secondary ml-1">(已删除)</span>
+                                        {/if}
+                                    </h3>
                                     {#if session.last_message_at}
                                         <span class="text-xs text-text-secondary shrink-0 ml-2">{formatTime(session.last_message_at)}</span>
                                     {/if}

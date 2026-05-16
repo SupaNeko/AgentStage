@@ -13,16 +13,17 @@ fn resolve_participant(
             participant_id: participant_id.to_string(),
             name: "用户".to_string(),
             avatar_path: None,
+            is_deleted: false,
         })
     } else {
         let result = conn.query_row(
-            "SELECT name, avatar_path FROM agents WHERE id = ?1 AND is_deleted = 0",
+            "SELECT name, avatar_path, is_deleted FROM agents WHERE id = ?1",
             [participant_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, i32>(2)? != 0)),
         );
-        let (name, avatar_path) = match result {
-            Ok((n, a)) => (n, a),
-            Err(rusqlite::Error::QueryReturnedNoRows) => ("未知角色".to_string(), None),
+        let (name, avatar_path, is_deleted) = match result {
+            Ok((n, a, d)) => (n, a, d),
+            Err(rusqlite::Error::QueryReturnedNoRows) => ("未知角色".to_string(), None, false),
             Err(e) => return Err(e),
         };
         Ok(SessionParticipant {
@@ -30,6 +31,7 @@ fn resolve_participant(
             participant_id: participant_id.to_string(),
             name,
             avatar_path: crate::db::resolve_avatar_path(avatar_path),
+            is_deleted,
         })
     }
 }

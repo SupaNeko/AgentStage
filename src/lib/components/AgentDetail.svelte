@@ -2,6 +2,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { Bot, Trash2, Save, Loader2, MessageSquare, Sparkles } from 'lucide-svelte';
     import { appState } from '$lib/stores/appState.svelte';
+    import { agentStore } from '$lib/stores/agentStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
@@ -103,6 +104,7 @@
         if (!confirm(`确定要删除角色 "${agent.name}" 吗？此操作不可恢复。`)) return;
         try {
             await invoke('delete_agent', { req: { id: agent.id } });
+            await agentStore.loadAgents();
             appState.selectAgent(null);
         } catch (err) {
             logger.error('Failed to delete agent:', err);

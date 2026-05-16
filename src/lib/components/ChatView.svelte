@@ -54,6 +54,11 @@
         selectedSession.session_type === 'private' &&
         !selectedSession.participants.some(p => p.participant_type === 'user')
     );
+    let isDeletedAgentPrivate = $derived(
+        selectedSession != null &&
+        selectedSession.session_type === 'private' &&
+        selectedSession.participants.some(p => p.participant_type === 'agent' && p.is_deleted)
+    );
     let displayedTypingAgents = $derived(
         (() => {
             if (!selectedSession) return [] as string[];
@@ -668,6 +673,10 @@
             {:else if isAgentAgentPrivate}
                 <div class="shrink-0 border-t border-border p-4 bg-surface text-center text-sm text-text-secondary">
                     此会话为 Agent-Agent 私聊，不支持用户直接发送消息
+                </div>
+            {:else if isDeletedAgentPrivate}
+                <div class="shrink-0 border-t border-border p-4 bg-surface text-center text-sm text-text-secondary">
+                    该角色已删除，无法发送消息
                 </div>
             {:else}
                 <div class="shrink-0 border-t border-border p-4 bg-surface">

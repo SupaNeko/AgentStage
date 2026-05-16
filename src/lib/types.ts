@@ -30,6 +30,7 @@ export interface SessionParticipant {
     participant_id: string;
     name: string;
     avatar_path: string | null;
+    is_deleted: boolean;
 }
 
 export interface Session {

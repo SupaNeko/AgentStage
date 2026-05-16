@@ -16,7 +16,14 @@ export class SessionStore {
                     ...s,
                     unread_count: existingUnread.get(s.id) ?? s.unread_count,
                 }))
-                .filter(s => !(s.session_type === 'group' && s.is_dissolved));
+                .filter(s => {
+                    if (s.session_type === 'group' && s.is_dissolved) return false;
+                    if (s.session_type === 'private') {
+                        const deletedAgent = s.participants.find(p => p.participant_type === 'agent' && p.is_deleted);
+                        if (deletedAgent) return false;
+                    }
+                    return true;
+                });
             logger.debug('[DEBUG sessionStore.loadSessions]', { count: this.sessions.length });
         } catch (err) {
             logger.debug('[DEBUG sessionStore.loadSessions] error', { error: err });

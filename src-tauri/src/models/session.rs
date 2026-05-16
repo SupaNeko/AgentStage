@@ -34,6 +34,7 @@ pub struct SessionParticipant {
     pub participant_id: String,
     pub name: String,
     pub avatar_path: Option<String>,
+    pub is_deleted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
