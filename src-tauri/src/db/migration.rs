@@ -38,6 +38,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "session_inbox_frozen_and_unread",
         sql: super::schema::MIGRATION_V6,
     },
+    Migration {
+        version: 7,
+        name: "private_session_symmetric",
+        sql: super::schema::MIGRATION_V7,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
