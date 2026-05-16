@@ -475,6 +475,7 @@
         sessionId={selectedSession?.id ?? ''}
         sessionType={selectedSession?.session_type ?? ''}
         {members}
+        {mode}
         onClose={() => settingsOpen = false}
         onMembersChange={() => {
             if (selectedSession?.session_type === 'group') {

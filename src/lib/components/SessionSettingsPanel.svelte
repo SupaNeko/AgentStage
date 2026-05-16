@@ -14,11 +14,12 @@
         sessionId: string;
         sessionType: string;
         members: GroupMember[];
+        mode?: 'chat' | 'history';
         onClose: () => void;
         onMembersChange: () => void;
     }
 
-    let { open, sessionId, sessionType, members, onClose, onMembersChange }: Props = $props();
+    let { open, sessionId, sessionType, members, mode = 'chat', onClose, onMembersChange }: Props = $props();
 
     let config = $state<SessionConfig | null>(null);
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -158,6 +159,7 @@
                     />
                 </div>
 
+                {#if mode !== 'history'}
                 <div>
                     <div class="flex items-center justify-between mb-1">
                         <label class="text-sm font-medium">禁言</label>
@@ -174,10 +176,11 @@
                     </div>
                     <p class="text-xs text-text-secondary">开启后角色不会自动回复，但你仍可发送消息</p>
                 </div>
+                {/if}
 
                 {#if sessionType === 'group'}
                     <div>
-                        <label class="block text-sm font-medium mb-2">成员管理</label>
+                        <label class="block text-sm font-medium mb-2">成员</label>
                         <div class="space-y-1 mb-2">
                             {#each members as member}
                                 <div class="flex items-center justify-between p-2 rounded-lg bg-bg">
@@ -191,7 +194,7 @@
                                         </div>
                                         <span class="text-sm">{member.name}</span>
                                     </div>
-                                    {#if member.participant_type === 'agent'}
+                                    {#if mode !== 'history' && member.participant_type === 'agent'}
                                         <button
                                             onclick={() => handleRemoveMember(member.participant_id)}
                                             class="p-1 text-text-secondary hover:text-red-500 rounded"
@@ -203,15 +206,18 @@
                                 </div>
                             {/each}
                         </div>
+                        {#if mode !== 'history'}
                         <button
                             onclick={() => showAddMember = true}
                             class="w-full py-1.5 text-sm border border-border rounded-lg hover:bg-bg transition-colors"
                         >
                             + 添加成员
                         </button>
+                        {/if}
                     </div>
                 {/if}
 
+                {#if mode !== 'history'}
                 <div class="pt-4 border-t border-border">
                     <button
                         onclick={() => showResetConfirm = true}
@@ -232,6 +238,7 @@
                             解散群聊
                         </button>
                     </div>
+                {/if}
                 {/if}
             {:else}
                 <div class="text-sm text-text-secondary">加载中...</div>

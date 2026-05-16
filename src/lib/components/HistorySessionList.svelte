@@ -1,16 +1,55 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { invoke } from '@tauri-apps/api/core';
     import { historyStore } from '$lib/stores/historyStore.svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
     import { formatTime } from '$lib/utils';
-    import { MessageSquare, ChevronDown, ChevronRight } from 'lucide-svelte';
+    import { MessageSquare, ChevronDown, ChevronRight, Trash2 } from 'lucide-svelte';
     import type { Session } from '$lib/types';
 
     let expandedPrivate = $state(true);
     let expandedGroup = $state(true);
+    let contextMenuOpen = $state(false);
+    let contextMenuX = $state(0);
+    let contextMenuY = $state(0);
+    let contextSessionId = $state<string | null>(null);
 
     onMount(() => {
         historyStore.loadSessions();
     });
+
+    function handleContextMenu(e: MouseEvent, sessionId: string) {
+        e.preventDefault();
+        contextSessionId = sessionId;
+        contextMenuX = e.clientX;
+        contextMenuY = e.clientY;
+        contextMenuOpen = true;
+    }
+
+    function closeContextMenu() {
+        contextMenuOpen = false;
+        contextSessionId = null;
+    }
+
+    async function handlePermanentDelete() {
+        if (!contextSessionId) return;
+        if (!confirm('确定要彻底删除此群聊吗？所有历史记录将被移除，此操作不可恢复。')) {
+            closeContextMenu();
+            return;
+        }
+        try {
+            await invoke('delete_session', { id: contextSessionId });
+            await historyStore.loadSessions();
+            if (historyStore.selectedSessionId === contextSessionId) {
+                historyStore.selectedSessionId = null;
+            }
+            toastStore.show('群聊已彻底删除', 'success', 2000);
+        } catch (err) {
+            toastStore.show('删除失败: ' + String(err), 'error', 5000);
+        } finally {
+            closeContextMenu();
+        }
+    }
 
     function handleSessionClick(sessionId: string) {
         historyStore.selectSession(sessionId);
@@ -141,6 +180,7 @@
                         <button
                             class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                             onclick={() => handleSessionClick(session.id)}
+                            oncontextmenu={(e) => handleContextMenu(e, session.id)}
                         >
                             <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
                                 {#if display.avatar}
@@ -165,3 +205,18 @@
         {/if}
     </div>
 </div>
+
+<!-- Context Menu -->
+{#if contextMenuOpen}
+    <div class="fixed inset-0 z-40" onclick={closeContextMenu} oncontextmenu={(e) => { e.preventDefault(); closeContextMenu(); }}></div>
+    <div class="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
+         style="left: {contextMenuX}px; top: {contextMenuY}px;">
+        <button
+            onclick={handlePermanentDelete}
+            class="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-bg flex items-center gap-2"
+        >
+            <Trash2 size={14} />
+            彻底删除
+        </button>
+    </div>
+{/if}
