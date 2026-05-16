@@ -36,6 +36,7 @@ export interface Session {
     group_name?: string;
     group_avatar?: string;
     mute_enabled?: boolean;
+    current_chat_page?: number;
 }
 
 export interface Message {
@@ -48,6 +49,7 @@ export interface Message {
     content: string;
     created_at: number;
     message_type: string;
+    page_index?: number;
 }
 
 export interface GroupMember {
