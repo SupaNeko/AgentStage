@@ -659,7 +659,11 @@
             {/if}
 
             <!-- Input area -->
-            {#if isAgentAgentPrivate}
+            {#if selectedSession?.session_type === 'group' && selectedSession?.is_dissolved}
+                <div class="shrink-0 border-t border-border p-4 bg-surface text-center text-sm text-text-secondary">
+                    该群聊已解散，无法发送消息
+                </div>
+            {:else if isAgentAgentPrivate}
                 <div class="shrink-0 border-t border-border p-4 bg-surface text-center text-sm text-text-secondary">
                     此会话为 Agent-Agent 私聊，不支持用户直接发送消息
                 </div>
