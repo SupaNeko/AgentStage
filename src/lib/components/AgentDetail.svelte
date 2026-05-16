@@ -5,6 +5,7 @@
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
+    import { resolveAvatarUrl } from '$lib/utils';
     import type { Agent } from '$lib/types';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import PersonaGenerateModal from './PersonaGenerateModal.svelte';
@@ -156,7 +157,7 @@
                     class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
                 >
                     {#if agent.avatar_path}
-                        <img src={agent.avatar_path} alt={agent.name} class="w-full h-full rounded-full object-cover" />
+                        <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name} class="w-full h-full rounded-full object-cover" />
                     {:else}
                         <Bot size={20} />
                     {/if}

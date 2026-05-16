@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Message } from '$lib/types';
-    import { formatTime } from '$lib/utils';
+    import { formatTime, resolveAvatarUrl } from '$lib/utils';
     import { User, Bot } from 'lucide-svelte';
 
     interface Props {
@@ -17,7 +17,7 @@
     <div class="flex items-center gap-2 mb-1 {isMe ? 'flex-row-reverse' : ''}">
         <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 overflow-hidden {message.sender_type === 'user' ? 'bg-gray-300 text-white' : 'bg-primary/10 text-primary'}">
             {#if message.sender_avatar}
-                <img src={message.sender_avatar} alt={senderName} class="w-full h-full object-cover" />
+                <img src={resolveAvatarUrl(message.sender_avatar)} alt={senderName} class="w-full h-full object-cover" />
             {:else if message.sender_type === 'user'}
                 <User size={16} />
             {:else}

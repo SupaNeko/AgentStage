@@ -87,6 +87,40 @@
                     class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
 
+            <div class="border-t border-border pt-3">
+                <button
+                    type="button"
+                    onclick={() => showGenerateFields = !showGenerateFields}
+                    class="flex items-center gap-2 text-sm text-primary hover:text-primary-dark transition-colors"
+                >
+                    <span>{showGenerateFields ? '▾' : '▸'}</span>
+                    <span>人设自生成</span>
+                </button>
+                {#if showGenerateFields}
+                    <div class="mt-3 space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium mb-1" for="ca-ref">参考角色</label>
+                            <input id="ca-ref" type="text" bind:value={referenceCharacter}
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                placeholder="例如：远坂凛" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1" for="ca-additional">补充信息</label>
+                            <textarea id="ca-additional" bind:value={additionalInfo} rows={3}
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                                placeholder="输入额外的人设补充信息..."></textarea>
+                        </div>
+                        <button
+                            type="button"
+                            disabled
+                            class="px-4 py-2 bg-primary/50 text-white rounded-lg text-sm cursor-not-allowed"
+                        >
+                            生成
+                        </button>
+                    </div>
+                {/if}
+            </div>
+
             <div>
                 <label class="block text-sm font-medium mb-1" for="ca-detailed">详细人设 <span class="text-red-500">*</span></label>
                 <textarea id="ca-detailed" bind:value={form.detailed_persona} required rows={4}
@@ -153,40 +187,6 @@
                 <input id="ca-thinking" type="checkbox" bind:checked={form.thinking_mode}
                     class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
                 <label for="ca-thinking" class="text-sm">启用思考模式（如支持）</label>
-            </div>
-
-            <div class="border-t border-border pt-3">
-                <button
-                    type="button"
-                    onclick={() => showGenerateFields = !showGenerateFields}
-                    class="flex items-center gap-2 text-sm text-primary hover:text-primary-dark transition-colors"
-                >
-                    <span>{showGenerateFields ? '▾' : '▸'}</span>
-                    <span>人设自生成</span>
-                </button>
-                {#if showGenerateFields}
-                    <div class="mt-3 space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium mb-1" for="ca-ref">参考角色</label>
-                            <input id="ca-ref" type="text" bind:value={referenceCharacter}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                placeholder="例如：远坂凛" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1" for="ca-additional">补充信息</label>
-                            <textarea id="ca-additional" bind:value={additionalInfo} rows={3}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                                placeholder="输入额外的人设补充信息..."></textarea>
-                        </div>
-                        <button
-                            type="button"
-                            disabled
-                            class="px-4 py-2 bg-primary/50 text-white rounded-lg text-sm cursor-not-allowed"
-                        >
-                            生成
-                        </button>
-                    </div>
-                {/if}
             </div>
 
             <div class="flex justify-end gap-3 pt-2">

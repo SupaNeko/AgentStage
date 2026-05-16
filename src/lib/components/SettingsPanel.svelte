@@ -2,6 +2,7 @@
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { X, User } from 'lucide-svelte';
+    import { resolveAvatarUrl } from '$lib/utils';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
 
     let draft = $state({ global_min_trigger_interval: 30 });
@@ -49,7 +50,7 @@
                     class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
                 >
                     {#if userAvatar}
-                        <img src={userAvatar} alt="用户头像" class="w-full h-full rounded-full object-cover" />
+                        <img src={resolveAvatarUrl(userAvatar)} alt="用户头像" class="w-full h-full rounded-full object-cover" />
                     {:else}
                         <User size={28} />
                     {/if}

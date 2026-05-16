@@ -12,14 +12,28 @@ export class ToastStore {
     private nextId = 0;
     private timers = new Map<number, { interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> }>();
 
-    show(message: string, type: ToastItem['type'] = 'info', autoDismiss = false, duration = 0) {
+    show(message: string, type: ToastItem['type'] = 'info', autoDismissOrDuration: boolean | number = false, duration = 0) {
+        let autoDismiss: boolean;
+        let finalDuration: number;
+
+        if (typeof autoDismissOrDuration === 'boolean') {
+            autoDismiss = autoDismissOrDuration;
+            finalDuration = duration;
+        } else if (typeof autoDismissOrDuration === 'number' && autoDismissOrDuration > 0) {
+            autoDismiss = true;
+            finalDuration = autoDismissOrDuration;
+        } else {
+            autoDismiss = false;
+            finalDuration = 0;
+        }
+
         const id = this.nextId++;
-        const item: ToastItem = { id, message, type, autoDismiss, duration, progress: 100 };
+        const item: ToastItem = { id, message, type, autoDismiss, duration: finalDuration, progress: 100 };
         this.items = [...this.items, item];
 
-        if (autoDismiss && duration > 0) {
+        if (autoDismiss && finalDuration > 0) {
             const intervalMs = 50;
-            const step = 100 / (duration / intervalMs);
+            const step = 100 / (finalDuration / intervalMs);
 
             const interval = setInterval(() => {
                 const idx = this.items.findIndex(t => t.id === id);
@@ -34,7 +48,7 @@ export class ToastStore {
 
             const timeout = setTimeout(() => {
                 this.remove(id);
-            }, duration);
+            }, finalDuration);
 
             this.timers.set(id, { interval, timeout });
         }

@@ -47,28 +47,28 @@ pub async fn upload_avatar(
     let filepath = app_dir.join(&filename);
     fs::write(&filepath, image_bytes).map_err(|e| e.to_string())?;
 
-    let relative_path = format!("data/avatars/{}/{}", req.target_type, filename);
+    let absolute_path = filepath.to_string_lossy().to_string();
     match req.target_type.as_str() {
         "agent" => {
             conn.execute(
                 "UPDATE agents SET avatar_path = ?1 WHERE id = ?2",
-                (&relative_path, &req.target_id),
+                (&absolute_path, &req.target_id),
             ).map_err(|e| e.to_string())?;
         }
         "group" => {
             conn.execute(
                 "UPDATE group_sessions SET avatar_path = ?1 WHERE session_id = ?2",
-                (&relative_path, &req.target_id),
+                (&absolute_path, &req.target_id),
             ).map_err(|e| e.to_string())?;
         }
         "user" => {
             conn.execute(
                 "UPDATE user_personas SET avatar_path = ?1 WHERE is_default = 1",
-                [&relative_path],
+                [&absolute_path],
             ).map_err(|e| e.to_string())?;
         }
         _ => return Err("Invalid target_type".to_string()),
     }
 
-    Ok(relative_path)
+    Ok(absolute_path)
 }

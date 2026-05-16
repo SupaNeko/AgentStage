@@ -2,6 +2,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { agentStore } from '$lib/stores/agentStore.svelte';
     import { logger } from '$lib/logger';
+    import { resolveAvatarUrl } from '$lib/utils';
     import { User, X } from 'lucide-svelte';
 
     interface Props {
@@ -67,7 +68,7 @@
                     >
                         <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                             {#if agent.avatar_path}
-                                <img src={agent.avatar_path} alt={agent.name} class="w-full h-full object-cover" />
+                                <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name} class="w-full h-full object-cover" />
                             {:else}
                                 <User size={16} />
                             {/if}

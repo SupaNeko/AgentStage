@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
     import type { Agent } from '$lib/types';
     import { appState } from '$lib/stores/appState.svelte';
+    import { resolveAvatarUrl } from '$lib/utils';
     import CreateAgentModal from './CreateAgentModal.svelte';
 
     let agents = $state<Agent[]>([]);
@@ -77,7 +78,7 @@
                     >
                         <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
                             {#if agent.avatar_path}
-                                <img src={agent.avatar_path} alt={agent.name} class="w-full h-full rounded-full object-cover" />
+                                <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name} class="w-full h-full rounded-full object-cover" />
                             {:else}
                                 <Bot size={20} />
                             {/if}

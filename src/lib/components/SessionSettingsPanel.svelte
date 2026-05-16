@@ -5,6 +5,7 @@
     import { logger } from '$lib/logger';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { resolveAvatarUrl } from '$lib/utils';
     import type { SessionConfig, GroupMember } from '$lib/types';
     import ConfirmDialog from './ConfirmDialog.svelte';
     import AddMemberModal from './AddMemberModal.svelte';
@@ -190,7 +191,7 @@
                                 class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
                             >
                                 {#if groupAvatar}
-                                    <img src={groupAvatar} alt="群聊头像" class="w-full h-full rounded-full object-cover" />
+                                    <img src={resolveAvatarUrl(groupAvatar)} alt="群聊头像" class="w-full h-full rounded-full object-cover" />
                                 {:else}
                                     <MessageSquare size={24} />
                                 {/if}

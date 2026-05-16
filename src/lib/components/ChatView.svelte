@@ -10,7 +10,7 @@
     import type { GroupMember, SessionConfig, Session, Message } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
     import { historyStore } from '$lib/stores/historyStore.svelte';
-    import { formatTime } from '$lib/utils';
+    import { formatTime, resolveAvatarUrl } from '$lib/utils';
 
     interface Props {
         mode?: 'chat' | 'history';
@@ -499,7 +499,7 @@
                             <div class="relative w-full h-full">
                                 <div class="absolute left-0 top-0 w-1/2 h-full overflow-hidden">
                                     {#if header.agents[0]?.avatar_path}
-                                        <img src={header.agents[0].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
+                                        <img src={resolveAvatarUrl(header.agents[0].avatar_path)} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
                                     {:else}
                                         <div class="w-10 h-10 bg-primary/20 flex items-center justify-center text-primary text-xs font-bold" style="padding-right: 0.5rem;">
                                             {header.agents[0]?.name?.charAt(0) || 'A'}
@@ -508,7 +508,7 @@
                                 </div>
                                 <div class="absolute right-0 top-0 w-1/2 h-full overflow-hidden border-l-2 border-white">
                                     {#if header.agents[1]?.avatar_path}
-                                        <img src={header.agents[1].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
+                                        <img src={resolveAvatarUrl(header.agents[1].avatar_path)} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
                                     {:else}
                                         <div class="w-10 h-10 bg-secondary/20 flex items-center justify-center text-secondary text-xs font-bold" style="padding-left: 0.5rem;">
                                             {header.agents[1]?.name?.charAt(0) || 'B'}
@@ -625,7 +625,7 @@
                                 <div class="flex items-center gap-2 mb-1 {isRight ? 'flex-row-reverse' : ''}">
                                     <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                                         {#if agent?.avatar_path}
-                                            <img src={agent.avatar_path} alt={agent.name || 'Agent'} class="w-full h-full object-cover" />
+                                            <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name || 'Agent'} class="w-full h-full object-cover" />
                                         {:else}
                                             <Bot size={16} />
                                         {/if}
@@ -713,7 +713,7 @@
                         <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-bg">
                             <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                                 {#if member.avatar_path}
-                                    <img src={member.avatar_path} alt={member.name} class="w-full h-full object-cover" />
+                                    <img src={resolveAvatarUrl(member.avatar_path)} alt={member.name} class="w-full h-full object-cover" />
                                 {:else}
                                     <User size={16} />
                                 {/if}

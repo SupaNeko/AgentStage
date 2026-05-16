@@ -4,6 +4,7 @@
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { appState } from '$lib/stores/appState.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { resolveAvatarUrl } from '$lib/utils';
     import type { Agent, Session } from '$lib/types';
     import { X, Users, Bot } from 'lucide-svelte';
 
@@ -85,7 +86,7 @@
                                     onchange={() => toggleAgent(agent.id)} />
                                 <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                                     {#if agent.avatar_path}
-                                        <img src={agent.avatar_path} alt={agent.name} class="w-full h-full object-cover" />
+                                        <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name} class="w-full h-full object-cover" />
                                     {:else}
                                         <Bot size={16} />
                                     {/if}

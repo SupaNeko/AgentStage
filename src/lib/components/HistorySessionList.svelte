@@ -3,7 +3,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { historyStore } from '$lib/stores/historyStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
-    import { formatTime } from '$lib/utils';
+    import { formatTime, resolveAvatarUrl } from '$lib/utils';
     import { MessageSquare, ChevronDown, ChevronRight, Trash2 } from 'lucide-svelte';
     import type { Session } from '$lib/types';
 
@@ -124,7 +124,7 @@
                                     <div class="relative w-full h-full">
                                         <div class="absolute left-0 top-0 w-1/2 h-full overflow-hidden">
                                             {#if display.agents[0]?.avatar_path}
-                                                <img src={display.agents[0].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
+                                                <img src={resolveAvatarUrl(display.agents[0].avatar_path)} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
                                             {:else}
                                                 <div class="w-10 h-10 bg-primary/20 flex items-center justify-center text-primary text-xs font-bold" style="padding-right: 0.5rem;">
                                                     {display.agents[0]?.name?.charAt(0) || 'A'}
@@ -133,7 +133,7 @@
                                         </div>
                                         <div class="absolute right-0 top-0 w-1/2 h-full overflow-hidden border-l-2 border-white">
                                             {#if display.agents[1]?.avatar_path}
-                                                <img src={display.agents[1].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
+                                                <img src={resolveAvatarUrl(display.agents[1].avatar_path)} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
                                             {:else}
                                                 <div class="w-10 h-10 bg-secondary/20 flex items-center justify-center text-secondary text-xs font-bold" style="padding-left: 0.5rem;">
                                                     {display.agents[1]?.name?.charAt(0) || 'B'}
@@ -142,7 +142,7 @@
                                         </div>
                                     </div>
                                 {:else if display.avatar}
-                                    <img src={display.avatar} alt={display.name} class="w-full h-full object-cover" />
+                                    <img src={resolveAvatarUrl(display.avatar)} alt={display.name} class="w-full h-full object-cover" />
                                 {:else}
                                     <MessageSquare size={20} />
                                 {/if}
@@ -184,7 +184,7 @@
                         >
                             <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
                                 {#if display.avatar}
-                                    <img src={display.avatar} alt={display.name} class="w-full h-full object-cover" />
+                                    <img src={resolveAvatarUrl(display.avatar)} alt={display.name} class="w-full h-full object-cover" />
                                 {:else}
                                     <MessageSquare size={20} />
                                 {/if}
