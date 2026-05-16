@@ -185,6 +185,7 @@
                     req: { session_id: sessionId, content, page_index: pageIdx },
                 });
                 logger.debug('[DEBUG ChatView.handleSend] history mode success');
+                sessionStore.updateSessionPreview(sessionId, content, Date.now());
                 await messageStore.loadMessages(sessionId, pageIdx);
             } catch (err) {
                 logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
@@ -226,6 +227,7 @@
             }
             await invoke('send_user_message', { req });
             logger.debug('[DEBUG ChatView.handleSend] chat mode success');
+            sessionStore.updateSessionPreview(sessionId, content, Date.now());
             if (pageIdx != null) {
                 await messageStore.loadMessages(sessionId, pageIdx);
             } else {
