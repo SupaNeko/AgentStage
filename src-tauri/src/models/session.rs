@@ -41,6 +41,7 @@ pub struct SessionResponse {
     pub group_name: Option<String>,
     pub group_avatar: Option<String>,
     pub mute_enabled: Option<bool>,
+    pub current_chat_page: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +76,7 @@ impl From<(Session, PrivateSession)> for SessionResponse {
             group_name: None,
             group_avatar: None,
             mute_enabled: None,
+            current_chat_page: ps.current_chat_page,
         }
     }
 }

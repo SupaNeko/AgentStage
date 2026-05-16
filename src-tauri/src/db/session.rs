@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::session::SessionResponse;
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count, ps.participant_2_id, a.name, a.avatar_path, gs.name, gs.avatar_path, gs.mute_enabled";
+const SELECT_COLUMNS: &str = "s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count, ps.participant_2_id, a.name, a.avatar_path, gs.name, gs.avatar_path, gs.mute_enabled, COALESCE(ps.current_chat_page, gs.current_chat_page, 0)";
 
 fn row_to_session_response(row: &Row) -> Result<SessionResponse> {
     Ok(SessionResponse {
@@ -17,6 +17,7 @@ fn row_to_session_response(row: &Row) -> Result<SessionResponse> {
         group_name: row.get(8)?,
         group_avatar: row.get(9)?,
         mute_enabled: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+        current_chat_page: row.get(11)?,
     })
 }
 
