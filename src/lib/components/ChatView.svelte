@@ -80,6 +80,10 @@
         const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         if (id) {
+            // History 模式：等待 pageIndex 准备好再加载消息，避免用旧 pageIndex 导致闪烁/空消息
+            if (mode === 'history' && pageIdx == null) {
+                return;
+            }
             if (pageIdx != null) {
                 messageStore.loadMessages(id, pageIdx);
             } else {
