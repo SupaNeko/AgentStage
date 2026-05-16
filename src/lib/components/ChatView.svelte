@@ -284,7 +284,11 @@
                 req: { session_id: sessionId, content, page_index: pageIdx },
             });
             logger.debug('[DEBUG ChatView.handleSend] history mode success');
-            await messageStore.loadMessages(sessionId, pageIdx);
+            // 如果用户已经切到其他会话，不再刷新当前消息列表
+            const currentId = historyStore.selectedSessionId;
+            if (currentId === sessionId) {
+                await messageStore.loadMessages(sessionId, pageIdx);
+            }
         } catch (err) {
             logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
             // 发送失败时移除乐观消息
@@ -327,10 +331,14 @@
             }
             await invoke('send_user_message', { req });
             logger.debug('[DEBUG ChatView.handleSend] chat mode success');
-            if (pageIdx != null) {
-                await messageStore.loadMessages(sessionId, pageIdx);
-            } else {
-                await messageStore.loadMessages(sessionId);
+            // 如果用户已经切到其他会话，不再刷新当前消息列表
+            const currentId = sessionStore.selectedSessionId;
+            if (currentId === sessionId) {
+                if (pageIdx != null) {
+                    await messageStore.loadMessages(sessionId, pageIdx);
+                } else {
+                    await messageStore.loadMessages(sessionId);
+                }
             }
         } catch (err) {
             logger.debug('[DEBUG ChatView.handleSend] chat mode failed', { error: err });
