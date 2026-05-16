@@ -33,38 +33,43 @@ export class SessionStore {
     }
 
     updateSessionPreview(sessionId: string, preview: string, time: number) {
-        this.sessions = this.sessions.map(s =>
-            s.id === sessionId
-                ? { ...s, last_message_preview: preview, last_message_at: time }
-                : s
-        );
+        const idx = this.sessions.findIndex(s => s.id === sessionId);
+        if (idx !== -1) {
+            this.sessions[idx].last_message_preview = preview;
+            this.sessions[idx].last_message_at = time;
+            this.sessions = [...this.sessions];
+            logger.debug('[DEBUG sessionStore.updateSessionPreview] updated', { sessionId, preview: preview.slice(0, 50) });
+        } else {
+            logger.debug('[DEBUG sessionStore.updateSessionPreview] not found', { sessionId });
+        }
     }
 
     incrementUnreadCount(sessionId: string) {
-        this.sessions = this.sessions.map(s =>
-            s.id === sessionId
-                ? { ...s, unread_count: s.unread_count + 1 }
-                : s
-        );
+        const idx = this.sessions.findIndex(s => s.id === sessionId);
+        if (idx !== -1) {
+            this.sessions[idx].unread_count = this.sessions[idx].unread_count + 1;
+            this.sessions = [...this.sessions];
+        }
     }
 
     clearUnreadCount(sessionId: string) {
-        this.sessions = this.sessions.map(s =>
-            s.id === sessionId
-                ? { ...s, unread_count: 0 }
-                : s
-        );
+        const idx = this.sessions.findIndex(s => s.id === sessionId);
+        if (idx !== -1) {
+            this.sessions[idx].unread_count = 0;
+            this.sessions = [...this.sessions];
+        }
     }
 
     async resetSession(sessionId: string): Promise<string> {
         try {
             const pageId = await invoke<string>('reset_session', { req: { session_id: sessionId } });
             await this.loadSessions();
-            this.sessions = this.sessions.map(s =>
-                s.id === sessionId
-                    ? { ...s, last_message_preview: '', unread_count: 0 }
-                    : s
-            );
+            const idx = this.sessions.findIndex(s => s.id === sessionId);
+            if (idx !== -1) {
+                this.sessions[idx].last_message_preview = '';
+                this.sessions[idx].unread_count = 0;
+                this.sessions = [...this.sessions];
+            }
             // 清空前端消息列表，强制重新加载
             const { messageStore } = await import('$lib/stores/messageStore.svelte');
             messageStore.setSessionId(sessionId);

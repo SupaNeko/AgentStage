@@ -50,7 +50,7 @@
             </div>
         {:else}
             <div class="divide-y divide-border">
-                {#each sessionStore.sessions as session}
+                {#each sessionStore.sessions as session (session.id)}
                     <button
                         class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {sessionStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                         onclick={() => handleSessionClick(session.id)}

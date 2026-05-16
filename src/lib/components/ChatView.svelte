@@ -180,20 +180,21 @@
             };
             messageStore.addMessage(optimisticMsg);
 
-            try {
-                await invoke('send_history_message', {
-                    req: { session_id: sessionId, content, page_index: pageIdx },
-                });
-                logger.debug('[DEBUG ChatView.handleSend] history mode success');
-                sessionStore.updateSessionPreview(sessionId, content, Date.now());
-                await messageStore.loadMessages(sessionId, pageIdx);
-            } catch (err) {
-                logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
-                // 发送失败时移除乐观消息
-                messageStore.removeMessage(sessionId, optimisticMsg.id);
-            } finally {
-                sending = false;
-            }
+        // 乐观更新会话列表预览（history 模式无 new_message 事件，需要手动更新）
+        sessionStore.updateSessionPreview(sessionId, content, Date.now());
+        try {
+            await invoke('send_history_message', {
+                req: { session_id: sessionId, content, page_index: pageIdx },
+            });
+            logger.debug('[DEBUG ChatView.handleSend] history mode success');
+            await messageStore.loadMessages(sessionId, pageIdx);
+        } catch (err) {
+            logger.error('[DEBUG ChatView.handleSend] history mode failed', { error: err });
+            // 发送失败时移除乐观消息
+            messageStore.removeMessage(sessionId, optimisticMsg.id);
+        } finally {
+            sending = false;
+        }
             return;
         }
 
@@ -217,6 +218,8 @@
         };
         messageStore.addMessage(optimisticMsg);
 
+        // 乐观更新会话列表预览（在 invoke 之前，避免被 App.svelte 的 new_message 事件覆盖）
+        sessionStore.updateSessionPreview(sessionId, content, Date.now());
         try {
             const req: Record<string, unknown> = {
                 session_id: sessionId,
@@ -227,7 +230,6 @@
             }
             await invoke('send_user_message', { req });
             logger.debug('[DEBUG ChatView.handleSend] chat mode success');
-            sessionStore.updateSessionPreview(sessionId, content, Date.now());
             if (pageIdx != null) {
                 await messageStore.loadMessages(sessionId, pageIdx);
             } else {
