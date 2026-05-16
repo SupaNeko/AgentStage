@@ -61,7 +61,7 @@
                                         <span class="text-xs text-text-secondary shrink-0 ml-2">{formatTime(session.last_message_at)}</span>
                                     {/if}
                                 </div>
-                                <p class="text-xs text-text-secondary truncate">{session.last_message_preview || '暂无消息'}</p>
+                                <!-- 历史会话标签不显示最后一条消息预览 -->
                             </div>
                         </button>
                     {/each}
