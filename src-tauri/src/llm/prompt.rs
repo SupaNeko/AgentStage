@@ -50,10 +50,10 @@ impl PromptAssembler {
                         m.page_index
                   FROM messages m
                   JOIN (
-                      SELECT ps.session_id, COALESCE(ps.current_chat_page, 0) as page 
-                      FROM private_sessions ps
-                      JOIN sessions s ON ps.session_id = s.id
-                      WHERE ps.agent_id = ?1 AND s.is_deleted = 0
+                       SELECT ps.session_id, COALESCE(ps.current_chat_page, 0) as page 
+                       FROM private_sessions ps
+                       JOIN sessions s ON ps.session_id = s.id
+                       WHERE (ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1) OR (ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1) AND s.is_deleted = 0
                       UNION
                       SELECT gs.session_id, COALESCE(gs.current_chat_page, 0) as page 
                       FROM group_sessions gs
