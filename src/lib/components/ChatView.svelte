@@ -256,17 +256,23 @@
         if (mode === 'chat') {
             listen('new_message', (event) => {
                 const msg = event.payload as { session_id: string; sender_type?: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
-                logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50) });
+                logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), pageIndex: msg.page_index });
 
-                // 将消息添加到对应会话的存储中（后台更新，绑定对应会话）
-                const exists = messageStore.messagesBySession.get(msg.session_id)?.some((m) => m.id === msg.id);
-                if (!exists) {
-                    messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+                // 检查消息是否属于当前查看的页面
+                const session = sessionStore.sessions.find(s => s.id === msg.session_id);
+                const currentPage = session?.current_chat_page ?? 0;
+                const isCurrentPage = msg.page_index === undefined || msg.page_index === currentPage;
+
+                // 只将当前页的消息追加到消息列表
+                if (isCurrentPage) {
+                    const exists = messageStore.messagesBySession.get(msg.session_id)?.some((m) => m.id === msg.id);
+                    if (!exists) {
+                        messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+                    }
                 }
 
-                // 当 agent 消息到达且用户正在查看该会话时，刷新 sessionConfig
+                // 当 agent 消息到达当前会话时，刷新 sessionConfig（无论是否在当前页）
                 if (msg.session_id === messageStore.currentSessionId && msg.sender_type === 'agent') {
-                    const session = untrack(() => sessionStore.sessions.find(s => s.id === msg.session_id));
                     if (session) {
                         loadSessionConfig(msg.session_id, session.session_type);
                     }
