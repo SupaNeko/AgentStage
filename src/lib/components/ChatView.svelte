@@ -7,7 +7,7 @@
     import MessageBubble from './MessageBubble.svelte';
     import { Send, MessageSquare, User, Settings, Bot, Clock } from 'lucide-svelte';
     import { logger } from '$lib/logger';
-    import type { GroupMember, SessionConfig } from '$lib/types';
+    import type { GroupMember, SessionConfig, Session, Message } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
     import { historyStore } from '$lib/stores/historyStore.svelte';
     import { formatTime } from '$lib/utils';
@@ -28,11 +28,19 @@
     let sessionConfig = $state<SessionConfig | null>(null);
     let messageListEl: HTMLDivElement | null = $state(null);
     let prevMsgCount = $state(0);
+    let scrollPositions = $state<Map<string, number>>(new Map());
+    let isFirstLoad = $state(false);
 
     function scrollToBottom() {
         if (messageListEl) {
             messageListEl.scrollTop = messageListEl.scrollHeight;
         }
+    }
+
+    function isNearBottom(): boolean {
+        if (!messageListEl) return true;
+        const threshold = 80;
+        return messageListEl.scrollHeight - messageListEl.scrollTop - messageListEl.clientHeight <= threshold;
     }
 
     let selectedSession = $derived(
@@ -41,8 +49,26 @@
             : historyStore.sessions.find((s) => s.id === historyStore.selectedSessionId)
     );
     let currentAgentId = $state<string | undefined>(undefined);
-    let isAgentTyping = $derived(
-        currentAgentId != null && typingAgents.has(currentAgentId)
+    let isAgentAgentPrivate = $derived(
+        selectedSession != null &&
+        selectedSession.session_type === 'private' &&
+        !selectedSession.participants.some(p => p.participant_type === 'user')
+    );
+    let displayedTypingAgents = $derived(
+        (() => {
+            if (!selectedSession) return [] as string[];
+            if (selectedSession.session_type === 'group') return [] as string[];
+            const hasUser = selectedSession.participants.some(p => p.participant_type === 'user');
+            if (hasUser) {
+                if (currentAgentId && typingAgents.has(currentAgentId)) {
+                    return [currentAgentId];
+                }
+                return [] as string[];
+            }
+            return Array.from(typingAgents).filter(id =>
+                selectedSession.participants.some(p => p.participant_id === id)
+            );
+        })()
     );
     let isMessageLimitReached = $derived(
         sessionConfig != null &&
@@ -64,10 +90,46 @@
         }
     }
 
+    function isOnRightSide(message: Message, session: Session | undefined): boolean {
+        if (message.sender_type === 'user') return true;
+        if (!session) return false;
+        const isAgentAgent = session.session_type === 'private' && !session.participants.some(p => p.participant_type === 'user');
+        if (isAgentAgent && message.sender_type === 'agent') {
+            const agentIds = session.participants
+                .filter(p => p.participant_type === 'agent')
+                .map(p => p.participant_id)
+                .sort();
+            return message.sender_id === agentIds[1];
+        }
+        return false;
+    }
+
+    function getHeaderDisplay(session: Session) {
+        const userParticipant = session.participants.find(p => p.participant_type === 'user');
+        const agentParticipants = session.participants.filter(p => p.participant_type === 'agent');
+
+        if (session.session_type === 'group') {
+            return { type: 'group' as const, name: session.group_name || '群聊', avatar: session.group_avatar || null, agents: [] as typeof agentParticipants };
+        }
+
+        if (userParticipant) {
+            const agent = agentParticipants[0];
+            return { type: 'single' as const, name: agent?.name || '未命名', avatar: agent?.avatar_path || null, agents: [] as typeof agentParticipants };
+        }
+
+        return {
+            type: 'agent-agent' as const,
+            name: `${agentParticipants[0]?.name || 'Agent1'}-${agentParticipants[1]?.name || 'Agent2'}`,
+            avatar: null as string | null,
+            agents: agentParticipants,
+        };
+    }
+
     $effect(() => {
         const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         prevMsgCount = 0;
+        isFirstLoad = true;
         // 恢复该会话的输入内容
         if (id) {
             inputText = inputBySession.get(id) || '';
@@ -94,7 +156,8 @@
                     ? sessionStore.sessions.find(s => s.id === id)
                     : historyStore.sessions.find(s => s.id === id)
             );
-            currentAgentId = session?.agent_id;
+            const agentParticipant = session?.participants.find(p => p.participant_type === 'agent');
+            currentAgentId = agentParticipant?.participant_id;
             if (session) {
                 loadSessionConfig(id, session.session_type);
             }
@@ -125,13 +188,37 @@
         const diff = msgs.length - prevMsgCount;
         prevMsgCount = msgs.length;
 
+        if (isFirstLoad) {
+            isFirstLoad = false;
+            if (diff > 0 && messageListEl) {
+                const saved = scrollPositions.get(selectedId);
+                if (saved != null) {
+                    messageListEl.scrollTop = saved;
+                } else {
+                    messageListEl.scrollTop = messageListEl.scrollHeight;
+                }
+            }
+            return;
+        }
+
         if (diff > 1) {
             scrollToBottom();
-        } else if (diff === 1) {
-            const lastMsg = msgs[msgs.length - 1];
-            if (lastMsg.sender_type === 'user') {
-                scrollToBottom();
-            }
+        } else if (diff === 1 && isNearBottom()) {
+            scrollToBottom();
+        }
+    });
+
+    // Typing indicator 出现时，如果用户之前在底部（scrollPositions 中没有记录），自动滚动到底部
+    // 双重 requestAnimationFrame：第一层等 DOM 更新，第二层等浏览器 layout/paint 完成后滚动
+    $effect(() => {
+        const count = displayedTypingAgents.length;
+        const currentId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+        if (count > 0 && currentId && !scrollPositions.has(currentId)) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    scrollToBottom();
+                });
+            });
         }
     });
 
@@ -139,6 +226,8 @@
         const sessionId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         if (!sessionId || !sessionConfig) return;
         try {
+            // 乐观更新：立即清空计数，让提示条立刻消失
+            sessionConfig = { ...sessionConfig, agent_message_count: 0 };
             await invoke('reset_message_count', {
                 req: {
                     session_id: sessionId,
@@ -184,8 +273,7 @@
             };
             messageStore.addMessage(optimisticMsg);
 
-        // 乐观更新会话列表预览（history 模式无 new_message 事件，需要手动更新）
-        sessionStore.updateSessionPreview(sessionId, content, Date.now());
+        // History 模式不更新会话列表预览，避免影响当前 page 的预览显示
         try {
             await invoke('send_history_message', {
                 req: { session_id: sessionId, content, page_index: pageIdx },
@@ -263,8 +351,13 @@
         // History 模式：消息更新通过 send_history_message 的返回值同步获取
         if (mode === 'chat') {
             listen('new_message', (event) => {
-                const msg = event.payload as { session_id: string; sender_type?: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
+                const msg = event.payload as { session_id: string; sender_type?: string; sender_id?: string; sender_name?: string; content?: string; id?: string; page_index?: number } & Record<string, unknown>;
                 logger.debug('[DEBUG ChatView.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), pageIndex: msg.page_index });
+
+                // 防御：忽略不属于当前查看会话的消息
+                if (msg.session_id !== messageStore.currentSessionId) {
+                    return;
+                }
 
                 // 检查消息是否属于当前查看的页面
                 const session = sessionStore.sessions.find(s => s.id === msg.session_id);
@@ -275,12 +368,22 @@
                 if (isCurrentPage) {
                     const exists = messageStore.messagesBySession.get(msg.session_id)?.some((m) => m.id === msg.id);
                     if (!exists) {
+                        // 补全 sender_name（后端 emit 的消息可能缺少 sender_name）
+                        if (!msg.sender_name && session) {
+                            const p = session.participants.find(p => p.participant_id === msg.sender_id);
+                            if (p) {
+                                (msg as Record<string, unknown>).sender_name = p.name;
+                            }
+                            if (!msg.sender_name) {
+                                (msg as Record<string, unknown>).sender_name = msg.sender_type === 'user' ? '用户' : '未知';
+                            }
+                        }
                         messageStore.addMessage(msg as unknown as import('$lib/types').Message);
                     }
                 }
 
-                // 当 agent 消息到达当前会话时，刷新 sessionConfig（无论是否在当前页）
-                if (msg.session_id === messageStore.currentSessionId && msg.sender_type === 'agent') {
+                // 当 agent 消息到达当前会话时，刷新 sessionConfig
+                if (msg.sender_type === 'agent') {
                     if (session) {
                         loadSessionConfig(msg.session_id, session.session_type);
                     }
@@ -387,12 +490,34 @@
         <!-- Header -->
         <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0 relative">
             {#if selectedSession}
+                {@const header = getHeaderDisplay(selectedSession!)}
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
-                        {#if selectedSession.agent_avatar || selectedSession.group_avatar}
+                        {#if header.type === 'agent-agent' && header.agents.length >= 2}
+                            <div class="relative w-full h-full">
+                                <div class="absolute left-0 top-0 w-1/2 h-full overflow-hidden">
+                                    {#if header.agents[0]?.avatar_path}
+                                        <img src={header.agents[0].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: left center;" />
+                                    {:else}
+                                        <div class="w-10 h-10 bg-primary/20 flex items-center justify-center text-primary text-xs font-bold" style="padding-right: 0.5rem;">
+                                            {header.agents[0]?.name?.charAt(0) || 'A'}
+                                        </div>
+                                    {/if}
+                                </div>
+                                <div class="absolute right-0 top-0 w-1/2 h-full overflow-hidden border-l-2 border-white">
+                                    {#if header.agents[1]?.avatar_path}
+                                        <img src={header.agents[1].avatar_path} alt="" class="w-10 h-10 object-cover" style="object-position: right center;" />
+                                    {:else}
+                                        <div class="w-10 h-10 bg-secondary/20 flex items-center justify-center text-secondary text-xs font-bold" style="padding-left: 0.5rem;">
+                                            {header.agents[1]?.name?.charAt(0) || 'B'}
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+                        {:else if header.avatar}
                             <img
-                                src={selectedSession.agent_avatar || selectedSession.group_avatar}
-                                alt={selectedSession.agent_name || selectedSession.group_name || '会话'}
+                                src={header.avatar}
+                                alt={header.name}
                                 class="w-full h-full object-cover"
                             />
                         {:else}
@@ -401,7 +526,7 @@
                     </div>
                     <div>
                         <h2 class="text-lg font-semibold">
-                            {selectedSession.agent_name || selectedSession.group_name || '未命名会话'}
+                            {header.name}
                         </h2>
                     </div>
                 </div>
@@ -454,48 +579,68 @@
                 <p>{mode === 'history' ? '选择一个会话查看历史' : '选择一个会话开始聊天'}</p>
             </div>
         {:else}
-            <div class="flex-1 overflow-y-auto" bind:this={messageListEl} data-testid="message-list">
-                {#if messageStore.messages.length === 0 && !isAgentTyping}
+            <div class="flex-1 overflow-y-auto"
+                 bind:this={messageListEl}
+                 data-testid="message-list"
+                 onscroll={() => {
+                     if (!messageListEl) return;
+                     const currentId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+                     if (!currentId) return;
+                     if (isNearBottom()) {
+                         const next = new Map(scrollPositions);
+                         next.delete(currentId);
+                         scrollPositions = next;
+                     } else {
+                         const next = new Map(scrollPositions);
+                         next.set(currentId, messageListEl.scrollTop);
+                         scrollPositions = next;
+                     }
+                 }}
+            >
+                {#if messageStore.messages.length === 0 && displayedTypingAgents.length === 0}
                     <div class="flex items-center justify-center h-full text-text-secondary p-4">
                         <p>还没有消息，发送第一条消息吧</p>
                     </div>
                 {:else}
                 <div class="py-4 space-y-2">
                     {#each messageStore.messages as message (message.id)}
+                        {@const rightSide = isOnRightSide(message, selectedSession)}
                         <div
-                            class="flex px-4 {message.sender_type === 'user' ? 'justify-end' : 'justify-start'}"
+                            class="flex px-4 {rightSide ? 'justify-end' : 'justify-start'}"
                         >
                             <MessageBubble
                                 {message}
-                                isMe={message.sender_type === 'user'}
+                                isMe={rightSide}
                                 senderName={message.sender_name || '未知'}
                             />
                         </div>
                     {/each}
-                    {#if isAgentTyping}
-                        <div class="flex px-4 justify-start" data-testid="typing-indicator">
-                            <div class="flex flex-col max-w-[80%] items-start">
-                                <div class="flex items-center gap-2 mb-1">
+                    {#each displayedTypingAgents as agentId (agentId)}
+                        {@const agent = selectedSession.participants.find(p => p.participant_id === agentId)}
+                        {@const isRight = selectedSession && selectedSession.session_type === 'private' && !selectedSession.participants.some(p => p.participant_type === 'user') && selectedSession.participants.filter(p => p.participant_type === 'agent').map(p => p.participant_id).sort()[1] === agentId}
+                        <div class="flex px-4 {isRight ? 'justify-end' : 'justify-start'}" data-testid="typing-indicator">
+                            <div class="flex flex-col max-w-[80%] {isRight ? 'items-end' : 'items-start'}">
+                                <div class="flex items-center gap-2 mb-1 {isRight ? 'flex-row-reverse' : ''}">
                                     <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
-                                        {#if selectedSession.agent_avatar}
-                                            <img src={selectedSession.agent_avatar} alt={selectedSession.agent_name || 'Agent'} class="w-full h-full object-cover" />
+                                        {#if agent?.avatar_path}
+                                            <img src={agent.avatar_path} alt={agent.name || 'Agent'} class="w-full h-full object-cover" />
                                         {:else}
                                             <Bot size={16} />
                                         {/if}
                                     </div>
-                                    <div class="flex flex-col justify-center h-8">
-                                        <span class="text-xs text-text-secondary leading-none">{selectedSession.agent_name || 'Agent'}</span>
+                                    <div class="flex flex-col justify-center h-8 {isRight ? 'items-end' : 'items-start'}">
+                                        <span class="text-xs text-text-secondary leading-none">{agent?.name || 'Agent'}</span>
                                         <span class="text-[10px] text-text-secondary opacity-70 leading-none mt-0.5">正在输入中...</span>
                                     </div>
                                 </div>
-                                <div class="bg-surface border border-border rounded-2xl rounded-tl-sm px-4 py-2 text-text-secondary text-sm">
+                                <div class="bg-surface border border-border rounded-2xl {isRight ? 'rounded-tr-sm' : 'rounded-tl-sm'} px-4 py-2 text-text-secondary text-sm">
                                     <span class="inline-block animate-bounce">.</span>
                                     <span class="inline-block animate-bounce" style="animation-delay: 0.2s">.</span>
                                     <span class="inline-block animate-bounce" style="animation-delay: 0.4s">.</span>
                                 </div>
                             </div>
                         </div>
-                    {/if}
+                    {/each}
                 </div>
                 {/if}
             </div>
@@ -514,33 +659,39 @@
             {/if}
 
             <!-- Input area -->
-            <div class="shrink-0 border-t border-border p-4 bg-surface">
-                <div class="flex items-end gap-2">
-                    <textarea
-                        value={inputText}
-                        oninput={(e) => {
-                            inputText = e.currentTarget.value;
-                            const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
-                            if (id) {
-                                const next = new Map(inputBySession);
-                                next.set(id, e.currentTarget.value);
-                                inputBySession = next;
-                            }
-                        }}
-                        onkeydown={handleKeydown}
-                        placeholder="输入消息..."
-                        rows={3}
-                        class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32"
-                    ></textarea>
-                    <button
-                        onclick={handleSend}
-                        disabled={sending || !inputText.trim()}
-                        class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0"
-                    >
-                        <Send size={18} />
-                    </button>
+            {#if isAgentAgentPrivate}
+                <div class="shrink-0 border-t border-border p-4 bg-surface text-center text-sm text-text-secondary">
+                    此会话为 Agent-Agent 私聊，不支持用户直接发送消息
                 </div>
-            </div>
+            {:else}
+                <div class="shrink-0 border-t border-border p-4 bg-surface">
+                    <div class="flex items-end gap-2">
+                        <textarea
+                            value={inputText}
+                            oninput={(e) => {
+                                inputText = e.currentTarget.value;
+                                const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
+                                if (id) {
+                                    const next = new Map(inputBySession);
+                                    next.set(id, e.currentTarget.value);
+                                    inputBySession = next;
+                                }
+                            }}
+                            onkeydown={handleKeydown}
+                            placeholder="输入消息..."
+                            rows={3}
+                            class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32"
+                        ></textarea>
+                        <button
+                            onclick={handleSend}
+                            disabled={sending || !inputText.trim()}
+                            class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0"
+                        >
+                            <Send size={18} />
+                        </button>
+                    </div>
+                </div>
+            {/if}
         {/if}
     </div>
     {#if selectedSession?.session_type === 'group'}

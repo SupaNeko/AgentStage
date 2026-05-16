@@ -19,6 +19,36 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import { invoke } from '@tauri-apps/api/core';
 
+function makeUserAgentSession(overrides: Partial<Session> = {}): Session {
+    return {
+        id: 's1',
+        session_type: 'single',
+        unread_count: 0,
+        last_message_at: null,
+        last_message_preview: null,
+        participants: [
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+        ],
+        ...overrides,
+    };
+}
+
+function makeGroupSession(overrides: Partial<Session> = {}): Session {
+    return {
+        id: 'g1',
+        session_type: 'group',
+        unread_count: 0,
+        last_message_at: null,
+        last_message_preview: null,
+        participants: [
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Agent 1', avatar_path: null },
+        ],
+        ...overrides,
+    };
+}
+
 describe('ChatView', () => {
     const mockInvoke = vi.mocked(invoke);
 
@@ -102,14 +132,7 @@ describe('ChatView', () => {
             return Promise.resolve(undefined);
         });
 
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -124,14 +147,7 @@ describe('ChatView', () => {
     });
 
     it('shows empty message state when session has no messages', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -144,15 +160,7 @@ describe('ChatView', () => {
     });
 
     it('shows typing indicator when agent_typing event arrives', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -169,15 +177,7 @@ describe('ChatView', () => {
     });
 
     it('hides typing indicator when agent_completed event arrives', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -204,12 +204,13 @@ describe('ChatView', () => {
         const session: Session = {
             id: 's1',
             session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            agent_avatar: '/avatar.png',
             unread_count: 0,
             last_message_at: null,
             last_message_preview: null,
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: '/avatar.png' },
+            ],
         };
 
         sessionStore.sessions = [session];
@@ -232,15 +233,7 @@ describe('ChatView', () => {
     });
 
     it('shows message limit warning when limit is reached', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         mockInvoke.mockImplementation((cmd: string) => {
             if (cmd === 'get_session_messages') {
@@ -274,15 +267,7 @@ describe('ChatView', () => {
     });
 
     it('calls reset_message_count when reset button is clicked', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         mockInvoke.mockImplementation((cmd: string) => {
             if (cmd === 'get_session_messages') {
@@ -354,14 +339,7 @@ describe('ChatView', () => {
             return Promise.resolve(undefined);
         });
 
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -379,15 +357,8 @@ describe('ChatView', () => {
         expect(container.scrollTop).toBe(1000);
     });
 
-    it('scrolls to bottom when user sends a message', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+    it('scrolls to bottom when user sends a message while already near bottom', async () => {
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -397,7 +368,8 @@ describe('ChatView', () => {
 
         const container = screen.getByTestId('message-list');
         Object.defineProperty(container, 'scrollHeight', { value: 1000, writable: true });
-        container.scrollTop = 0;
+        Object.defineProperty(container, 'clientHeight', { value: 100, writable: true });
+        container.scrollTop = 920; // near bottom (1000 - 920 - 100 = -20 <= 80)
 
         messageStore.addMessage({
             id: 'm-user',
@@ -415,21 +387,48 @@ describe('ChatView', () => {
         expect(container.scrollTop).toBe(1000);
     });
 
-    it('does not auto-scroll when agent message arrives', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+    it('does not auto-scroll when not near bottom', async () => {
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
 
         render(ChatView);
         await tick();
+        // 等待 loadMessages 的 Promise 完成，避免和 addMessage 竞态
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const container = screen.getByTestId('message-list');
+        Object.defineProperty(container, 'scrollHeight', { value: 1000, writable: true });
+        Object.defineProperty(container, 'clientHeight', { value: 100, writable: true });
+        container.scrollTop = 0; // not near bottom (1000 - 0 - 100 = 900 > 80)
+
+        messageStore.addMessage({
+            id: 'm-user',
+            session_id: 's1',
+            sender_type: 'user',
+            sender_id: 'u1',
+            content: 'User message',
+            created_at: Date.now(),
+            message_type: 'text',
+            page_index: 0,
+            sender_name: 'User',
+        });
+        await tick();
+
+        expect(container.scrollTop).toBe(0);
+    });
+
+    it('does not auto-scroll when agent message arrives', async () => {
+        const session = makeUserAgentSession();
+
+        sessionStore.sessions = [session];
+        sessionStore.selectedSessionId = 's1';
+
+        render(ChatView);
+        await tick();
+        // 等待 loadMessages 的 Promise 完成，避免和 addMessage 竞态
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
         const container = screen.getByTestId('message-list');
         Object.defineProperty(container, 'scrollHeight', { value: 1000, writable: true });
@@ -456,20 +455,24 @@ describe('ChatView', () => {
         const session1: Session = {
             id: 's1',
             session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Agent One',
             unread_count: 0,
             last_message_at: null,
             last_message_preview: null,
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null },
+            ],
         };
         const session2: Session = {
             id: 's2',
             session_type: 'single',
-            agent_id: 'a2',
-            agent_name: 'Agent Two',
             unread_count: 0,
             last_message_at: null,
             last_message_preview: null,
+            participants: [
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
+                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null },
+            ],
         };
 
         sessionStore.sessions = [session1, session2];
@@ -491,15 +494,7 @@ describe('ChatView', () => {
     });
 
     it('clears typing indicator on agent_error event', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'single',
-            agent_id: 'a1',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 's1';
@@ -521,14 +516,7 @@ describe('ChatView', () => {
     });
 
     it('does not show typing indicator in group chat message stream', async () => {
-        const session: Session = {
-            id: 'g1',
-            session_type: 'group',
-            group_name: 'Test Group',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeGroupSession();
 
         sessionStore.sessions = [session];
         sessionStore.selectedSessionId = 'g1';
@@ -546,14 +534,7 @@ describe('ChatView', () => {
 
     // History mode tests
     it('calls send_history_message in history mode when sending a message', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         historyStore.sessions = [session];
         historyStore.selectedSessionId = 's1';
@@ -583,14 +564,7 @@ describe('ChatView', () => {
     });
 
     it('does not register event listeners in history mode', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         historyStore.sessions = [session];
         historyStore.selectedSessionId = 's1';
@@ -609,14 +583,7 @@ describe('ChatView', () => {
     });
 
     it('shows history mode banner in history mode', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         historyStore.sessions = [session];
         historyStore.selectedSessionId = 's1';
@@ -632,14 +599,7 @@ describe('ChatView', () => {
     });
 
     it('does not register event listeners in history mode', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         historyStore.sessions = [session];
         historyStore.selectedSessionId = 's1';
@@ -658,14 +618,7 @@ describe('ChatView', () => {
     });
 
     it('shows history mode banner in history mode', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         historyStore.sessions = [session];
         historyStore.selectedSessionId = 's1';
@@ -681,14 +634,7 @@ describe('ChatView', () => {
     });
 
     it('loads messages with page_index in history mode', async () => {
-        const session: Session = {
-            id: 's1',
-            session_type: 'private',
-            agent_name: 'Test Agent',
-            unread_count: 0,
-            last_message_at: null,
-            last_message_preview: null,
-        };
+        const session = makeUserAgentSession({ id: 's1', session_type: 'private' });
 
         mockInvoke.mockImplementation((cmd: string) => {
             if (cmd === 'get_session_messages') {
