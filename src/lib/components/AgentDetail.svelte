@@ -1,18 +1,20 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { Bot, Trash2, Save, Loader2, MessageSquare } from 'lucide-svelte';
+    import { Bot, Trash2, Save, Loader2, MessageSquare, Sparkles } from 'lucide-svelte';
     import { appState } from '$lib/stores/appState.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
     import type { Agent } from '$lib/types';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
+    import PersonaGenerateModal from './PersonaGenerateModal.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
     let saving = $state(false);
     let error = $state('');
     let showAvatarModal = $state(false);
+    let showGenerateModal = $state(false);
 
     // Form state
     let form = $state({
@@ -271,20 +273,29 @@
         </div>
 
         <!-- Footer actions -->
-        <div class="px-6 py-4 border-t border-border bg-surface flex justify-end gap-3">
-            <button onclick={() => appState.selectAgent(null)} class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">
-                取消
+        <div class="px-6 py-4 border-t border-border bg-surface flex justify-between items-center">
+            <button
+                onclick={() => showGenerateModal = true}
+                class="flex items-center gap-2 px-4 py-2 text-primary hover:bg-primary/5 rounded-lg transition-colors"
+            >
+                <Sparkles size={16} />
+                <span>人设自生成</span>
             </button>
-            <button onclick={handleSave} disabled={saving}
-                class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
-                {#if saving}
-                    <Loader2 size={16} class="animate-spin" />
-                    <span>保存中...</span>
-                {:else}
-                    <Save size={16} />
-                    <span>保存</span>
-                {/if}
-            </button>
+            <div class="flex gap-3">
+                <button onclick={() => appState.selectAgent(null)} class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">
+                    取消
+                </button>
+                <button onclick={handleSave} disabled={saving}
+                    class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
+                    {#if saving}
+                        <Loader2 size={16} class="animate-spin" />
+                        <span>保存中...</span>
+                    {:else}
+                        <Save size={16} />
+                        <span>保存</span>
+                    {/if}
+                </button>
+            </div>
         </div>
     {/if}
 </div>
@@ -301,4 +312,9 @@
         }
         showAvatarModal = false;
     }}
+/>
+
+<PersonaGenerateModal
+    open={showGenerateModal}
+    onClose={() => showGenerateModal = false}
 />
