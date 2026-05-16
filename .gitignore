@@ -32,6 +32,7 @@ npm-debug.log*
 /test-results/
 /e2e/
 /playwright.config.ts
+/.playwright-cli
 
 # Rust
 *.rs.bk
