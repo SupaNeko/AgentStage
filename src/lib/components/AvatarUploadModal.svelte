@@ -72,13 +72,14 @@
         const y = CANVAS_SIZE / 2 - imgH / 2 + offsetY;
         ctx.drawImage(imgObj, x, y, imgW, imgH);
 
-        // Draw mask with circular cutout
+        // Draw mask outside the crop circle (rect minus circle, preserving image inside)
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-        ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
-        ctx.arc(CANVAS_SIZE / 2, CANVAS_SIZE / 2, CROP_RADIUS, 0, Math.PI * 2);
+        ctx.rect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        ctx.moveTo(CANVAS_SIZE / 2 + CROP_RADIUS, CANVAS_SIZE / 2);
+        ctx.arc(CANVAS_SIZE / 2, CANVAS_SIZE / 2, CROP_RADIUS, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fill();
         ctx.restore();
 

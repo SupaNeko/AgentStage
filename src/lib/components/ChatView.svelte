@@ -518,7 +518,7 @@
                             </div>
                         {:else if header.avatar}
                             <img
-                                src={header.avatar}
+                                src={resolveAvatarUrl(header.avatar)}
                                 alt={header.name}
                                 class="w-full h-full object-cover"
                             />

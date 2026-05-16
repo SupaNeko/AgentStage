@@ -15,9 +15,23 @@ export function resolveAvatarUrl(path: string | null | undefined): string {
     if (path.startsWith('http') || path.startsWith('asset:') || path.startsWith('data:')) {
         return path;
     }
+    const normalizedPath = path.replace(/\\/g, '/');
+
+    // Development: Vite dev server can serve local files via @fs/
+    // (Tauri convertFileSrc uses asset.localhost which has no listener in dev mode)
+    if (import.meta.env.DEV) {
+        const url = `http://${window.location.host}/@fs/${normalizedPath}`;
+        console.log('[Avatar] resolve (dev):', path, '->', url);
+        return url;
+    }
+
+    // Production: Tauri asset protocol
     try {
-        return convertFileSrc(path);
-    } catch {
+        const url = convertFileSrc(normalizedPath);
+        console.log('[Avatar] resolve (prod):', path, '->', url);
+        return url;
+    } catch (e) {
+        console.warn('[Avatar] convertFileSrc failed:', path, e);
         return path;
     }
 }

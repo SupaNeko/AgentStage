@@ -15,5 +15,13 @@ pub fn resolve_avatar_path(relative_path: Option<String>) -> Option<String> {
     let relative = relative_path?;
     let data_dir = crate::get_data_dir().ok()?;
     let absolute = data_dir.join(&relative);
-    Some(absolute.to_string_lossy().to_string())
+    let result = absolute.to_string_lossy().to_string();
+    println!(
+        "[Avatar] resolve_avatar_path: relative='{}' data_dir='{}' absolute='{}' exists={}",
+        relative,
+        data_dir.display(),
+        result,
+        absolute.exists()
+    );
+    Some(result)
 }

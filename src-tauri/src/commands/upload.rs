@@ -17,11 +17,8 @@ pub async fn upload_avatar(
 ) -> Result<String, String> {
     let conn = get_db(&state).await?;
 
-    let app_dir = std::env::current_exe()
+    let app_dir = crate::get_data_dir()
         .map_err(|e| e.to_string())?
-        .parent()
-        .ok_or("No exe dir")?
-        .join("data")
         .join("avatars")
         .join(&req.target_type);
 

@@ -27,19 +27,9 @@ pub fn get_data_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> 
     let exe_path = std::env::current_exe()?;
     let exe_dir = exe_path.parent().ok_or("Failed to get exe directory")?;
 
-    // 如果 exe 旁边已有 data 文件夹，直接使用（兼容已部署的便携目录）
-    let portable = exe_dir.join("data");
-    if portable.exists() {
-        return Ok(portable);
-    }
-
-    // 开发模式检测：exe 位于 target/debug 或 target/release 下
-    let exe_str = exe_path.to_string_lossy();
-    let is_dev = exe_str.contains("target")
-        && (exe_str.contains("debug") || exe_str.contains("release"));
-
-    if is_dev {
-        // 向上回溯找到项目根目录（包含 src-tauri/Cargo.toml 的父目录）
+    // Debug 构建强制使用项目根目录的 data/，避免 target/debug/data/ 干扰
+    #[cfg(debug_assertions)]
+    {
         let mut dir = exe_dir.to_path_buf();
         for _ in 0..5 {
             if dir.join("src-tauri").join("Cargo.toml").exists() {
@@ -53,7 +43,11 @@ pub fn get_data_dir() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> 
         }
     }
 
-    // 默认：exe 同级目录
+    // Release 构建：exe 同级目录（兼容便携模式）
+    let portable = exe_dir.join("data");
+    if portable.exists() {
+        return Ok(portable);
+    }
     Ok(exe_dir.join("data"))
 }
 

@@ -115,7 +115,7 @@
                                 </div>
                             {:else if display.avatar}
                                 <img
-                                    src={display.avatar}
+                                    src={resolveAvatarUrl(display.avatar)}
                                     alt={display.name}
                                     class="w-full h-full object-cover"
                                 />
