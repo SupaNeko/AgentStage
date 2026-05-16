@@ -39,7 +39,12 @@
         }
         try {
             await invoke('clear_session_history', { req: { session_id: contextSessionId } });
-            await historyStore.loadSessions();
+            historyStore.sessions = historyStore.sessions.filter(s => s.id !== contextSessionId);
+            if (historyStore.selectedSessionId === contextSessionId) {
+                historyStore.selectedSessionId = null;
+                historyStore.chatPages = [];
+                historyStore.selectedPageIndex = null;
+            }
             toastStore.show('历史记录已清除', 'success', 2000);
         } catch (err) {
             toastStore.show('清除失败: ' + String(err), 'error', 5000);
