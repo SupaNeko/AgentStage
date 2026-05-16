@@ -4,7 +4,7 @@
     import { historyStore } from '$lib/stores/historyStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
-    import { MessageSquare, ChevronDown, ChevronRight, Trash2 } from 'lucide-svelte';
+    import { MessageSquare, ChevronDown, ChevronRight, Eraser } from 'lucide-svelte';
     import type { Session } from '$lib/types';
 
     let expandedPrivate = $state(true);
@@ -31,21 +31,18 @@
         contextSessionId = null;
     }
 
-    async function handlePermanentDelete() {
+    async function handleClearHistory() {
         if (!contextSessionId) return;
-        if (!confirm('确定要彻底删除此群聊吗？所有历史记录将被移除，此操作不可恢复。')) {
+        if (!confirm('确定要清除此会话的历史记录吗？所有消息将被清空，此操作不可恢复。')) {
             closeContextMenu();
             return;
         }
         try {
-            await invoke('delete_session', { id: contextSessionId });
+            await invoke('clear_session_history', { req: { session_id: contextSessionId } });
             await historyStore.loadSessions();
-            if (historyStore.selectedSessionId === contextSessionId) {
-                historyStore.selectedSessionId = null;
-            }
-            toastStore.show('群聊已彻底删除', 'success', 2000);
+            toastStore.show('历史记录已清除', 'success', 2000);
         } catch (err) {
-            toastStore.show('删除失败: ' + String(err), 'error', 5000);
+            toastStore.show('清除失败: ' + String(err), 'error', 5000);
         } finally {
             closeContextMenu();
         }
@@ -121,6 +118,7 @@
                         <button
                             class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                             onclick={() => handleSessionClick(session.id)}
+                            oncontextmenu={(e) => handleContextMenu(e, session.id)}
                         >
                             <div class="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-white shrink-0 overflow-hidden">
                                 {#if display.isAgentAgent && display.agents.length >= 2}
@@ -220,11 +218,11 @@
     <div class="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[140px]"
          style="left: {contextMenuX}px; top: {contextMenuY}px;">
         <button
-            onclick={handlePermanentDelete}
-            class="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-bg flex items-center gap-2"
+            onclick={handleClearHistory}
+            class="w-full px-4 py-2 text-left text-sm text-orange-500 hover:bg-bg flex items-center gap-2"
         >
-            <Trash2 size={14} />
-            彻底删除
+            <Eraser size={14} />
+            清除历史
         </button>
     </div>
 {/if}

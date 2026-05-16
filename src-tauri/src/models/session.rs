@@ -136,3 +136,8 @@ pub struct ResetMessageCountRequest {
 pub struct DisbandGroupRequest {
     pub session_id: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClearSessionHistoryRequest {
+    pub session_id: String,
+}

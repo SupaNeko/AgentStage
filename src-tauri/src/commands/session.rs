@@ -4,7 +4,7 @@ use crate::db::session as session_repo;
 use crate::db::frozen_state as frozen_state_repo;
 use crate::db::agent_unread as agent_unread_repo;
 use crate::models::chat_page::{ChatPage, ListChatPagesRequest};
-use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse, GetSessionConfigRequest, ResetMessageCountRequest, DisbandGroupRequest};
+use crate::models::session::{CreateGroupSessionRequest, CreatePrivateSessionRequest, GroupMemberResponse, SessionResponse, GetSessionConfigRequest, ResetMessageCountRequest, DisbandGroupRequest, ClearSessionHistoryRequest};
 use crate::db::chat_page as chat_page_repo;
 use crate::scheduler::Scheduler;
 
@@ -150,6 +150,21 @@ pub async fn disband_group(
 ) -> Result<bool, String> {
     let conn = get_db(&state).await?;
     let result = session_repo::disband_group(&conn, &req.session_id)
+        .map_err(|e| e.to_string())?;
+    scheduler.cancel_session(&req.session_id).await;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn clear_session_history(
+    state: State<'_, DbState>,
+    scheduler: State<'_, Scheduler>,
+    req: ClearSessionHistoryRequest,
+) -> Result<bool, String> {
+    crate::logger::backend("DEBUG", &format!("[DEBUG clear_session_history] session_id={}", req.session_id));
+
+    let conn = get_db(&state).await?;
+    let result = session_repo::clear_session_history(&conn, &req.session_id)
         .map_err(|e| e.to_string())?;
     scheduler.cancel_session(&req.session_id).await;
     Ok(result)

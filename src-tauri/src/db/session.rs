@@ -254,6 +254,47 @@ pub fn soft_delete_session(conn: &Connection, session_id: &str) -> Result<bool> 
     Ok(rows > 0)
 }
 
+pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool> {
+    let tx = conn.unchecked_transaction()?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    // 1. 删除所有消息（保留 chat_pages 结构和 current_chat_page）
+    conn.execute("DELETE FROM messages WHERE session_id = ?1", [session_id])?;
+
+    // 2. 重置所有聊天页面的消息计数
+    conn.execute(
+        "UPDATE chat_pages SET message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+
+    // 3. 重置会话预览
+    conn.execute(
+        "UPDATE sessions SET last_message_preview = NULL, last_message_at = NULL, updated_at = ?2 WHERE id = ?1",
+        (session_id, now),
+    )?;
+
+    // 4. 重置私聊计数（保留 current_chat_page）
+    conn.execute(
+        "UPDATE private_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+
+    // 5. 重置群聊计数（保留 current_chat_page）
+    conn.execute(
+        "UPDATE group_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+
+    // 6. 清除未读状态
+    let _ = conn.execute("DELETE FROM agent_unread WHERE session_id = ?1", [session_id]);
+
+    // 7. 清除触发状态
+    let _ = conn.execute("DELETE FROM trigger_state WHERE session_id = ?1", [session_id]);
+
+    tx.commit()?;
+    Ok(true)
+}
+
 pub fn update_session_last_message(conn: &Connection, session_id: &str, preview: &str) -> Result<()> {
     let now = chrono::Utc::now().timestamp_millis();
     conn.execute(
