@@ -11,10 +11,12 @@ export class SessionStore {
             const fresh = await invoke<Session[]>('list_sessions');
             // 保留已有的 unread_count，因为后端不维护实时未读计数
             const existingUnread = new Map(this.sessions.map(s => [s.id, s.unread_count]));
-            this.sessions = fresh.map(s => ({
-                ...s,
-                unread_count: existingUnread.get(s.id) ?? s.unread_count,
-            }));
+            this.sessions = fresh
+                .map(s => ({
+                    ...s,
+                    unread_count: existingUnread.get(s.id) ?? s.unread_count,
+                }))
+                .filter(s => !(s.session_type === 'group' && s.is_dissolved));
             logger.debug('[DEBUG sessionStore.loadSessions]', { count: this.sessions.length });
         } catch (err) {
             logger.debug('[DEBUG sessionStore.loadSessions] error', { error: err });

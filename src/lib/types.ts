@@ -43,6 +43,7 @@ export interface Session {
     unread_count: number;
     mute_enabled?: boolean;
     current_chat_page?: number;
+    is_dissolved?: boolean;
 }
 
 export interface Message {
