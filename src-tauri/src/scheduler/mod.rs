@@ -173,7 +173,7 @@ impl Scheduler {
         let target_agent_ids: Vec<String> = if session_type == "private" {
             let agent_id: String = conn
                 .query_row(
-                    "SELECT agent_id FROM private_sessions WHERE session_id = ?1",
+                    "SELECT participant_2_id FROM private_sessions WHERE session_id = ?1 AND participant_2_type = 'agent'",
                     [session_id],
                     |row| row.get(0),
                 )
