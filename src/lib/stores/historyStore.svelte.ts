@@ -13,9 +13,9 @@ export class HistoryStore {
 
     async loadSessions() {
         try {
-            const all = await invoke<Session[]>('list_sessions');
-            this.sessions = all;
-            logger.debug('[DEBUG historyStore.loadSessions]', { count: all.length });
+            const sessions = await invoke<Session[]>('list_history_sessions');
+            this.sessions = sessions;
+            logger.debug('[DEBUG historyStore.loadSessions]', { count: sessions.length });
         } catch (err) {
             logger.error('Failed to load history sessions:', err);
         }

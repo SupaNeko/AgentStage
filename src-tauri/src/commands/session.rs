@@ -191,6 +191,14 @@ pub async fn remove_group_member(
 }
 
 #[tauri::command]
+pub async fn list_history_sessions(state: State<'_, DbState>) -> Result<Vec<SessionResponse>, String> {
+    let conn = get_db(&state).await?;
+    let sessions = session_repo::list_history_sessions(&conn).map_err(|e| e.to_string())?;
+    crate::logger::backend("DEBUG", &format!("[DEBUG list_history_sessions] returned {} sessions", sessions.len()));
+    Ok(sessions)
+}
+
+#[tauri::command]
 pub async fn list_chat_pages(
     state: State<'_, DbState>,
     req: ListChatPagesRequest,

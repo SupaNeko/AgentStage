@@ -146,6 +146,32 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
     Ok(sessions)
 }
 
+pub fn list_history_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+                COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
+                ss.mute_enabled,
+                gs.name,
+                gs.avatar_path,
+                gs.is_dissolved
+         FROM sessions s
+         LEFT JOIN private_sessions ps ON s.id = ps.session_id
+         LEFT JOIN group_sessions gs ON s.id = gs.session_id
+         LEFT JOIN session_settings ss ON s.id = ss.session_id
+         WHERE s.is_deleted = 0
+           AND (SELECT COUNT(*) FROM chat_pages cp WHERE cp.session_id = s.id) > 1
+         ORDER BY s.last_message_at DESC"
+    )?;
+    let rows = stmt.query_map([], build_session_response_from_row)?;
+    let mut sessions = Vec::new();
+    for row in rows {
+        let mut session = row?;
+        session.participants = get_participants_for_session(conn, &session.id, &session.session_type)?;
+        sessions.push(session);
+    }
+    Ok(sessions)
+}
+
 pub fn get_private_session_by_agent_id(conn: &Connection, agent_id: &str) -> Result<Option<SessionResponse>> {
     let mut stmt = conn.prepare(
         "SELECT s.id FROM sessions s
@@ -256,7 +282,6 @@ pub fn soft_delete_session(conn: &Connection, session_id: &str) -> Result<bool> 
 
 pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool> {
     let tx = conn.unchecked_transaction()?;
-    let now = chrono::Utc::now().timestamp_millis();
 
     // 获取当前 page_index，保留当前页面消息，只清除历史归档页面
     let current_page: i32 = conn.query_row(
@@ -281,11 +306,7 @@ pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool
         (session_id, current_page),
     )?;
 
-    // 3. 清空 last_message_at / last_message_preview，让历史列表不再显示该会话
-    conn.execute(
-        "UPDATE sessions SET last_message_preview = NULL, last_message_at = NULL, updated_at = ?2 WHERE id = ?1",
-        (session_id, now),
-    )?;
+    // 保留当前 page 的 last_message_at/preview 不变（供 SessionList 显示）
 
     tx.commit()?;
     Ok(true)

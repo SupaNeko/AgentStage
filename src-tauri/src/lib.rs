@@ -11,7 +11,7 @@ use commands::log::log_frontend;
 use commands::message::{get_session_messages, send_user_message, send_history_message};
 use commands::session::{
     create_group_session, create_private_session, delete_session, clear_session_history, get_group_members,
-    get_session, list_sessions, get_session_config, update_session_config,
+    get_session, list_sessions, list_history_sessions, get_session_config, update_session_config,
     reset_session, reset_message_count, disband_group, add_group_member, remove_group_member,
     list_chat_pages,
 };
@@ -111,6 +111,7 @@ pub fn run() {
             delete_agent,
             create_private_session,
             list_sessions,
+            list_history_sessions,
             get_session,
             delete_session,
             clear_session_history,

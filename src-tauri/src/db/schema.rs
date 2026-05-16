@@ -405,3 +405,5 @@ pub const MIGRATION_V9: &str = r#"
 -- V9: 群聊解散支持
 ALTER TABLE group_sessions ADD COLUMN is_dissolved INTEGER DEFAULT 0 CHECK(is_dissolved IN (0, 1));
 "#;
+
+
