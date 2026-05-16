@@ -65,10 +65,6 @@
         </div>
 
         <form onsubmit={handleSubmit} class="p-4 space-y-4">
-            {#if error}
-                <div class="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
-            {/if}
-
             <div class="flex justify-center">
                 <div
                     class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary"
@@ -189,6 +185,9 @@
                 <label for="ca-thinking" class="text-sm">启用思考模式（如支持）</label>
             </div>
 
+            {#if error}
+                <div class="p-3 bg-red-50 text-red-600 rounded-lg">{error}</div>
+            {/if}
             <div class="flex justify-end gap-3 pt-2">
                 <button type="button" onclick={() => open = false}
                     class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">取消</button>
