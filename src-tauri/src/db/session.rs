@@ -256,8 +256,9 @@ pub fn soft_delete_session(conn: &Connection, session_id: &str) -> Result<bool> 
 
 pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool> {
     let tx = conn.unchecked_transaction()?;
+    let now = chrono::Utc::now().timestamp_millis();
 
-    // 获取当前 page_index，只清除历史归档页面，保留当前页面
+    // 获取当前 page_index（用于保留当前页面结构）
     let current_page: i32 = conn.query_row(
         "SELECT COALESCE(ps.current_chat_page, gs.current_chat_page, 0)
          FROM sessions s
@@ -268,17 +269,40 @@ pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool
         |row| row.get(0),
     ).unwrap_or(0);
 
-    // 1. 删除非当前页面的消息
-    conn.execute(
-        "DELETE FROM messages WHERE session_id = ?1 AND page_index != ?2",
-        (session_id, current_page),
-    )?;
+    // 1. 删除该会话的所有消息
+    conn.execute("DELETE FROM messages WHERE session_id = ?1", [session_id])?;
 
-    // 2. 删除非当前页面
+    // 2. 删除所有非当前页面
     conn.execute(
         "DELETE FROM chat_pages WHERE session_id = ?1 AND page_index != ?2",
         (session_id, current_page),
     )?;
+
+    // 3. 重置当前页面的消息计数
+    conn.execute(
+        "UPDATE chat_pages SET message_count = 0, updated_at = ?2 WHERE session_id = ?1 AND page_index = ?3",
+        (session_id, now, current_page),
+    )?;
+
+    // 4. 清空会话预览（这样历史列表不会再显示该会话）
+    conn.execute(
+        "UPDATE sessions SET last_message_preview = NULL, last_message_at = NULL, updated_at = ?2 WHERE id = ?1",
+        (session_id, now),
+    )?;
+
+    // 5. 重置私聊/群聊计数
+    conn.execute(
+        "UPDATE private_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+    conn.execute(
+        "UPDATE group_sessions SET agent_message_count = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
+
+    // 6. 清除未读状态和触发状态
+    let _ = conn.execute("DELETE FROM agent_unread WHERE session_id = ?1", [session_id]);
+    let _ = conn.execute("DELETE FROM trigger_state WHERE session_id = ?1", [session_id]);
 
     tx.commit()?;
     Ok(true)
