@@ -48,6 +48,7 @@ pub struct SessionResponse {
     pub group_avatar: Option<String>,
     pub mute_enabled: Option<bool>,
     pub current_chat_page: i32,
+    pub is_dissolved: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ pub struct GroupSession {
     pub agent_message_count: i32,
     pub last_reset_at: i64,
     pub created_at: i64,
+    pub is_dissolved: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -91,6 +91,7 @@ fn build_session_response_from_row(row: &rusqlite::Row) -> Result<SessionRespons
         group_avatar: row.get(8)?,
         mute_enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0),
         current_chat_page: row.get(5)?,
+        is_dissolved: row.get::<_, Option<i32>>(9)?.map(|v| v != 0).unwrap_or(false),
     })
 }
 
@@ -100,7 +101,8 @@ pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<S
                 COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
                 ss.mute_enabled,
                 gs.name,
-                gs.avatar_path
+                gs.avatar_path,
+                gs.is_dissolved
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -123,7 +125,8 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
                 COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
                 ss.mute_enabled,
                 gs.name,
-                gs.avatar_path
+                gs.avatar_path,
+                gs.is_dissolved
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -483,10 +486,9 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
 }
 
 pub fn disband_group(conn: &Connection, session_id: &str) -> Result<bool> {
-    let now = chrono::Utc::now().timestamp_millis();
     let rows = conn.execute(
-        "UPDATE sessions SET is_deleted = 1, deleted_at = ?2 WHERE id = ?1 AND session_type = 'group'",
-        (session_id, now),
+        "UPDATE group_sessions SET is_dissolved = 1 WHERE session_id = ?1",
+        [session_id],
     )?;
     Ok(rows > 0)
 }
