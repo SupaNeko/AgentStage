@@ -48,6 +48,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "agent_thinking_mode",
         sql: super::schema::MIGRATION_V8,
     },
+    Migration {
+        version: 9,
+        name: "group_session_dissolve",
+        sql: super::schema::MIGRATION_V9,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {

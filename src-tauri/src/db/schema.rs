@@ -400,3 +400,8 @@ pub const MIGRATION_V8: &str = r#"
 -- V8: agents 表添加 thinking_mode 字段
 ALTER TABLE agents ADD COLUMN thinking_mode INTEGER DEFAULT 0 CHECK(thinking_mode IN (0, 1));
 "#;
+
+pub const MIGRATION_V9: &str = r#"
+-- V9: 群聊解散支持
+ALTER TABLE group_sessions ADD COLUMN is_dissolved INTEGER DEFAULT 0 CHECK(is_dissolved IN (0, 1));
+"#;
