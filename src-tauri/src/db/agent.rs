@@ -118,3 +118,11 @@ pub fn soft_delete(conn: &Connection, id: &str) -> Result<bool> {
     )?;
     Ok(rows > 0)
 }
+
+pub fn get_agent_by_name(conn: &Connection, name: &str) -> Result<Option<Agent>> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM agents WHERE name = ?1 AND is_deleted = 0", SELECT_COLUMNS)
+    )?;
+    let mut rows = stmt.query_map([name], row_to_agent)?;
+    rows.next().transpose()
+}

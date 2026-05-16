@@ -29,15 +29,21 @@ pub struct PrivateSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionParticipant {
+    pub participant_type: String,
+    pub participant_id: String,
+    pub name: String,
+    pub avatar_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub id: String,
     pub session_type: String,
     pub last_message_at: Option<i64>,
     pub last_message_preview: Option<String>,
     pub unread_count: i32,
-    pub agent_id: Option<String>,
-    pub agent_name: Option<String>,
-    pub agent_avatar: Option<String>,
+    pub participants: Vec<SessionParticipant>,
     pub group_name: Option<String>,
     pub group_avatar: Option<String>,
     pub mute_enabled: Option<bool>,
@@ -60,25 +66,6 @@ pub struct GroupSession {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreatePrivateSessionRequest {
     pub agent_id: String,
-}
-
-impl From<(Session, PrivateSession)> for SessionResponse {
-    fn from((session, ps): (Session, PrivateSession)) -> Self {
-        Self {
-            id: session.id,
-            session_type: session.session_type,
-            last_message_at: session.last_message_at,
-            last_message_preview: session.last_message_preview,
-            unread_count: session.unread_count,
-            agent_id: Some(ps.participant_2_id),
-            agent_name: None, // populated by handler
-            agent_avatar: None,
-            group_name: None,
-            group_avatar: None,
-            mute_enabled: None,
-            current_chat_page: ps.current_chat_page,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

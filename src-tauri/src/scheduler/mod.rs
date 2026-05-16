@@ -14,7 +14,7 @@ use crate::db::connection::DbState;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
 use crate::llm::prompt::PromptAssembler;
-use crate::llm::tool::{send_message_tool_schema, LlmResponse, ToolExecutor};
+use crate::llm::tool::{send_message_tool_schema, start_private_chat_tool_schema, LlmResponse, ToolExecutor};
 use crate::models::message::Message;
 
 #[derive(Clone)]
@@ -171,19 +171,22 @@ impl Scheduler {
         ));
 
         let target_agent_ids: Vec<String> = if session_type == "private" {
-            let agent_id: String = conn
-                .query_row(
-                    "SELECT participant_2_id FROM private_sessions WHERE session_id = ?1 AND participant_2_type = 'agent'",
-                    [session_id],
-                    |row| row.get(0),
+            let mut stmt = conn
+                .prepare(
+                    "SELECT participant_1_id as other_id FROM private_sessions 
+                     WHERE session_id = ?1 AND participant_1_type = 'agent' AND participant_1_id != ?2
+                     UNION
+                     SELECT participant_2_id as other_id FROM private_sessions 
+                     WHERE session_id = ?1 AND participant_2_type = 'agent' AND participant_2_id != ?2"
                 )
                 .map_err(|e| e.to_string())?;
-
-            if agent_id != sender_id {
-                vec![agent_id]
-            } else {
-                vec![]
-            }
+            let ids: Vec<String> = stmt
+                .query_map(rusqlite::params![session_id, sender_id], |row| row.get(0))
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok())
+                .collect();
+            drop(stmt);
+            ids
         } else {
             let mut stmt = conn
                 .prepare(
@@ -261,7 +264,7 @@ impl Scheduler {
         Ok(())
     }
 
-    async fn check_and_freeze_if_needed(&self, session_id: &str) -> bool {
+    async fn check_and_freeze_if_needed(&self, session_id: &str) -> Option<String> {
         let conn = self.db_state.0.lock().await;
         let settings = settings_repo::get_or_create_settings(&conn).unwrap_or_default();
 
@@ -285,14 +288,26 @@ impl Scheduler {
                 let effective = limit.unwrap_or(settings.private_message_limit_default);
                 if count >= effective {
                     let _ = frozen_state_repo::set_frozen(&conn, session_id);
+                    // 查询会话名称
+                    let session_name: String = conn.query_row(
+                        "SELECT name FROM group_sessions WHERE session_id = ?1
+                         UNION ALL
+                         SELECT CASE WHEN ps.participant_1_type = 'user' THEN a.name ELSE '私聊' END
+                         FROM private_sessions ps
+                         LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id
+                         WHERE ps.session_id = ?1
+                         LIMIT 1",
+                        [session_id],
+                        |row| row.get(0),
+                    ).unwrap_or_else(|_| "会话".to_string());
                     drop(conn);
                     self.frozen_sessions.lock().await.insert(session_id.to_string());
-                    return true;
+                    return Some(session_name);
                 }
             }
         }
 
-        false
+        None
     }
 
     pub async fn unfreeze_session(&self, session_id: &str) {
@@ -827,20 +842,12 @@ impl Scheduler {
         };
 
         // 检查是否达到上限（在释放 conn 后）
-        let is_any_frozen = {
-            let mut frozen = false;
-            for sid in &sessions_to_check {
-                if self.check_and_freeze_if_needed(sid).await {
-                    frozen = true;
-                }
+        for sid in &sessions_to_check {
+            if let Some(session_name) = self.check_and_freeze_if_needed(sid).await {
+                self.emit("system_notice", serde_json::json!({
+                    "content": format!("{} 已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。", session_name)
+                }));
             }
-            frozen
-        };
-
-        if is_any_frozen {
-            self.emit("system_notice", serde_json::json!({
-                "content": "已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。"
-            }));
         }
 
         // 更新触发时间（同时清除 is_triggering，作为双重保险）
@@ -944,7 +951,7 @@ impl Scheduler {
             system_prompt.len(), messages.len()
         ));
 
-        let tools = vec![send_message_tool_schema()];
+        let tools = vec![send_message_tool_schema(), start_private_chat_tool_schema()];
         let result = provider
             .chat(system_prompt, messages, tools)
             .await;
@@ -1009,7 +1016,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
     use rusqlite::Connection;
-    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6};
+    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8};
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -1020,6 +1027,8 @@ mod tests {
         conn.execute_batch(MIGRATION_V4).unwrap();
         conn.execute_batch(MIGRATION_V5).unwrap();
         conn.execute_batch(MIGRATION_V6).unwrap();
+        conn.execute_batch(MIGRATION_V7).unwrap();
+        conn.execute_batch(MIGRATION_V8).unwrap();
         conn
     }
 
@@ -1384,5 +1393,37 @@ mod tests {
             &conn, &session_id, "agent", "agent-1", "Hello2", "text", None
         ).unwrap();
         assert_eq!(msg2.page_index, 5);
+    }
+
+    #[tokio::test]
+    async fn test_distribute_message_agent_agent_session_symmetric() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1");
+        create_test_agent(&conn, "agent-2");
+        let session_id = session_repo::create_agent_agent_session(&conn, "agent-1", "agent-2").unwrap().id;
+        let db_state = make_db_state(conn);
+
+        let scheduler = Scheduler::new(db_state);
+
+        // Agent-1 sends message
+        let msg1 = create_test_message(&session_id, "agent", "agent-1", "Hello from 1", 1000);
+        scheduler.distribute_message(&session_id, &msg1, "agent-1").await.unwrap();
+
+        let unread = scheduler.unread_messages.lock().await;
+        let session_unread = unread.get(&session_id).unwrap();
+        assert!(session_unread.contains_key("agent-2"));
+        assert!(!session_unread.contains_key("agent-1"));
+        assert_eq!(session_unread.get("agent-2").unwrap().len(), 1);
+        drop(unread);
+
+        // Agent-2 sends message
+        let msg2 = create_test_message(&session_id, "agent", "agent-2", "Hello from 2", 2000);
+        scheduler.distribute_message(&session_id, &msg2, "agent-2").await.unwrap();
+
+        let unread = scheduler.unread_messages.lock().await;
+        let session_unread = unread.get(&session_id).unwrap();
+        assert!(session_unread.contains_key("agent-1"));
+        assert_eq!(session_unread.get("agent-1").unwrap().len(), 1);
+        assert_eq!(session_unread.get("agent-2").unwrap().len(), 1);
     }
 }

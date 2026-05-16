@@ -1,51 +1,193 @@
-use rusqlite::{Connection, Result, Row};
-use crate::models::session::SessionResponse;
+use rusqlite::{Connection, Result};
+use crate::models::session::{SessionResponse, SessionParticipant};
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count, ps.participant_2_id, a.name, a.avatar_path, gs.name, gs.avatar_path, gs.mute_enabled, COALESCE(ps.current_chat_page, gs.current_chat_page, 0)";
+fn resolve_participant(
+    conn: &Connection,
+    participant_type: &str,
+    participant_id: &str,
+) -> Result<SessionParticipant> {
+    if participant_type == "user" {
+        Ok(SessionParticipant {
+            participant_type: participant_type.to_string(),
+            participant_id: participant_id.to_string(),
+            name: "用户".to_string(),
+            avatar_path: None,
+        })
+    } else {
+        let result = conn.query_row(
+            "SELECT name, avatar_path FROM agents WHERE id = ?1 AND is_deleted = 0",
+            [participant_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+        );
+        let (name, avatar_path) = match result {
+            Ok((n, a)) => (n, a),
+            Err(rusqlite::Error::QueryReturnedNoRows) => ("未知角色".to_string(), None),
+            Err(e) => return Err(e),
+        };
+        Ok(SessionParticipant {
+            participant_type: participant_type.to_string(),
+            participant_id: participant_id.to_string(),
+            name,
+            avatar_path,
+        })
+    }
+}
 
-fn row_to_session_response(row: &Row) -> Result<SessionResponse> {
+fn get_participants_for_session(
+    conn: &Connection,
+    session_id: &str,
+    session_type: &str,
+) -> Result<Vec<SessionParticipant>> {
+    if session_type == "private" {
+        let mut stmt = conn.prepare(
+            "SELECT participant_1_type, participant_1_id, participant_2_type, participant_2_id
+             FROM private_sessions
+             WHERE session_id = ?1"
+        )?;
+        let row = stmt.query_row([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut participants = Vec::with_capacity(2);
+        participants.push(resolve_participant(conn, &row.0, &row.1)?);
+        participants.push(resolve_participant(conn, &row.2, &row.3)?);
+        Ok(participants)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT participant_type, participant_id
+             FROM group_members
+             WHERE session_id = ?1 AND is_active = 1
+             ORDER BY participant_type DESC, participant_id ASC"
+        )?;
+        let rows = stmt.query_map([session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+            ))
+        })?;
+        let mut participants = Vec::new();
+        for row in rows {
+            let (ptype, pid) = row?;
+            participants.push(resolve_participant(conn, &ptype, &pid)?);
+        }
+        Ok(participants)
+    }
+}
+
+fn build_session_response_from_row(row: &rusqlite::Row) -> Result<SessionResponse> {
     Ok(SessionResponse {
         id: row.get(0)?,
         session_type: row.get(1)?,
         last_message_at: row.get(2)?,
         last_message_preview: row.get(3)?,
         unread_count: row.get(4)?,
-        agent_id: row.get(5)?,
-        agent_name: row.get(6)?,
-        agent_avatar: row.get(7)?,
-        group_name: row.get(8)?,
-        group_avatar: row.get(9)?,
-        mute_enabled: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
-        current_chat_page: row.get(11)?,
+        participants: Vec::new(),
+        group_name: row.get(7)?,
+        group_avatar: row.get(8)?,
+        mute_enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0),
+        current_chat_page: row.get(5)?,
     })
+}
+
+pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<SessionResponse>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+                COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
+                ss.mute_enabled,
+                gs.name,
+                gs.avatar_path
+         FROM sessions s
+         LEFT JOIN private_sessions ps ON s.id = ps.session_id
+         LEFT JOIN group_sessions gs ON s.id = gs.session_id
+         LEFT JOIN session_settings ss ON s.id = ss.session_id
+         WHERE s.id = ?1 AND s.is_deleted = 0"
+    )?;
+    let mut rows = stmt.query_map([session_id], build_session_response_from_row)?;
+    if let Some(row) = rows.next() {
+        let mut session = row?;
+        session.participants = get_participants_for_session(conn, &session.id, &session.session_type)?;
+        Ok(Some(session))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+                COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
+                ss.mute_enabled,
+                gs.name,
+                gs.avatar_path
+         FROM sessions s
+         LEFT JOIN private_sessions ps ON s.id = ps.session_id
+         LEFT JOIN group_sessions gs ON s.id = gs.session_id
+         LEFT JOIN session_settings ss ON s.id = ss.session_id
+         WHERE s.is_deleted = 0
+         ORDER BY s.last_message_at DESC"
+    )?;
+    let rows = stmt.query_map([], build_session_response_from_row)?;
+    let mut sessions = Vec::new();
+    for row in rows {
+        let mut session = row?;
+        session.participants = get_participants_for_session(conn, &session.id, &session.session_type)?;
+        sessions.push(session);
+    }
+    Ok(sessions)
 }
 
 pub fn get_private_session_by_agent_id(conn: &Connection, agent_id: &str) -> Result<Option<SessionResponse>> {
     let mut stmt = conn.prepare(
-        &format!(
-            "SELECT {} FROM sessions s \
-             LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
-             LEFT JOIN group_sessions gs ON s.id = gs.session_id \
-             WHERE s.is_deleted = 0 AND ps.participant_2_id = ?1 AND ps.participant_2_type = 'agent' AND s.session_type = 'private'",
-            SELECT_COLUMNS
-        )
+        "SELECT s.id FROM sessions s
+         JOIN private_sessions ps ON s.id = ps.session_id
+         WHERE s.is_deleted = 0 AND s.session_type = 'private'
+           AND (
+               (ps.participant_1_type = 'user' AND ps.participant_1_id = 'user' AND ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1)
+               OR
+               (ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1 AND ps.participant_2_type = 'user' AND ps.participant_2_id = 'user')
+           )"
     )?;
-    let mut rows = stmt.query_map([agent_id], row_to_session_response)?;
-    rows.next().transpose()
+    let mut rows = stmt.query_map([agent_id], |row| row.get::<_, String>(0))?;
+    if let Some(Ok(id)) = rows.next() {
+        get_session_by_id(conn, &id)
+    } else {
+        Ok(None)
+    }
 }
 
-pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<SessionResponse> {
-    // 如果已有该角色的私聊会话，直接返回已有会话
-    if let Some(existing) = get_private_session_by_agent_id(conn, agent_id)? {
-        return Ok(existing);
+pub fn get_private_session_between_agents(conn: &Connection, a_id: &str, b_id: &str) -> Result<Option<SessionResponse>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id FROM sessions s
+         JOIN private_sessions ps ON s.id = ps.session_id
+         WHERE s.is_deleted = 0 AND s.session_type = 'private'
+           AND (
+               (ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1 AND ps.participant_2_type = 'agent' AND ps.participant_2_id = ?2)
+               OR
+               (ps.participant_1_type = 'agent' AND ps.participant_1_id = ?2 AND ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1)
+           )"
+    )?;
+    let mut rows = stmt.query_map([a_id, b_id], |row| row.get::<_, String>(0))?;
+    if let Some(Ok(id)) = rows.next() {
+        get_session_by_id(conn, &id)
+    } else {
+        Ok(None)
     }
+}
 
+fn create_private_session_raw(
+    conn: &Connection,
+    p1_type: &str,
+    p1_id: &str,
+    p2_type: &str,
+    p2_id: &str,
+) -> Result<String> {
     let session_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-
-    let tx = conn.unchecked_transaction()?;
 
     conn.execute(
         "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES (?1, 'private', ?2, ?3)",
@@ -53,8 +195,8 @@ pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<Sessi
     )?;
 
     conn.execute(
-        "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, message_limit_enabled, created_at) VALUES (?1, 'user', 'user', 'agent', ?2, 1, ?3)",
-        (&session_id, agent_id, now),
+        "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, message_limit_enabled, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)",
+        (&session_id, p1_type, p1_id, p2_type, p2_id, now),
     )?;
 
     conn.execute(
@@ -63,48 +205,39 @@ pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<Sessi
         rusqlite::params![&Uuid::new_v4().to_string(), &session_id, now],
     )?;
 
-    init_session_settings(&conn, &session_id, "private")?;
+    init_session_settings(conn, &session_id, "private")?;
 
-    // 自动建立好友关系（该角色与用户）
+    Ok(session_id)
+}
+
+pub fn create_private_session(conn: &Connection, agent_id: &str) -> Result<SessionResponse> {
+    if let Some(existing) = get_private_session_by_agent_id(conn, agent_id)? {
+        return Ok(existing);
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    let session_id = create_private_session_raw(conn, "user", "user", "agent", agent_id)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
     conn.execute(
         "INSERT INTO friendships (id, agent_id_1, participant_type_2, created_at, source_session_id) VALUES (?1, ?2, 'user', ?3, ?4)",
         (&Uuid::new_v4().to_string(), agent_id, now, &session_id),
     )?;
 
     tx.commit()?;
-
     get_session_by_id(conn, &session_id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
-pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<SessionResponse>> {
-    let mut stmt = conn.prepare(
-        &format!(
-            "SELECT {} FROM sessions s \
-             LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
-             LEFT JOIN group_sessions gs ON s.id = gs.session_id \
-             WHERE s.id = ?1 AND s.is_deleted = 0",
-            SELECT_COLUMNS
-        )
-    )?;
-    let mut rows = stmt.query_map([session_id], row_to_session_response)?;
-    rows.next().transpose()
-}
+pub fn create_agent_agent_session(conn: &Connection, a_id: &str, b_id: &str) -> Result<SessionResponse> {
+    if let Some(existing) = get_private_session_between_agents(conn, a_id, b_id)? {
+        return Ok(existing);
+    }
 
-pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
-    let mut stmt = conn.prepare(
-        &format!(
-            "SELECT {} FROM sessions s \
-             LEFT JOIN private_sessions ps ON s.id = ps.session_id \
-             LEFT JOIN agents a ON ps.participant_2_type = 'agent' AND ps.participant_2_id = a.id \
-             LEFT JOIN group_sessions gs ON s.id = gs.session_id \
-             WHERE s.is_deleted = 0 \
-             ORDER BY s.last_message_at DESC",
-            SELECT_COLUMNS
-        )
-    )?;
-    let rows = stmt.query_map([], row_to_session_response)?;
-    rows.collect()
+    let (p1_id, p2_id) = if a_id < b_id { (a_id, b_id) } else { (b_id, a_id) };
+    let tx = conn.unchecked_transaction()?;
+    let session_id = create_private_session_raw(conn, "agent", p1_id, "agent", p2_id)?;
+    tx.commit()?;
+    get_session_by_id(conn, &session_id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
 pub fn soft_delete_session(conn: &Connection, session_id: &str) -> Result<bool> {
@@ -156,7 +289,7 @@ pub fn create_group_session(
         rusqlite::params![&Uuid::new_v4().to_string(), &session_id, now],
     )?;
 
-    init_session_settings(&conn, &session_id, "group")?;
+    init_session_settings(conn, &session_id, "group")?;
 
     conn.execute(
         "INSERT INTO group_members (session_id, participant_type, participant_id, joined_at) VALUES (?1, 'user', 'user', ?2)",
@@ -463,7 +596,11 @@ mod tests {
 
         let session = create_group_session(&conn, "Test Group", &["agent1".into(), "agent2".into()]).unwrap();
         assert_eq!(session.session_type, "group");
-        assert_eq!(session.group_name, Some("Test Group".into()));
+        assert_eq!(session.participants.len(), 3);
+        assert_eq!(session.participants[0].participant_type, "user");
+        assert_eq!(session.participants[0].name, "用户");
+        assert_eq!(session.participants[1].name, "Agent One");
+        assert_eq!(session.participants[2].name, "Agent Two");
 
         let members = get_group_members(&conn, &session.id).unwrap();
         assert_eq!(members.len(), 3);
@@ -768,5 +905,66 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(current_page, 1);
+    }
+
+    #[test]
+    fn test_create_agent_agent_session() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        let session = create_agent_agent_session(&conn, "agent1", "agent2").unwrap();
+        assert_eq!(session.session_type, "private");
+        assert_eq!(session.participants.len(), 2);
+        let ids: Vec<String> = session.participants.iter().map(|p| p.participant_id.clone()).collect();
+        assert!(ids.contains(&"agent1".to_string()));
+        assert!(ids.contains(&"agent2".to_string()));
+
+        // idempotent
+        let session2 = create_agent_agent_session(&conn, "agent2", "agent1").unwrap();
+        assert_eq!(session.id, session2.id);
+    }
+
+    #[test]
+    fn test_get_private_session_between_agents() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        let session = create_agent_agent_session(&conn, "agent1", "agent2").unwrap();
+        let found = get_private_session_between_agents(&conn, "agent1", "agent2").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, session.id);
+
+        let found_rev = get_private_session_between_agents(&conn, "agent2", "agent1").unwrap();
+        assert!(found_rev.is_some());
+    }
+
+    #[test]
+    fn test_get_agent_by_name() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+
+        let agent = crate::db::agent::get_agent_by_name(&conn, "Agent One").unwrap();
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().id, "agent1");
+
+        let none = crate::db::agent::get_agent_by_name(&conn, "Unknown").unwrap();
+        assert!(none.is_none());
     }
 }

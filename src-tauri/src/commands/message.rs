@@ -142,9 +142,7 @@ pub async fn send_history_message(
         &conn, &req.session_id, "user", "user", &req.content, "text", Some(req.page_index),
     ).map_err(|e| e.to_string())?;
 
-    // 2. 更新会话最后消息预览
-    let preview = crate::scheduler::truncate_preview(&req.content, 100);
-    let _ = session_repo::update_session_last_message(&conn, &req.session_id, &preview);
+    // 2. 历史模式不更新会话最后消息预览（避免影响当前 page 的预览）
 
     // 3. 查询该 page 的所有历史消息作为上下文
     let history_msgs = message_repo::get_messages_by_session(&conn, &req.session_id, req.page_index, 1000, 0)
