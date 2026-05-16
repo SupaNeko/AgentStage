@@ -475,6 +475,7 @@
         sessionId={selectedSession?.id ?? ''}
         sessionType={selectedSession?.session_type ?? ''}
         {members}
+        groupAvatar={selectedSession?.group_avatar ?? null}
         {mode}
         onClose={() => settingsOpen = false}
         onMembersChange={() => {

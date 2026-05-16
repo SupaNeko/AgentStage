@@ -6,11 +6,13 @@
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
     import type { Agent } from '$lib/types';
+    import AvatarUploadModal from './AvatarUploadModal.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
     let saving = $state(false);
     let error = $state('');
+    let showAvatarModal = $state(false);
 
     // Form state
     let form = $state({
@@ -147,13 +149,16 @@
         <!-- Header -->
         <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                <button
+                    onclick={() => showAvatarModal = true}
+                    class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
+                >
                     {#if agent.avatar_path}
                         <img src={agent.avatar_path} alt={agent.name} class="w-full h-full rounded-full object-cover" />
                     {:else}
                         <Bot size={20} />
                     {/if}
-                </div>
+                </button>
                 <div>
                     <h2 class="text-lg font-semibold">{agent.name}</h2>
                     <p class="text-xs text-text-secondary">{agent.model_name || '未配置模型'}</p>
@@ -283,3 +288,17 @@
         </div>
     {/if}
 </div>
+
+<AvatarUploadModal
+    open={showAvatarModal}
+    targetType="agent"
+    targetId={agent?.id ?? ''}
+    currentAvatar={agent?.avatar_path ?? null}
+    onClose={() => showAvatarModal = false}
+    onUploaded={(path) => {
+        if (agent) {
+            agent.avatar_path = path;
+        }
+        showAvatarModal = false;
+    }}
+/>

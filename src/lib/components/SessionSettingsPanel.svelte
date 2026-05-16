@@ -1,31 +1,34 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
     import { slide } from 'svelte/transition';
-    import { X, User, Trash2, RotateCcw } from 'lucide-svelte';
+    import { X, User, Trash2, RotateCcw, MessageSquare } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import type { SessionConfig, GroupMember } from '$lib/types';
     import ConfirmDialog from './ConfirmDialog.svelte';
     import AddMemberModal from './AddMemberModal.svelte';
+    import AvatarUploadModal from './AvatarUploadModal.svelte';
 
     interface Props {
         open: boolean;
         sessionId: string;
         sessionType: string;
         members: GroupMember[];
+        groupAvatar?: string | null;
         mode?: 'chat' | 'history';
         onClose: () => void;
         onMembersChange: () => void;
     }
 
-    let { open, sessionId, sessionType, members, mode = 'chat', onClose, onMembersChange }: Props = $props();
+    let { open, sessionId, sessionType, members, groupAvatar = null, mode = 'chat', onClose, onMembersChange }: Props = $props();
 
     let config = $state<SessionConfig | null>(null);
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
     let showResetConfirm = $state(false);
     let showDisbandConfirm = $state(false);
     let showAddMember = $state(false);
+    let showAvatarModal = $state(false);
 
     $effect(() => {
         if (open && sessionId) {
@@ -180,6 +183,21 @@
 
                 {#if sessionType === 'group'}
                     <div>
+                        {#if mode !== 'history'}
+                        <div class="flex flex-col items-center gap-2 mb-4">
+                            <button
+                                onclick={() => showAvatarModal = true}
+                                class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
+                            >
+                                {#if groupAvatar}
+                                    <img src={groupAvatar} alt="群聊头像" class="w-full h-full rounded-full object-cover" />
+                                {:else}
+                                    <MessageSquare size={24} />
+                                {/if}
+                            </button>
+                            <span class="text-xs text-text-secondary">点击更换群聊头像</span>
+                        </div>
+                        {/if}
                         <label class="block text-sm font-medium mb-2">成员</label>
                         <div class="space-y-1 mb-2">
                             {#each members as member}
@@ -273,4 +291,16 @@
     existingMemberIds={members.map(m => m.participant_id)}
     onClose={() => showAddMember = false}
     onAdded={onMembersChange}
+/>
+
+<AvatarUploadModal
+    open={showAvatarModal}
+    targetType="group"
+    targetId={sessionId}
+    currentAvatar={groupAvatar}
+    onClose={() => showAvatarModal = false}
+    onUploaded={(path) => {
+        groupAvatar = path;
+        showAvatarModal = false;
+    }}
 />

@@ -1,10 +1,13 @@
 <script lang="ts">
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
-    import { X } from 'lucide-svelte';
+    import { X, User } from 'lucide-svelte';
+    import AvatarUploadModal from './AvatarUploadModal.svelte';
 
     let draft = $state({ global_min_trigger_interval: 30 });
     let saving = $state(false);
+    let showAvatarModal = $state(false);
+    let userAvatar = $state<string | null>(null);
 
     $effect(() => {
         if (settingsStore.settings) {
@@ -40,6 +43,20 @@
             </button>
         </div>
         <div class="p-6 space-y-6">
+            <div class="flex flex-col items-center gap-2">
+                <button
+                    onclick={() => showAvatarModal = true}
+                    class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary hover:ring-2 hover:ring-primary/30 transition-all"
+                >
+                    {#if userAvatar}
+                        <img src={userAvatar} alt="用户头像" class="w-full h-full rounded-full object-cover" />
+                    {:else}
+                        <User size={28} />
+                    {/if}
+                </button>
+                <span class="text-xs text-text-secondary">点击更换头像</span>
+            </div>
+
             <div>
                 <label class="block text-sm font-medium mb-1">角色触发消息间隔（秒）</label>
                 <input
@@ -62,3 +79,15 @@
         </div>
     </div>
 </div>
+
+<AvatarUploadModal
+    open={showAvatarModal}
+    targetType="user"
+    targetId="user"
+    currentAvatar={userAvatar}
+    onClose={() => showAvatarModal = false}
+    onUploaded={(path) => {
+        userAvatar = path;
+        showAvatarModal = false;
+    }}
+/>

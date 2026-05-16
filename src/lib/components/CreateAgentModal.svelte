@@ -1,6 +1,7 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { X } from 'lucide-svelte';
+    import { X, Bot } from 'lucide-svelte';
+    import AvatarUploadModal from './AvatarUploadModal.svelte';
 
     let { open = $bindable(false), onSuccess }: { open: boolean; onSuccess?: () => void } = $props();
 
@@ -16,6 +17,8 @@
         max_tokens: 2048,
         thinking_mode: false,
     });
+    let avatarPath = $state<string | null>(null);
+    let showAvatarModal = $state(false);
     let submitting = $state(false);
     let error = $state('');
 
@@ -63,6 +66,18 @@
             {#if error}
                 <div class="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
             {/if}
+
+            <div class="flex justify-center">
+                <div
+                    class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary"
+                >
+                    {#if avatarPath}
+                        <img src={avatarPath} alt="头像" class="w-full h-full rounded-full object-cover" />
+                    {:else}
+                        <Bot size={28} />
+                    {/if}
+                </div>
+            </div>
 
             <div>
                 <label class="block text-sm font-medium mb-1" for="ca-name">角色名称 <span class="text-red-500">*</span></label>
