@@ -637,7 +637,7 @@ impl Scheduler {
         inner_result
     }
 
-    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
+    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, _snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
             agent_id, pending.len(), session_pages
@@ -864,10 +864,9 @@ impl Scheduler {
                     |row| Ok(row.get::<_, i32>(0)? > 0),
                 ).unwrap_or(false)
             };
-            let snapshot_page = snapshot_pages.get(&msg.session_id).copied().unwrap_or(0);
             crate::logger::backend("DEBUG", &format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={} vs snapshot_page={}, session_exists={}",
-                agent_id, msg.session_id, msg.page_index, snapshot_page, session_exists
+                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={}, session_exists={}",
+                agent_id, msg.session_id, msg.page_index, session_exists
             ));
             if !session_exists {
                 crate::logger::backend("DEBUG", &format!(
@@ -876,13 +875,7 @@ impl Scheduler {
                 ));
                 continue;
             }
-            if msg.page_index != snapshot_page {
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (page mismatch: msg.page={} vs snapshot_page={})",
-                    agent_id, msg.session_id, msg.page_index, snapshot_page
-                ));
-                continue;
-            }
+            // snapshot_pages 检查已移除：后端只负责推送消息，前端负责决定是否渲染
 
             crate::logger::backend("DEBUG", &format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, emitting new_message message_id={}",
