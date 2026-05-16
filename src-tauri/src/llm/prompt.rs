@@ -14,6 +14,7 @@ impl PromptAssembler {
         trigger_session_id: Option<&str>,
         trigger_page_index: Option<i32>,
         _pending_messages: &[Message],
+        pending_ids: &std::collections::HashSet<String>,
     ) -> Result<String, String> {
         crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
 
@@ -123,14 +124,26 @@ impl PromptAssembler {
                 if msg.session_id != current_session {
                     current_session = msg.session_id.clone();
                     let session_name = Self::get_session_name(conn, &current_session, agent_id)?;
-                    layer.push_str(&format!("\n--- {} ---\n", session_name));
+
+                    let new_count = filtered_messages.iter()
+                        .filter(|m| m.session_id == current_session && pending_ids.contains(&m.id))
+                        .count();
+
+                    let new_label = if new_count > 0 {
+                        format!(" ({} 条新消息)", new_count)
+                    } else {
+                        String::new()
+                    };
+
+                    layer.push_str(&format!("\n--- {}{} ---\n", session_name, new_label));
                 }
                 let time = Self::format_time(msg.created_at);
                 let sender = Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
-                layer.push_str(&format!("[{}] {}: {}\n", time, sender, msg.content));
+                let is_new = pending_ids.contains(&msg.id);
+                let new_mark = if is_new { " [新]" } else { "" };
+                layer.push_str(&format!("[{}]{} {}: {}\n", time, new_mark, sender, msg.content));
             }
             layer.push('\n');
-            layer.push_str(prompt_templates::LAYER_FOOTER_NOTE);
             layers.push(layer);
         }
 
@@ -565,7 +578,7 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(!prompt.contains("【最新消息"), "Prompt should not contain Layer 5 header, but got:\n{}", prompt);
     }
 
@@ -594,7 +607,7 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains(super::prompt_templates::LAYER_FOOTER_NOTE), "Prompt should contain footer note, but got:\n{}", prompt);
     }
 
@@ -639,7 +652,7 @@ mod tests {
         insert_message(&conn, &msg1);
         insert_message(&conn, &msg2);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         let pos1 = prompt.find("First message").expect("First message not found");
         let pos2 = prompt.find("Second message").expect("Second message not found");
         assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", prompt);
@@ -678,12 +691,12 @@ mod tests {
         insert_message(&conn, &msg1);
         
         // Trigger from page 0: prompt should contain "Page0 message" but NOT "Page1 message"
-        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("Page0 message"), "Prompt should contain page 0 message");
         assert!(!prompt.contains("Page1 message"), "Prompt should NOT contain page 1 message when triggered from page 0");
-        
+
         // Trigger from page 1: prompt should contain "Page1 message" but NOT "Page0 message"
-        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("Page1 message"), "Prompt should contain page 1 message");
         assert!(!prompt.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
     }
@@ -739,7 +752,7 @@ mod tests {
         };
         insert_message(&conn, &deleted_msg);
         
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("Active session message"), "Prompt should contain active session message");
         assert!(!prompt.contains("Deleted group message"), "Prompt should NOT contain deleted session message, but got:\n{}", prompt);
     }
@@ -762,7 +775,7 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("和用户的私聊"), "Private session name should be '和用户的私聊' from agent perspective, got:\n{}", prompt);
         assert!(!prompt.contains("远坂凛"), "Prompt should NOT contain agent name as session name");
     }
@@ -791,7 +804,7 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("和伊莉雅的私聊"), "Private session name should use persona name");
         assert!(prompt.contains("伊莉雅（好友）：魔伊世界观中的小学生魔术师"), "Participant list should use persona");
     }
@@ -814,7 +827,7 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[]).unwrap();
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         let user_count = prompt.matches("用户（好友）").count();
         assert_eq!(user_count, 1, "User entry should appear exactly once in participants, got {} occurrences", user_count);
     }

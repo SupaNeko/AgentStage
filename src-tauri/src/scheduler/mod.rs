@@ -19,6 +19,7 @@ use crate::models::message::Message;
 
 #[derive(Clone)]
 pub struct PendingMessage {
+    pub message_id: String,
     pub session_id: String,
     pub sender_type: String,
     pub sender_id: String,
@@ -30,6 +31,7 @@ pub struct PendingMessage {
 impl From<Message> for PendingMessage {
     fn from(msg: Message) -> Self {
         Self {
+            message_id: msg.id,
             session_id: msg.session_id,
             sender_type: msg.sender_type,
             sender_id: msg.sender_id,
@@ -128,8 +130,9 @@ impl Scheduler {
         let mut unread_messages = self.unread_messages.lock().await;
         let mut agent_notifications = self.agent_notifications.lock().await;
 
-        for (session_id, agent_id, _message_id, created_at, sender_type, sender_id, content, page_index) in rows {
+        for (session_id, agent_id, message_id, created_at, sender_type, sender_id, content, page_index) in rows {
             let pending = PendingMessage {
+                message_id,
                 session_id: session_id.clone(),
                 sender_type,
                 sender_id,
@@ -715,6 +718,12 @@ impl Scheduler {
                 })
                 .collect();
 
+            // 收集本次所有新消息的 message_id，用于 prompt 中的 [新] 标记
+            let pending_ids: std::collections::HashSet<String> = pending
+                .iter()
+                .map(|p| p.message_id.clone())
+                .collect();
+
             let trigger_msg = pending.first();
             let prompt =
                 PromptAssembler::assemble(
@@ -723,6 +732,7 @@ impl Scheduler {
                     trigger_msg.map(|m| m.session_id.as_str()),
                     trigger_msg.map(|m| m.page_index),
                     &messages_for_prompt,
+                    &pending_ids,
                 )
                 .map_err(|e| e.to_string())?;
 
@@ -1148,6 +1158,7 @@ mod tests {
                 .entry("agent-1".to_string())
                 .or_insert_with(Vec::new)
                 .push(PendingMessage {
+                    message_id: "msg-1".to_string(),
                     session_id: session_id.clone(),
                     sender_type: "user".to_string(),
                     sender_id: "user".to_string(),
@@ -1193,6 +1204,7 @@ mod tests {
                 .or_insert_with(Vec::new)
                 .extend(vec![
                     PendingMessage {
+                        message_id: "msg-2".to_string(),
                         session_id: session_id.clone(),
                         sender_type: "user".to_string(),
                         sender_id: "user".to_string(),
@@ -1201,6 +1213,7 @@ mod tests {
                         page_index: 0,
                     },
                     PendingMessage {
+                        message_id: "msg-1".to_string(),
                         session_id: session_id.clone(),
                         sender_type: "user".to_string(),
                         sender_id: "user".to_string(),
@@ -1209,6 +1222,7 @@ mod tests {
                         page_index: 0,
                     },
                     PendingMessage {
+                        message_id: "msg-3".to_string(),
                         session_id: session_id.clone(),
                         sender_type: "user".to_string(),
                         sender_id: "user".to_string(),

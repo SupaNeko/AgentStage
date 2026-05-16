@@ -704,7 +704,7 @@ mod tests {
             page_index: 0,
         }];
         
-        let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", None, None, &pending);
+        let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", None, None, &pending, &std::collections::HashSet::new());
         assert!(prompt.is_ok(), "PromptAssembler failed: {:?}", prompt.err());
         let prompt_text = prompt.unwrap();
         assert!(prompt_text.contains("Hello!"));
