@@ -79,6 +79,7 @@ describe('ChatView', () => {
                 content: 'Hello user',
                 created_at: Date.now() - 1000,
                 message_type: 'text',
+                page_index: 0,
                 sender_name: 'User',
             },
             {
@@ -89,6 +90,7 @@ describe('ChatView', () => {
                 content: 'Hello agent',
                 created_at: Date.now(),
                 message_type: 'text',
+                page_index: 0,
                 sender_name: 'Test Agent',
             },
         ];
@@ -333,6 +335,7 @@ describe('ChatView', () => {
                         content: 'Hello',
                         created_at: Date.now(),
                         message_type: 'text',
+                        page_index: 0,
                         sender_name: 'User',
                     },
                     {
@@ -343,6 +346,7 @@ describe('ChatView', () => {
                         content: 'Hi there',
                         created_at: Date.now() - 1000,
                         message_type: 'text',
+                        page_index: 0,
                         sender_name: 'Agent',
                     },
                 ]);
@@ -403,6 +407,7 @@ describe('ChatView', () => {
             content: 'User message',
             created_at: Date.now(),
             message_type: 'text',
+            page_index: 0,
             sender_name: 'User',
         });
         await tick();
@@ -438,6 +443,7 @@ describe('ChatView', () => {
             content: 'Agent message',
             created_at: Date.now(),
             message_type: 'text',
+            page_index: 0,
             sender_name: 'Agent',
         });
         await tick();
@@ -695,6 +701,7 @@ describe('ChatView', () => {
                         content: 'History msg',
                         created_at: Date.now(),
                         message_type: 'text',
+                        page_index: 0,
                         sender_name: 'User',
                     },
                 ]);
