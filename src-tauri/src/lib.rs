@@ -16,6 +16,7 @@ use commands::session::{
     list_chat_pages,
 };
 use commands::settings::{get_settings, update_settings};
+use commands::upload::upload_avatar;
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -134,6 +135,7 @@ pub fn run() {
             log_frontend,
             get_settings,
             update_settings,
+            upload_avatar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
