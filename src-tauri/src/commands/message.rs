@@ -16,6 +16,16 @@ pub async fn send_user_message(
 
     let conn = get_db(&state).await?;
 
+    // 检查群聊是否已解散
+    let is_dissolved: bool = conn.query_row(
+        "SELECT COALESCE(is_dissolved, 0) FROM group_sessions WHERE session_id = ?1",
+        [&req.session_id],
+        |row| Ok(row.get::<_, i32>(0)? != 0),
+    ).unwrap_or(false);
+    if is_dissolved {
+        return Err("该群聊已解散，无法发送消息".to_string());
+    }
+
     let page_index = match req.page_index {
         Some(p) => p,
         None => {
@@ -136,6 +146,16 @@ pub async fn send_history_message(
     ));
 
     let conn = get_db(&state).await?;
+
+    // 检查群聊是否已解散
+    let is_dissolved: bool = conn.query_row(
+        "SELECT COALESCE(is_dissolved, 0) FROM group_sessions WHERE session_id = ?1",
+        [&req.session_id],
+        |row| Ok(row.get::<_, i32>(0)? != 0),
+    ).unwrap_or(false);
+    if is_dissolved {
+        return Err("该群聊已解散，无法发送消息".to_string());
+    }
 
     // 1. 插入用户消息到指定 page
     let user_msg = message_repo::insert_message(
