@@ -8,6 +8,9 @@ pub async fn create_agent(state: State<'_, DbState>, req: CreateAgentRequest) ->
     crate::logger::backend("DEBUG", &format!("[DEBUG create_agent] name={}", req.name));
 
     let conn = get_db(&state).await?;
+    if let Ok(Some(_)) = agent_repo::get_agent_by_name(&conn, &req.name) {
+        return Err(format!("已存在同名角色 '{}'，请使用其他名称", req.name));
+    }
     let agent = agent_repo::create(&conn, &req).map_err(|e| e.to_string())?;
     Ok(AgentResponse::from(agent))
 }

@@ -4,10 +4,10 @@
     import { onMount } from 'svelte';
     import type { Agent } from '$lib/types';
     import { appState } from '$lib/stores/appState.svelte';
+    import { agentStore } from '$lib/stores/agentStore.svelte';
     import { resolveAvatarUrl } from '$lib/utils';
     import CreateAgentModal from './CreateAgentModal.svelte';
 
-    let agents = $state<Agent[]>([]);
     let loading = $state(true);
     let modalOpen = $state(false);
     let searchQuery = $state('');
@@ -15,7 +15,7 @@
     async function loadAgents() {
         loading = true;
         try {
-            agents = await invoke('list_agents');
+            await agentStore.loadAgents();
         } catch (err) {
             console.error('Failed to load agents:', err);
         } finally {
@@ -29,8 +29,8 @@
 
     const filteredAgents = $derived(
         searchQuery.trim()
-            ? agents.filter(a => a.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-            : agents
+            ? agentStore.agents.filter(a => a.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+            : agentStore.agents
     );
 </script>
 

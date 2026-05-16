@@ -206,7 +206,7 @@
                                     <div class="flex items-center gap-2">
                                         <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                                             {#if member.avatar_path}
-                                                <img src={member.avatar_path} alt={member.name} class="w-full h-full object-cover" />
+                                                <img src={resolveAvatarUrl(member.avatar_path)} alt={member.name} class="w-full h-full object-cover" />
                                             {:else}
                                                 <User size={14} />
                                             {/if}
