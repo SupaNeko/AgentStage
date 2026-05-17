@@ -18,7 +18,7 @@ pub fn send_message_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "send_message",
-            "description": "向指定会话发送一条消息。你可以在 content 中使用 <br/> 标签进行换行。target_id 必须是系统提供的 session_id，不能使用会话名称或其他 ID。",
+            "description": "向指定会话发送一条消息。你可以在 content 中使用 <br/> 标签进行分割，被分割的消息将被显示为多条消息。target_id 必须是系统提供的 session_id，不能使用会话名称或其他 ID。",
             "parameters": {
                 "type": "object",
                 "properties": {
