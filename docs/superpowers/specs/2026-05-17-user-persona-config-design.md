@@ -162,7 +162,7 @@ ALTER TABLE user_personas DROP COLUMN is_default;
 DELETE FROM user_personas WHERE is_default = 1;
 ```
 
-> **注意**：如果 `is_default` 列因 SQLite 限制无法 `DROP COLUMN`，则在代码层面忽略该列，不再读写。
+> **注意**：如果 `is_default` 列因 SQLite 限制无法 `DROP COLUMN`，开发完成后需特别处理；代码层面不做额外适配。
 
 **`app_settings` 表**（新增字段）：
 
@@ -171,13 +171,7 @@ ALTER TABLE app_settings ADD COLUMN active_persona_id TEXT;
 ALTER TABLE app_settings ADD COLUMN default_avatar_path TEXT;
 ```
 
-**数据迁移**：
-```sql
--- 将旧的默认人设头像迁移为新的 default_avatar_path
-UPDATE app_settings SET default_avatar_path = (
-    SELECT avatar_path FROM user_personas WHERE is_default = 1 LIMIT 1
-);
-```
+> **数据迁移**：不迁移旧默认人设头像。旧头像路径不保留，用户需在配置页重新设置默认头像。
 
 ### 4.2 Rust Model
 
