@@ -16,8 +16,8 @@
     } = $props();
 
     let expanded = $state(false);
-    let draftName = $state(persona.name);
-    let draftDesc = $state(persona.description ?? '');
+    let draftName = $state('');
+    let draftDesc = $state('');
     let avatarUploadOpen = $state(false);
     let saving = $state(false);
 
