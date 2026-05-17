@@ -43,15 +43,17 @@ pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
     conn.execute(
         r#"INSERT INTO agents (
             id, name, avatar_path, detailed_persona, simplified_persona,
-            personality, scenario, model_provider, model_name, base_url,
+            personality, scenario, example_messages, first_message, creator_notes, tags,
+            model_provider, model_name, base_url,
             temperature, max_tokens, api_key_encrypted, thinking_mode, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"#,
-        (
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"#,
+        rusqlite::params![
             &id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
-            &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
+            &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
+            &req.tags, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature.unwrap_or(0.7), req.max_tokens.unwrap_or(2048),
             &api_key_encrypted, req.thinking_mode.unwrap_or(false) as i32, now, now,
-        ),
+        ],
     )?;
     
     get_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
@@ -88,23 +90,28 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
             simplified_persona = COALESCE(?5, simplified_persona),
             personality = COALESCE(?6, personality),
             scenario = COALESCE(?7, scenario),
-            model_provider = COALESCE(?8, model_provider),
-            model_name = COALESCE(?9, model_name),
-            base_url = COALESCE(?10, base_url),
-            temperature = COALESCE(?11, temperature),
-            max_tokens = COALESCE(?12, max_tokens),
-            api_key_encrypted = COALESCE(?13, api_key_encrypted),
-            thinking_mode = COALESCE(?14, thinking_mode),
-            updated_at = ?15
+            example_messages = COALESCE(?8, example_messages),
+            first_message = COALESCE(?9, first_message),
+            creator_notes = COALESCE(?10, creator_notes),
+            tags = COALESCE(?11, tags),
+            model_provider = COALESCE(?12, model_provider),
+            model_name = COALESCE(?13, model_name),
+            base_url = COALESCE(?14, base_url),
+            temperature = COALESCE(?15, temperature),
+            max_tokens = COALESCE(?16, max_tokens),
+            api_key_encrypted = COALESCE(?17, api_key_encrypted),
+            thinking_mode = COALESCE(?18, thinking_mode),
+            updated_at = ?19
         WHERE id = ?1 AND is_deleted = 0"#,
-        (
+        rusqlite::params![
             &req.id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
-            &req.personality, &req.scenario, &req.model_provider, &req.model_name, &req.base_url,
+            &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
+            &req.tags, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature, req.max_tokens,
             api_key_encrypted,
             req.thinking_mode.map(|v| v as i32),
             now,
-        ),
+        ],
     )?;
     
     get_by_id(conn, &req.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
