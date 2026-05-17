@@ -109,6 +109,12 @@ fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
     if simplified.is_empty() {
         return Err("<simplified_persona> 内容为空".to_string());
     }
+    if detailed.chars().count() > 2000 {
+        return Err("<detailed_persona> 内容超过 2000 字限制".to_string());
+    }
+    if simplified.chars().count() > 50 {
+        return Err("<simplified_persona> 内容超过 50 字限制".to_string());
+    }
 
     Ok((detailed, simplified))
 }

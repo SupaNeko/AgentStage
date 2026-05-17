@@ -12,6 +12,10 @@
         name: '',
         detailed_persona: '',
         simplified_persona: '',
+        personality: '',
+        scenario: '',
+        example_messages: '',
+        creator_notes: '',
         model_provider: 'openai',
         model_name: 'gpt-4o',
         api_key: '',
@@ -61,6 +65,10 @@
             logger.debug('[DEBUG CreateAgentModal] persona generated');
             form.detailed_persona = result.detailed_persona;
             form.simplified_persona = result.simplified_persona;
+            form.personality = result.personality || '';
+            form.scenario = result.scenario || '';
+            form.example_messages = result.example_messages || '';
+            form.creator_notes = result.creator_notes || '';
             toastStore.show('人设生成完成', 'success', 2000);
         } catch (err: any) {
             logger.error('Failed to generate persona:', err);
@@ -80,6 +88,10 @@
                 name: form.name,
                 detailed_persona: form.detailed_persona,
                 simplified_persona: form.simplified_persona,
+                personality: form.personality || null,
+                scenario: form.scenario || null,
+                example_messages: form.example_messages || null,
+                creator_notes: form.creator_notes || null,
                 model_provider: form.model_provider,
                 model_name: form.model_name,
                 api_key: form.api_key,
@@ -91,7 +103,7 @@
             await invoke('create_agent', { req });
             open = false;
             onSuccess?.();
-            form = { name: '', detailed_persona: '', simplified_persona: '', model_provider: 'openai', model_name: 'gpt-4o', api_key: '', base_url: '', temperature: 0.7, max_tokens: 2048, thinking_mode: false };
+            form = { name: '', detailed_persona: '', simplified_persona: '', personality: '', scenario: '', example_messages: '', creator_notes: '', model_provider: 'openai', model_name: 'gpt-4o', api_key: '', base_url: '', temperature: 0.7, max_tokens: 2048, thinking_mode: false };
         } catch (err: any) {
             error = err.toString();
         } finally {
