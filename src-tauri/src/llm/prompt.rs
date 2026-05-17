@@ -4,6 +4,8 @@ use std::collections::HashSet;
 
 use crate::llm::prompt_templates;
 use crate::models::message::Message;
+use crate::db::user_persona;
+use crate::constants::{DEFAULT_USER_NAME, DEFAULT_USER_PERSONA};
 
 pub struct PromptAssembler;
 
@@ -263,9 +265,6 @@ impl PromptAssembler {
     }
 
     fn get_user_persona(conn: &Connection) -> (String, String) {
-        use crate::db::user_persona;
-        use crate::constants::{DEFAULT_USER_NAME, DEFAULT_USER_PERSONA};
-
         match user_persona::get_current_user_persona(conn) {
             Ok(p) => (p.name, p.description),
             Err(_) => (DEFAULT_USER_NAME.to_string(), DEFAULT_USER_PERSONA.to_string()),
@@ -485,6 +484,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
         conn
     }
 
@@ -788,6 +788,7 @@ mod tests {
             "INSERT INTO user_personas (id, name, description, is_default, created_at, updated_at) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
             ("persona1", "伊莉雅", "魔伊世界观中的小学生魔术师", 0i64),
         ).unwrap();
+        conn.execute("UPDATE app_settings SET active_persona_id = ?1 WHERE id = 1", ["persona1"]).unwrap();
 
         let msg = Message {
             id: "msg1".to_string(), session_id: "sess1".to_string(),

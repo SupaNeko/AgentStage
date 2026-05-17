@@ -68,7 +68,7 @@ pub fn get_current_user_persona(conn: &Connection) -> Result<CurrentUserPersonaR
         if let Ok(persona) = get_user_persona_by_id(conn, &id) {
             return Ok(CurrentUserPersonaResponse {
                 id: Some(persona.id), name: persona.name,
-                description: persona.description.unwrap_or_default(),
+                description: persona.description.unwrap_or_else(|| DEFAULT_USER_PERSONA.to_string()),
                 avatar_path: persona.avatar_path, is_custom: true,
             });
         }

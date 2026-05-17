@@ -1,5 +1,6 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
+use crate::db::user_persona;
 use base64::{Engine as _, engine::general_purpose};
 use std::fs;
 
@@ -59,11 +60,9 @@ pub async fn upload_avatar(
             ).map_err(|e| e.to_string())?;
         }
         "user_default" => {
-            use crate::db::user_persona;
             user_persona::update_default_avatar(&conn, &relative_path).map_err(|e| e.to_string())?;
         }
         "user_persona" => {
-            use crate::db::user_persona;
             user_persona::update_user_persona(
                 &conn,
                 &crate::models::user_persona::UpdateUserPersonaRequest {
