@@ -104,3 +104,12 @@ export interface RelationshipItem {
     relationship_text: string;
     updated_at: number;
 }
+
+export interface GeneratePersonaResult {
+    personality: string | null;
+    scenario: string | null;
+    example_messages: string | null;
+    creator_notes: string | null;
+    detailed_persona: string;
+    simplified_persona: string;
+}

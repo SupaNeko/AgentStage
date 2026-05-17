@@ -349,5 +349,10 @@
 
 <PersonaGenerateModal
     open={showGenerateModal}
+    agentId={agent?.id}
     onClose={() => showGenerateModal = false}
+    onGenerated={(result) => {
+        form.detailed_persona = result.detailed_persona;
+        form.simplified_persona = result.simplified_persona;
+    }}
 />
