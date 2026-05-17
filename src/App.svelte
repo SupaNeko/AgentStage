@@ -15,6 +15,7 @@
     import SettingsPanel from '$lib/components/SettingsPanel.svelte';
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import HistorySessionList from '$lib/components/HistorySessionList.svelte';
+    import ProfileView from '$lib/components/ProfileView.svelte';
 
     onMount(() => {
         settingsStore.load();
@@ -86,6 +87,10 @@
             <AgentList />
         {:else if appState.currentView === 'chat'}
             <SessionList />
+        {:else if appState.currentView === 'profile'}
+            <div class="h-full flex items-center justify-center text-text-secondary text-sm">
+                请在右侧选择配置项
+            </div>
         {:else}
             <HistorySessionList />
         {/if}
@@ -97,6 +102,8 @@
             <AgentDetail />
         {:else if appState.currentView === 'chat'}
             <ChatView />
+        {:else if appState.currentView === 'profile'}
+            <ProfileView />
         {:else}
             <ChatView mode="history" />
         {/if}
