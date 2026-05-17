@@ -82,19 +82,17 @@
     <LeftNav />
 
     <!-- Middle Panel -->
-    <div class="w-72 shrink-0 bg-surface border-r border-border">
-        {#if appState.currentView === 'agents'}
-            <AgentList />
-        {:else if appState.currentView === 'chat'}
-            <SessionList />
-        {:else if appState.currentView === 'profile'}
-            <div class="h-full flex items-center justify-center text-text-secondary text-sm">
-                请在右侧选择配置项
-            </div>
-        {:else}
-            <HistorySessionList />
-        {/if}
-    </div>
+    {#if appState.currentView !== 'profile'}
+        <div class="w-72 shrink-0 bg-surface border-r border-border">
+            {#if appState.currentView === 'agents'}
+                <AgentList />
+            {:else if appState.currentView === 'chat'}
+                <SessionList />
+            {:else}
+                <HistorySessionList />
+            {/if}
+        </div>
+    {/if}
 
     <!-- Main Content Area -->
     <main class="flex-1 min-w-0 bg-bg">

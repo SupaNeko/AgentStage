@@ -59,6 +59,15 @@
         expanded = false;
     }
 
+    async function handleDelete() {
+        if (!confirm(`确定要删除人设 "${persona.name}" 吗？`)) return;
+        try {
+            await userPersonaStore.deletePersona(persona.id);
+        } catch (e) {
+            toastStore.show('删除失败: ' + String(e), 'error');
+        }
+    }
+
     async function handleUseDefaultAvatar() {
         const defaultPath = settingsStore.settings?.default_avatar_path;
         if (defaultPath) {
@@ -145,11 +154,14 @@
                 <div class="flex items-center gap-2">
                     <button onclick={handleUseDefaultAvatar} class="text-xs text-primary hover:underline">使用默认头像</button>
                 </div>
-                <div class="flex justify-end gap-2">
-                    <button onclick={handleCancel} class="px-3 py-1.5 rounded-lg text-xs text-text-secondary hover:bg-gray-100">取消</button>
-                    <button onclick={handleSave} disabled={saving} class="px-3 py-1.5 rounded-lg text-xs bg-primary text-white disabled:opacity-50">
-                        {saving ? '保存中...' : '保存'}
-                    </button>
+                <div class="flex justify-between items-center gap-2">
+                    <button onclick={handleDelete} class="px-3 py-1.5 rounded-lg text-xs text-red-500 hover:bg-red-50">删除</button>
+                    <div class="flex gap-2">
+                        <button onclick={handleCancel} class="px-3 py-1.5 rounded-lg text-xs text-text-secondary hover:bg-gray-100">取消</button>
+                        <button onclick={handleSave} disabled={saving} class="px-3 py-1.5 rounded-lg text-xs bg-primary text-white disabled:opacity-50">
+                            {saving ? '保存中...' : '保存'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

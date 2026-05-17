@@ -46,16 +46,7 @@
     }
 </script>
 
-    {#if avatarUploadOpen}
-    <AvatarUploadModal
-        targetType="user_persona"
-        targetId={tempId}
-        onUploaded={handleAvatarUploaded}
-        onClose={() => avatarUploadOpen = false}
-    />
-{/if}
-
-<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick={(e) => e.target === e.currentTarget && onClose()}>
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick={(e) => e.target === e.currentTarget && onClose()}>
     <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold">创建新人设</h2>
@@ -101,3 +92,12 @@
         </div>
     </div>
 </div>
+
+{#if avatarUploadOpen}
+    <AvatarUploadModal
+        targetType="user_persona"
+        targetId={tempId}
+        onUploaded={handleAvatarUploaded}
+        onClose={() => avatarUploadOpen = false}
+    />
+{/if}

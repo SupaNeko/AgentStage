@@ -7,7 +7,7 @@ fn row_to_persona(row: &rusqlite::Row) -> Result<UserPersona, rusqlite::Error> {
         id: row.get("id")?,
         name: row.get("name")?,
         description: row.get("description")?,
-        avatar_path: row.get("avatar_path")?,
+        avatar_path: crate::db::resolve_avatar_path(row.get("avatar_path")?),
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -43,7 +43,8 @@ pub fn create_user_persona(conn: &Connection, req: &CreateUserPersonaRequest) ->
     )?;
     Ok(UserPersona {
         id, name: req.name.clone(), description: req.description.clone(),
-        avatar_path, created_at: now, updated_at: now,
+        avatar_path: crate::db::resolve_avatar_path(avatar_path),
+        created_at: now, updated_at: now,
     })
 }
 
