@@ -78,8 +78,8 @@ fn build_step2_user_message(
 }
 
 fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
-    let detailed_re = regex::Regex::new(r"<detailed_persona>\s*(.*?)\s*</detailed_persona>").unwrap();
-    let simplified_re = regex::Regex::new(r"<simplified_persona>\s*(.*?)\s*</simplified_persona>").unwrap();
+    let detailed_re = regex::Regex::new(r"(?s)<detailed_persona>\s*(.*?)\s*</detailed_persona>").unwrap();
+    let simplified_re = regex::Regex::new(r"(?s)<simplified_persona>\s*(.*?)\s*</simplified_persona>").unwrap();
 
     let detailed = detailed_re
         .captures(content)
