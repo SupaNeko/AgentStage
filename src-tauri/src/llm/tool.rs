@@ -66,6 +66,39 @@ pub fn start_private_chat_tool_schema() -> serde_json::Value {
     })
 }
 
+pub fn update_relationship_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "update_relationship",
+            "description": "更新你对某个参与者的主观关系描述。这用于记录你对对方的整体定位（如朋友/同事/竞争对手）和基本态度（如喜欢/讨厌/尊敬），不是记忆具体事件。请遵守以下规则：\n1. 只更新整体关系定位，不要记录日常琐事（如\"他今天吃了汉堡\"）\n2. 描述控制在 200 字以内\n3. 必须提供 old_text（当前关系描述的完整内容），系统会匹配替换\n4. 如果 old_text 不匹配（说明你记错了当前关系），系统会返回错误，请重新查询后再修改",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "目标参与者的 ID（agent_id 或 user_persona_id）"
+                    },
+                    "target_type": {
+                        "type": "string",
+                        "enum": ["agent", "user_persona"],
+                        "description": "目标类型"
+                    },
+                    "old_text": {
+                        "type": "string",
+                        "description": "当前关系描述的完整文本（空字符串表示尚无描述）"
+                    },
+                    "new_text": {
+                        "type": "string",
+                        "description": "新的关系描述文本（200字以内）"
+                    }
+                },
+                "required": ["target_id", "target_type", "old_text", "new_text"]
+            }
+        }
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
@@ -147,6 +180,10 @@ impl ToolExecutor {
                         ));
                     }
                     results.extend(msgs);
+                }
+                "update_relationship" => {
+                    let _msgs = self.execute_update_relationship(agent_id, &tc.arguments).await?;
+                    // update_relationship 不返回消息，仅修改数据库
                 }
                 _ => {
                     crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
@@ -302,6 +339,65 @@ impl ToolExecutor {
         ));
 
         Ok(messages)
+    }
+
+    async fn execute_update_relationship(
+        &self,
+        agent_id: &str,
+        arguments: &str,
+    ) -> Result<Vec<Message>, ToolError> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_relationship] START agent_id={}, args_raw={}",
+            agent_id, arguments
+        ));
+
+        let args: serde_json::Value = serde_json::from_str(arguments)
+            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+
+        let target_id = args["target_id"].as_str().unwrap_or("");
+        let target_type = args["target_type"].as_str().unwrap_or("");
+        let old_text = args["old_text"].as_str().unwrap_or("");
+        let new_text = args["new_text"].as_str().unwrap_or("");
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_relationship] parsed target_id={}, target_type={}",
+            target_id, target_type
+        ));
+
+        // 校验长度
+        if new_text.chars().count() > 200 {
+            crate::logger::backend("WARN", &format!(
+                "[DEBUG ToolExecutor::execute_update_relationship] Text too long: {} chars", new_text.chars().count()
+            ));
+            return Err(ToolError::InvalidArguments(format!(
+                "关系描述超过 200 字限制（当前 {} 字）", new_text.chars().count()
+            )));
+        }
+
+        let conn = self.db_state.0.lock().await;
+
+        // old_text 匹配校验
+        let current = crate::db::agent_relationship::get_relationship(&conn, agent_id, target_id, target_type)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        if current != old_text {
+            crate::logger::backend("WARN", &format!(
+                "[DEBUG ToolExecutor::execute_update_relationship] old_text mismatch. current='{}', old_text='{}'", current, old_text
+            ));
+            return Err(ToolError::InvalidArguments(format!(
+                "old_text 不匹配。当前关系描述为：\"{}\"，请基于这个内容重新提交修改。", current
+            )));
+        }
+
+        crate::db::agent_relationship::upsert_relationship(&conn, agent_id, target_id, target_type, new_text)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_relationship] END updated agent_id={} -> target_id={}",
+            agent_id, target_id
+        ));
+
+        Ok(Vec::new())
     }
 
     async fn resolve_target_id(

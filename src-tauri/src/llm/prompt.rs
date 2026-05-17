@@ -34,8 +34,12 @@ impl PromptAssembler {
         if !participants.is_empty() {
             let mut layer = String::from(prompt_templates::LAYER_PARTICIPANTS_TITLE);
             layer.push('\n');
-            for (name, relation, persona) in participants {
-                layer.push_str(&format!("- {}（{}）：{}\n", name, relation, persona));
+                for (name, relation, persona, rel_text) in participants {
+                if rel_text.is_empty() {
+                    layer.push_str(&format!("- {}（{}）：{}\n", name, relation, persona));
+                } else {
+                    layer.push_str(&format!("- {}（{}）：{}{}{}\n", name, relation, persona, prompt_templates::RELATIONSHIP_SUFFIX_PREFIX, rel_text));
+                }
             }
             layers.push(layer);
         }
@@ -301,9 +305,16 @@ impl PromptAssembler {
     fn get_participants(
         conn: &Connection,
         agent_id: &str,
-    ) -> Result<Vec<(String, String, String)>, String> {
+    ) -> Result<Vec<(String, String, String, String)>, String> {
         let mut seen: HashSet<String> = HashSet::new();
-        let mut participants: Vec<(String, String, String)> = Vec::new();
+        let mut participants: Vec<(String, String, String, String)> = Vec::new();
+
+        // 获取当前激活的用户人设 ID
+        let active_persona_id: Option<String> = conn.query_row(
+            "SELECT active_persona_id FROM app_settings WHERE id = 1",
+            [],
+            |row| row.get(0),
+        ).ok().flatten();
 
         // 1. Collect private chat partners
         let mut stmt = conn
@@ -339,7 +350,13 @@ impl PromptAssembler {
 
             if other.0 == "user" {
                 if seen.insert("__user__".to_string()) {
-                    participants.push((user_name.clone(), "好友".to_string(), user_persona.clone()));
+                    let rel_text = if let Some(ref pid) = active_persona_id {
+                        crate::db::agent_relationship::get_relationship(conn, agent_id, pid, "user_persona")
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    participants.push((user_name.clone(), "好友".to_string(), user_persona.clone(), rel_text));
                 }
             } else if seen.insert(other.1.clone()) {
                 let other_id = other.1.clone();
@@ -354,7 +371,9 @@ impl PromptAssembler {
                         [&other_id],
                         |row| row.get(0),
                     );
-                    participants.push((name, "好友".to_string(), persona.unwrap_or_default()));
+                    let rel_text = crate::db::agent_relationship::get_relationship(conn, agent_id, &other_id, "agent")
+                        .unwrap_or_default();
+                    participants.push((name, "好友".to_string(), persona.unwrap_or_default(), rel_text));
                 }
             }
         }
@@ -390,7 +409,9 @@ impl PromptAssembler {
                         [&id],
                         |row| row.get(0),
                     );
-                    participants.push((name, "好友".to_string(), persona.unwrap_or_default()));
+                    let rel_text = crate::db::agent_relationship::get_relationship(conn, agent_id, &id, "agent")
+                        .unwrap_or_default();
+                    participants.push((name, "好友".to_string(), persona.unwrap_or_default(), rel_text));
                 }
             }
         }

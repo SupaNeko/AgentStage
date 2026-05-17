@@ -70,6 +70,11 @@ pub fn delete_user_persona(conn: &Connection, id: &str) -> Result<(), rusqlite::
         "UPDATE app_settings SET active_persona_id = NULL WHERE id = 1 AND active_persona_id = ?1",
         [id],
     )?;
+    // 级联删除所有 agent 对该人设的关系描述
+    conn.execute(
+        "DELETE FROM agent_relationships WHERE target_type = 'user_persona' AND target_id = ?1",
+        [id],
+    )?;
     Ok(())
 }
 

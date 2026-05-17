@@ -94,3 +94,13 @@ export interface ChatPage {
     created_at: number;
     updated_at: number;
 }
+
+export interface RelationshipItem {
+    target_id: string;
+    target_type: string;
+    target_name: string;
+    target_avatar: string | null;
+    target_label: string;
+    relationship_text: string;
+    updated_at: number;
+}

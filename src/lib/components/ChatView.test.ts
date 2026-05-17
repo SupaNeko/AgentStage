@@ -27,8 +27,8 @@ function makeUserAgentSession(overrides: Partial<Session> = {}): Session {
         last_message_at: null,
         last_message_preview: null,
         participants: [
-            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null, is_deleted: false },
         ],
         ...overrides,
     };
@@ -42,8 +42,8 @@ function makeGroupSession(overrides: Partial<Session> = {}): Session {
         last_message_at: null,
         last_message_preview: null,
         participants: [
-            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-            { participant_type: 'agent', participant_id: 'a1', name: 'Agent 1', avatar_path: null },
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Agent 1', avatar_path: null, is_deleted: false },
         ],
         ...overrides,
     };
@@ -208,8 +208,8 @@ describe('ChatView', () => {
             last_message_at: null,
             last_message_preview: null,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: '/avatar.png' },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: '/avatar.png', is_deleted: false },
             ],
         };
 
@@ -459,8 +459,8 @@ describe('ChatView', () => {
             last_message_at: null,
             last_message_preview: null,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null, is_deleted: false },
             ],
         };
         const session2: Session = {
@@ -470,8 +470,8 @@ describe('ChatView', () => {
             last_message_at: null,
             last_message_preview: null,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null, is_deleted: false },
             ],
         };
 

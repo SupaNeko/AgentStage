@@ -16,8 +16,8 @@ function makeSession(overrides: Partial<Session> = {}): Session {
         last_message_preview: null,
         unread_count: 0,
         participants: [
-            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null, is_deleted: false },
         ],
         ...overrides,
     };

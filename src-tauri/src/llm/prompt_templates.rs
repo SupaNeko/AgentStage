@@ -4,6 +4,7 @@ pub const LAYER_PERSONA_TITLE: &str = "【你的角色设定】";
 
 pub const LAYER_PARTICIPANTS_TITLE: &str = "【你认识的参与者】";
 pub const LAYER_PARTICIPANTS_FORMAT: &str = "- {}（{}）：{}\n";
+pub const RELATIONSHIP_SUFFIX_PREFIX: &str = "。主观关系认定：";
 
 pub const LAYER_HISTORY_TITLE: &str = "【历史聊天记录】";
 pub const LAYER_HISTORY_SESSION_SEPARATOR: &str = "\n--- {} ---\n";

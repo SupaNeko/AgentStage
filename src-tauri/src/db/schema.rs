@@ -412,3 +412,19 @@ ALTER TABLE app_settings ADD COLUMN active_persona_id TEXT;
 ALTER TABLE app_settings ADD COLUMN default_avatar_path TEXT;
 "#;
 
+pub const MIGRATION_V12: &str = r#"
+-- V12: Agent 关系描述表
+CREATE TABLE IF NOT EXISTS agent_relationships (
+    observer_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('agent', 'user_persona')),
+    relationship_text TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (observer_id, target_id, target_type),
+    FOREIGN KEY (observer_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_relationships_observer ON agent_relationships(observer_id);
+CREATE INDEX IF NOT EXISTS idx_agent_relationships_target ON agent_relationships(target_id, target_type);
+"#;
+

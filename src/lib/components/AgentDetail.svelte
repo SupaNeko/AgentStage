@@ -10,6 +10,7 @@
     import type { Agent } from '$lib/types';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import PersonaGenerateModal from './PersonaGenerateModal.svelte';
+    import AgentRelationshipPanel from './AgentRelationshipPanel.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
@@ -17,6 +18,7 @@
     let error = $state('');
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
+    let activeTab = $state<'config' | 'relationships'>('config');
 
     // Form state
     let form = $state({
@@ -181,123 +183,151 @@
             </div>
         </header>
 
-        <!-- Form -->
+        <!-- Tabs -->
+        <div class="px-6 border-b border-border bg-surface">
+            <div class="flex gap-4">
+                <button
+                    onclick={() => activeTab = 'config'}
+                    class="py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'config' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}"
+                >
+                    角色配置
+                </button>
+                <button
+                    onclick={() => activeTab = 'relationships'}
+                    class="py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'relationships' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}"
+                >
+                    关系设定
+                </button>
+            </div>
+        </div>
+
+        <!-- Content -->
         <div class="flex-1 overflow-y-auto px-6 py-4">
             {#if error}
                 <div class="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>
             {/if}
 
-            <div class="max-w-2xl space-y-5">
-                <!-- Basic Info -->
-                <div>
-                    <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">基本信息</h3>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">角色名称 <span class="text-red-500">*</span></label>
-                            <input type="text" bind:value={form.name} maxlength={20}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+            {#if activeTab === 'config'}
+                <div class="max-w-2xl space-y-5">
+                    <!-- Basic Info -->
+                    <div>
+                        <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">基本信息</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">角色名称 <span class="text-red-500">*</span></label>
+                                <input type="text" bind:value={form.name} maxlength={20}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Persona -->
-                <div>
-                    <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">人设配置</h3>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">详细人设 <span class="text-red-500">*</span></label>
-                            <textarea bind:value={form.detailed_persona} rows={5}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
-                                placeholder="你是 Fate/stay night 中的角色卫宫士郎，性格坚韧不拔，内心温柔但执拗，拥有强烈的正义感..."></textarea>
-                            <p class="text-xs text-text-secondary mt-1">角色自己看到的完整设定，直接注入 System Prompt</p>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">简易人设 <span class="text-red-500">*</span></label>
-                            <textarea bind:value={form.simplified_persona} rows={2}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
-                                placeholder="出自 Fate/stay night 的角色卫宫士郎，冬木市的见习魔术师，性格正义感强烈。"></textarea>
-                            <p class="text-xs text-text-secondary mt-1">给其它角色看的角色名片（角色简介）</p>
+                    <!-- Persona -->
+                    <div>
+                        <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">人设配置</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">详细人设 <span class="text-red-500">*</span></label>
+                                <textarea bind:value={form.detailed_persona} rows={5}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
+                                    placeholder="你是 Fate/stay night 中的角色卫宫士郎，性格坚韧不拔，内心温柔但执拗，拥有强烈的正义感..."></textarea>
+                                <p class="text-xs text-text-secondary mt-1">角色自己看到的完整设定，直接注入 System Prompt</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">简易人设 <span class="text-red-500">*</span></label>
+                                <textarea bind:value={form.simplified_persona} rows={2}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
+                                    placeholder="出自 Fate/stay night 的角色卫宫士郎，冬木市的见习魔术师，性格正义感强烈。"></textarea>
+                                <p class="text-xs text-text-secondary mt-1">给其它角色看的角色名片（角色简介）</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Model Config -->
-                <div>
-                    <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">模型配置</h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">模型提供商 <span class="text-red-500">*</span></label>
-                            <select bind:value={form.model_provider}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface">
-                                <option value="openai">OpenAI</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="google">Google</option>
-                                <option value="kimi">Kimi (Moonshot)</option>
-                                <option value="minimax">MiniMax</option>
-                                <option value="custom">自定义</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">模型名称 <span class="text-red-500">*</span></label>
-                            <input type="text" bind:value={form.model_name}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
-                                placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-sm font-medium mb-1">Base URL</label>
-                            <input type="text" bind:value={form.base_url}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
-                                placeholder="可选，默认使用官方地址" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">API Key</label>
-                            <input type="password" bind:value={form.api_key}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
-                                placeholder="留空表示不修改" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Temperature</label>
-                            <input type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Max Tokens</label>
-                            <input type="number" bind:value={form.max_tokens} min={1} max={32768}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
-                        </div>
-                        <div class="col-span-2 flex items-center gap-2">
-                            <input id="ad-thinking" type="checkbox" bind:checked={form.thinking_mode}
-                                class="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
-                            <label for="ad-thinking" class="text-sm">启用思考模式（如模型支持）</label>
+                    <!-- Model Config -->
+                    <div>
+                        <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">模型配置</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">模型提供商 <span class="text-red-500">*</span></label>
+                                <select bind:value={form.model_provider}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface">
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                    <option value="google">Google</option>
+                                    <option value="kimi">Kimi (Moonshot)</option>
+                                    <option value="minimax">MiniMax</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">模型名称 <span class="text-red-500">*</span></label>
+                                <input type="text" bind:value={form.model_name}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
+                                    placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium mb-1">Base URL</label>
+                                <input type="text" bind:value={form.base_url}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
+                                    placeholder="可选，默认使用官方地址" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">API Key</label>
+                                <input type="password" bind:value={form.api_key}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
+                                    placeholder="留空表示不修改" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Temperature</label>
+                                <input type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Max Tokens</label>
+                                <input type="number" bind:value={form.max_tokens} min={1} max={32768}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                            </div>
+                            <div class="col-span-2 flex items-center gap-2">
+                                <input id="ad-thinking" type="checkbox" bind:checked={form.thinking_mode}
+                                    class="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
+                                <label for="ad-thinking" class="text-sm">启用思考模式（如模型支持）</label>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            {:else if activeTab === 'relationships'}
+                <AgentRelationshipPanel agentId={agent.id} />
+            {/if}
         </div>
 
         <!-- Footer actions -->
         <div class="px-6 py-4 border-t border-border bg-surface flex justify-between items-center">
-            <button
-                onclick={() => showGenerateModal = true}
-                class="flex items-center gap-2 px-4 py-2 text-primary hover:bg-primary/5 rounded-lg transition-colors"
-            >
-                <Sparkles size={16} />
-                <span>人设自生成</span>
-            </button>
+            {#if activeTab === 'config'}
+                <button
+                    onclick={() => showGenerateModal = true}
+                    class="flex items-center gap-2 px-4 py-2 text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                >
+                    <Sparkles size={16} />
+                    <span>人设自生成</span>
+                </button>
+            {:else}
+                <div></div>
+            {/if}
             <div class="flex gap-3">
                 <button onclick={() => appState.selectAgent(null)} class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">
                     取消
                 </button>
-                <button onclick={handleSave} disabled={saving}
-                    class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
-                    {#if saving}
-                        <Loader2 size={16} class="animate-spin" />
-                        <span>保存中...</span>
-                    {:else}
-                        <Save size={16} />
-                        <span>保存</span>
-                    {/if}
-                </button>
+                {#if activeTab === 'config'}
+                    <button onclick={handleSave} disabled={saving}
+                        class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
+                        {#if saving}
+                            <Loader2 size={16} class="animate-spin" />
+                            <span>保存中...</span>
+                        {:else}
+                            <Save size={16} />
+                            <span>保存</span>
+                        {/if}
+                    </button>
+                {/if}
             </div>
         </div>
     {/if}

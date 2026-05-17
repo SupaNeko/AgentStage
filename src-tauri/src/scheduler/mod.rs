@@ -14,7 +14,7 @@ use crate::db::connection::DbState;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
 use crate::llm::prompt::PromptAssembler;
-use crate::llm::tool::{send_message_tool_schema, start_private_chat_tool_schema, LlmResponse, ToolExecutor};
+use crate::llm::tool::{send_message_tool_schema, start_private_chat_tool_schema, update_relationship_tool_schema, LlmResponse, ToolExecutor};
 use crate::models::message::Message;
 
 #[derive(Clone)]
@@ -961,7 +961,7 @@ impl Scheduler {
             system_prompt.len(), messages.len()
         ));
 
-        let tools = vec![send_message_tool_schema(), start_private_chat_tool_schema()];
+        let tools = vec![send_message_tool_schema(), start_private_chat_tool_schema(), update_relationship_tool_schema()];
         let result = provider
             .chat(system_prompt, messages, tools)
             .await;

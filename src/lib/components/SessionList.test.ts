@@ -13,8 +13,8 @@ function makeSession(overrides: Partial<Session> = {}): Session {
         last_message_preview: null,
         unread_count: 0,
         participants: [
-            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null },
+            { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+            { participant_type: 'agent', participant_id: 'a1', name: 'Test Agent', avatar_path: null, is_deleted: false },
         ],
         ...overrides,
     };
@@ -43,8 +43,8 @@ describe('SessionList', () => {
             last_message_preview: 'Hello there',
             unread_count: 2,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Agent One', avatar_path: null, is_deleted: false },
             ],
         };
         const session2: Session = {
@@ -54,8 +54,8 @@ describe('SessionList', () => {
             last_message_preview: 'General Kenobi',
             unread_count: 0,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a2', name: 'Agent Two', avatar_path: null, is_deleted: false },
             ],
         };
 
@@ -78,8 +78,8 @@ describe('SessionList', () => {
             last_message_preview: 'Click me',
             unread_count: 1,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Clickable Agent', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Clickable Agent', avatar_path: null, is_deleted: false },
             ],
         };
 
@@ -104,8 +104,8 @@ describe('SessionList', () => {
             last_message_preview: 'New message',
             unread_count: 5,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Unread Agent', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Unread Agent', avatar_path: null, is_deleted: false },
             ],
         };
 
@@ -125,8 +125,8 @@ describe('SessionList', () => {
             last_message_preview: 'Read message',
             unread_count: 0,
             participants: [
-                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null },
-                { participant_type: 'agent', participant_id: 'a1', name: 'Read Agent', avatar_path: null },
+                { participant_type: 'user', participant_id: 'user', name: '用户', avatar_path: null, is_deleted: false },
+                { participant_type: 'agent', participant_id: 'a1', name: 'Read Agent', avatar_path: null, is_deleted: false },
             ],
         };
 

@@ -19,6 +19,7 @@ use commands::session::{
 use commands::settings::{get_settings, update_settings};
 use commands::upload::upload_avatar;
 use commands::user_persona::{list_user_personas, create_user_persona, update_user_persona, delete_user_persona, get_current_user_persona, activate_user_persona};
+use commands::agent_relationship::{list_agent_relationships, update_agent_relationship};
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -140,6 +141,8 @@ pub fn run() {
             delete_user_persona,
             get_current_user_persona,
             activate_user_persona,
+            list_agent_relationships,
+            update_agent_relationship,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -58,6 +58,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "user_persona_config",
         sql: super::schema::MIGRATION_V11,
     },
+    Migration {
+        version: 12,
+        name: "agent_relationships",
+        sql: super::schema::MIGRATION_V12,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
