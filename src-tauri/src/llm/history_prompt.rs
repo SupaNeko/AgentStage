@@ -37,13 +37,14 @@ impl HistoryPromptAssembler {
 
         // 4. 组装完整 prompt（注入工具使用说明，要求模型必须使用 send_message 工具回复）
         let instruction = format!(
-            "请基于以上对话上下文继续回复。注意：你正在回顾或补充一段历史对话。\n\n【工具使用说明】\n你可以使用 send_message 工具向指定会话发送消息。\n当前你正在以下会话中聊天：\n- session_id: {}, 类型: {}\n\n请根据上下文决定是否需要回复。如果需要回复，请调用 send_message 工具，参数如下：\n- target_type: \"{}\"\n- target_id: \"{}\"\n- content: 你要发送的消息内容\n\n注意：target_id 必须是上面列出的 session_id，不能使用名称或其他 ID。",
+            "请基于以上对话上下文继续回复。\n\n【工具使用说明】\n你可以使用 send_message 工具向指定会话发送消息。\n当前你正在以下会话中聊天：\n- session_id: {}, 类型: {}\n\n请根据上下文决定是否需要回复。如果需要回复，请调用 send_message 工具，参数如下：\n- target_type: \"{}\"\n- target_id: \"{}\"\n- content: 你要发送的消息内容\n\n注意：target_id 必须是上面列出的 session_id，不能使用名称或其他 ID。",
             session_id, session_type, session_type, session_id
         );
 
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let full_prompt = format!(
             "{}\n\n{}\n\n{}\n\n{}",
-            prompt_templates::SYSTEM_PROMPT,
+            prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now),
             agent.detailed_persona,
             context,
             instruction
