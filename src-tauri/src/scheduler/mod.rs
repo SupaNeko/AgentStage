@@ -769,33 +769,44 @@ impl Scheduler {
             serde_json::json!({"agent_id": agent_id}),
         );
 
-        let response = match Self::call_llm(&provider, &prompt, vec![]).await {
-            Ok(resp) => {
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, llm_ok, tool_calls_count={}, content_present={}",
-                    agent_id, resp.tool_calls.len(), resp.content.is_some()
-                ));
-                for (i, tc) in resp.tool_calls.iter().enumerate() {
+        // === 阶段 4：调用 LLM（最多重试 3 次）===
+        let mut response: Option<LlmResponse> = None;
+        for attempt in 0..3 {
+            match Self::call_llm(&provider, &prompt, vec![]).await {
+                Ok(resp) => {
                     crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
-                        agent_id, i, tc.name, tc.arguments
+                        "[DEBUG trigger_agent_inner] agent_id={}, llm_ok on attempt {}, tool_calls_count={}, content_present={}",
+                        agent_id, attempt + 1, resp.tool_calls.len(), resp.content.is_some()
                     ));
+                    for (i, tc) in resp.tool_calls.iter().enumerate() {
+                        crate::logger::backend("DEBUG", &format!(
+                            "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
+                            agent_id, i, tc.name, tc.arguments
+                        ));
+                    }
+                    response = Some(resp);
+                    break;
                 }
-                resp
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!(
+                        "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed on attempt {}/3: {}",
+                        agent_id, attempt + 1, e
+                    ));
+                    if attempt < 2 {
+                        // 前两次失败只记录日志，继续重试
+                        continue;
+                    }
+                    // 第三次失败：恢复 pending 并通知前端
+                    self.restore_pending(agent_id, pending).await;
+                    self.emit(
+                        "agent_error",
+                        serde_json::json!({"agent_id": agent_id, "error": e}),
+                    );
+                    return Ok(());
+                }
             }
-            Err(e) => {
-                crate::logger::backend("ERROR", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed={}",
-                    agent_id, e
-                ));
-                self.restore_pending(agent_id, pending).await;
-                self.emit(
-                    "agent_error",
-                    serde_json::json!({"agent_id": agent_id, "error": e}),
-                );
-                return Ok(());
-            }
-        };
+        }
+        let response = response.expect("response should be set after successful LLM call");
 
         // === 阶段 5：执行 Tool Calls ===
         let executor = ToolExecutor::new(self.db_state.clone());
