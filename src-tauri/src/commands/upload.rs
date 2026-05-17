@@ -58,10 +58,20 @@ pub async fn upload_avatar(
                 (&relative_path, &req.target_id),
             ).map_err(|e| e.to_string())?;
         }
-        "user" => {
-            conn.execute(
-                "UPDATE user_personas SET avatar_path = ?1 WHERE is_default = 1",
-                [&relative_path],
+        "user_default" => {
+            use crate::db::user_persona;
+            user_persona::update_default_avatar(&conn, &relative_path).map_err(|e| e.to_string())?;
+        }
+        "user_persona" => {
+            use crate::db::user_persona;
+            user_persona::update_user_persona(
+                &conn,
+                &crate::models::user_persona::UpdateUserPersonaRequest {
+                    id: req.target_id.clone(),
+                    name: None,
+                    description: None,
+                    avatar_path: Some(relative_path.clone()),
+                },
             ).map_err(|e| e.to_string())?;
         }
         _ => return Err("Invalid target_type".to_string()),
