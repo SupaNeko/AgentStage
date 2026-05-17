@@ -15,7 +15,16 @@ static SIMPLIFIED_PERSONA_RE: Lazy<regex::Regex> = Lazy::new(|| {
 
 const SYSTEM_PROMPT_STEP2: &str = r#"你是一个专业的角色设定创作师。你的任务是根据已提取的角色信息，生成高质量的"详细人设"和"简易人设"。
 
-请严格按照用户要求的格式输出，使用 <detailed_persona> 和 <simplified_persona> 标签包裹对应内容。"#;
+【绝对严格的输出格式要求】
+你必须使用以下两个 XML 标签包裹对应内容，标签名必须完全匹配，不能有任何拼写错误：
+- <detailed_persona>详细人设内容</detailed_persona>
+- <simplified_persona>简易人设内容</simplified_persona>
+
+【字数限制（硬性要求）】
+- <detailed_persona> 内的内容必须控制在 2000 个汉字以内
+- <simplified_persona> 内的内容必须控制在 50 个汉字以内，用一两句话客观描述角色身份即可
+
+如果你之前的输出格式有误或字数超限，我会指出错误，请你修正后重新输出。修正时只需要输出修正后的完整标签内容，不要道歉或解释。"#;
 
 const SYSTEM_PROMPT_STEP1: &str = r#"你是一个专业的角色设定分析师。你的任务是根据用户提供的参考角色信息和补充内容，提取并结构化角色的核心设定信息。
 
@@ -73,21 +82,37 @@ fn build_step2_user_message(
 - 经典台词: {}
 - 补充说明: {}
 
-输出格式要求：
+【输出格式要求 — 必须严格遵守】
 <detailed_persona>
-（详细人设，直接注入 System Prompt 的完整设定，2000字以内）
+（详细人设内容，直接注入 System Prompt 的完整设定，控制在2000个汉字以内）
 </detailed_persona>
 
 <simplified_persona>
-（简易人设，给其他角色看的简介，50字以内，以一两句话客观角度简单描述该角色的身份信息）
+（简易人设内容，给其他角色看的简介，必须控制在50个汉字以内，以一两句话客观角度简单描述该角色的身份信息）
 </simplified_persona>
 
-注意：
+【硬性规则】
 1. 必须包含 <detailed_persona>...</detailed_persona> 和 <simplified_persona>...</simplified_persona> 标签对
 2. 标签之间不要添加其他说明文字
-3. 如果参考角色信息不足，可基于补充信息和你的知识合理发挥"#,
+3. <simplified_persona> 的内容绝对不可超过50个汉字
+4. 如果参考角色信息不足，可基于补充信息和你的知识合理发挥"#,
         personality, scenario, example_messages, creator_notes
     )
+}
+
+fn log_llm_call(step: &str, attempt: usize, system: &str, messages: &[serde_json::Value]) {
+    let messages_json = serde_json::to_string(messages).unwrap_or_else(|_| "[序列化失败]".to_string());
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG persona_generation] {} attempt={} SYSTEM_PROMPT={} MESSAGES={}",
+        step, attempt, system, messages_json
+    ));
+}
+
+fn log_llm_response(step: &str, attempt: usize, content: &str, tool_calls_count: usize) {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG persona_generation] {} attempt={} content_len={} tool_calls={} CONTENT={}",
+        step, attempt, content.len(), tool_calls_count, content
+    ));
 }
 
 fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
@@ -211,7 +236,18 @@ pub async fn generate(
 
     let tools = vec![fill_character_fields_tool_schema()];
 
+    log_llm_call("Step1", 1, SYSTEM_PROMPT_STEP1, &step1_messages);
+
     let response1 = provider.chat(SYSTEM_PROMPT_STEP1, step1_messages, tools).await?;
+
+    let content1 = response1.content.as_deref().unwrap_or("");
+    log_llm_response("Step1", 1, content1, response1.tool_calls.len());
+    for (i, tc) in response1.tool_calls.iter().enumerate() {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG persona_generation] Step1 tool_call[{}]: name={} args={}",
+            i, tc.name, tc.arguments
+        ));
+    }
 
     // 6. Parse tool call
     let (personality, scenario, example_messages) = if let Some(tc) = response1.tool_calls.first() {
@@ -243,7 +279,7 @@ pub async fn generate(
     }
 
     // 8. Build step 2 message history
-    let step2_messages = vec![
+    let mut step2_messages = vec![
         serde_json::json!({ "role": "user", "content": step1_user_msg }),
         serde_json::json!({
             "role": "assistant",
@@ -272,12 +308,50 @@ pub async fn generate(
         }),
     ];
 
-    // 9. Step 2: Persona generation (no tools, force direct output)
-    let response2 = provider.chat(SYSTEM_PROMPT_STEP2, step2_messages, vec![]).await?;
+    // 9. Step 2: Persona generation with retry loop
+    const MAX_STEP2_RETRIES: usize = 2;
+    let mut step2_attempt = 0;
+    let (detailed_persona, simplified_persona) = loop {
+        log_llm_call("Step2", step2_attempt + 1, SYSTEM_PROMPT_STEP2, &step2_messages);
 
-    let content2 = response2.content.ok_or_else(|| "第2步 AI 未返回内容".to_string())?;
+        let response2 = provider.chat(SYSTEM_PROMPT_STEP2, step2_messages.clone(), vec![]).await?;
 
-    let (detailed_persona, simplified_persona) = parse_persona_tags(&content2)?;
+        let content2 = response2.content.ok_or_else(|| {
+            log_llm_response("Step2", step2_attempt + 1, "[无content]", response2.tool_calls.len());
+            "第2步 AI 未返回内容".to_string()
+        })?;
+
+        log_llm_response("Step2", step2_attempt + 1, &content2, response2.tool_calls.len());
+
+        match parse_persona_tags(&content2) {
+            Ok(result) => break result,
+            Err(e) => {
+                step2_attempt += 1;
+                if step2_attempt > MAX_STEP2_RETRIES {
+                    return Err(format!(
+                        "人设生成失败（第2步已重试{}次）: {}",
+                        step2_attempt, e
+                    ));
+                }
+                crate::logger::backend("WARN", &format!(
+                    "[DEBUG persona_generation] Step2 attempt={} failed: {}, will retry",
+                    step2_attempt, e
+                ));
+                // 将 AI 的错误输出和修正要求加入对话历史
+                step2_messages.push(serde_json::json!({
+                    "role": "assistant",
+                    "content": content2,
+                }));
+                step2_messages.push(serde_json::json!({
+                    "role": "user",
+                    "content": format!(
+                        "你的输出存在问题，请修正后重新输出完整内容。错误：{}。\n\n注意：\n1. 必须使用 <detailed_persona>...</detailed_persona> 和 <simplified_persona>...</simplified_persona> 标签对\n2. <simplified_persona> 的内容绝对不可超过50个汉字\n3. 直接输出修正后的完整内容，不要道歉或解释",
+                        e
+                    ),
+                }));
+            }
+        }
+    };
 
     Ok(GeneratePersonaResponse {
         personality: Some(personality),
