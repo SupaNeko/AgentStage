@@ -94,6 +94,34 @@ pub fn update_relationship_tool_schema() -> serde_json::Value {
     })
 }
 
+pub fn fill_character_fields_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "fill_character_fields",
+            "description": "将分析提取到的角色信息填入对应字段。如果某项信息无法确定或该角色为原创角色不在你的知识库中，可将对应字段设为空字符串。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "personality": {
+                        "type": "string",
+                        "description": "角色的性格特征描述，如'傲娇、善良、有些天然呆'。可空。"
+                    },
+                    "scenario": {
+                        "type": "string",
+                        "description": "角色所处的世界观、场景或背景设定。可空。"
+                    },
+                    "example_messages": {
+                        "type": "string",
+                        "description": "角色的经典台词或代表性对话示例。可空。"
+                    }
+                },
+                "required": ["personality", "scenario", "example_messages"]
+            }
+        }
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
