@@ -12,6 +12,7 @@
     let avatarPath = $state<string | undefined>(undefined);
     let avatarUploadOpen = $state(false);
     let saving = $state(false);
+    let tempId = $state(crypto.randomUUID());
 
     function handleUseDefaultAvatar() {
         avatarPath = settingsStore.settings?.default_avatar_path ?? undefined;
@@ -42,7 +43,7 @@
 {#if avatarUploadOpen}
     <AvatarUploadModal
         targetType="user_persona"
-        targetId="new"
+        targetId={tempId}
         onUploaded={handleAvatarUploaded}
         onClose={() => avatarUploadOpen = false}
     />
