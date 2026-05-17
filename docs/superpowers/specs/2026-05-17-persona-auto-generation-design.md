@@ -421,11 +421,11 @@ function handleGenerated(result: ...) {
 
 输出格式要求：
 <detailed_persona>
-（详细人设，直接注入 System Prompt 的完整设定，500-2000 字）
+（详细人设，直接注入 System Prompt 的完整设定，不限制字数）
 </detailed_persona>
 
 <simplified_persona>
-（简易人设，给其他角色看的简介，100-300 字）
+（简易人设，给其他角色看的简介，50字以内，以一两句话客观角度简单描述该角色的身份信息）
 </simplified_persona>
 ```
 
