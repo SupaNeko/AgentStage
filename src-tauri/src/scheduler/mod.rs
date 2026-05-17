@@ -770,43 +770,33 @@ impl Scheduler {
         );
 
         // === 阶段 4：调用 LLM（最多重试 3 次）===
-        let mut response: Option<LlmResponse> = None;
-        for attempt in 0..3 {
-            match Self::call_llm(&provider, &prompt, vec![]).await {
-                Ok(resp) => {
+        let response = match Self::call_llm_with_retry(&provider, &prompt, vec![]).await {
+            Ok(resp) => {
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG trigger_agent_inner] agent_id={}, llm_ok, tool_calls_count={}, content_present={}",
+                    agent_id, resp.tool_calls.len(), resp.content.is_some()
+                ));
+                for (i, tc) in resp.tool_calls.iter().enumerate() {
                     crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG trigger_agent_inner] agent_id={}, llm_ok on attempt {}, tool_calls_count={}, content_present={}",
-                        agent_id, attempt + 1, resp.tool_calls.len(), resp.content.is_some()
+                        "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
+                        agent_id, i, tc.name, tc.arguments
                     ));
-                    for (i, tc) in resp.tool_calls.iter().enumerate() {
-                        crate::logger::backend("DEBUG", &format!(
-                            "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
-                            agent_id, i, tc.name, tc.arguments
-                        ));
-                    }
-                    response = Some(resp);
-                    break;
                 }
-                Err(e) => {
-                    crate::logger::backend("ERROR", &format!(
-                        "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed on attempt {}/3: {}",
-                        agent_id, attempt + 1, e
-                    ));
-                    if attempt < 2 {
-                        // 前两次失败只记录日志，继续重试
-                        continue;
-                    }
-                    // 第三次失败：恢复 pending 并通知前端
-                    self.restore_pending(agent_id, pending).await;
-                    self.emit(
-                        "agent_error",
-                        serde_json::json!({"agent_id": agent_id, "error": e}),
-                    );
-                    return Ok(());
-                }
+                resp
             }
-        }
-        let response = response.expect("response should be set after successful LLM call");
+            Err(e) => {
+                crate::logger::backend("ERROR", &format!(
+                    "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed after 3 retries: {}",
+                    agent_id, e
+                ));
+                self.restore_pending(agent_id, pending).await;
+                self.emit(
+                    "agent_error",
+                    serde_json::json!({"agent_id": agent_id, "error": e}),
+                );
+                return Ok(());
+            }
+        };
 
         // === 阶段 5：执行 Tool Calls ===
         let executor = ToolExecutor::new(self.db_state.clone());
@@ -962,8 +952,8 @@ impl Scheduler {
         Ok(())
     }
 
-    async fn call_llm(
-        provider: &OpenAiCompatibleProvider,
+    async fn call_llm<P: LlmProvider>(
+        provider: &P,
         system_prompt: &str,
         messages: Vec<serde_json::Value>,
     ) -> Result<LlmResponse, String> {
@@ -983,6 +973,29 @@ impl Scheduler {
         }
 
         result.map_err(|e| format!("LLM call failed: {}", e))
+    }
+
+    /// 调用 LLM 并自动重试，最多 3 次
+    async fn call_llm_with_retry<P: LlmProvider>(
+        provider: &P,
+        system_prompt: &str,
+        messages: Vec<serde_json::Value>,
+    ) -> Result<LlmResponse, String> {
+        for attempt in 0..3 {
+            match Self::call_llm(provider, system_prompt, messages.clone()).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!(
+                        "[DEBUG call_llm_with_retry] attempt {}/3 failed: {}", attempt + 1, e
+                    ));
+                    if attempt < 2 {
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        unreachable!()
     }
 
     /// 后台扫描任务：定期检查 agent_notifications 中是否有角色可以触发
@@ -1033,11 +1046,42 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rusqlite::Connection;
-    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8};
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use rusqlite::Connection;
+        use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use async_trait::async_trait;
+        use crate::llm::provider::LlmProvider;
+        use crate::llm::tool::LlmResponse;
+
+        struct MockProvider {
+            call_count: AtomicUsize,
+            responses: Vec<Result<LlmResponse, String>>,
+        }
+
+        impl MockProvider {
+            fn new(responses: Vec<Result<LlmResponse, String>>) -> Self {
+                Self {
+                    call_count: AtomicUsize::new(0),
+                    responses,
+                }
+            }
+        }
+
+        #[async_trait]
+        impl LlmProvider for MockProvider {
+            async fn chat(
+                &self,
+                _system_prompt: &str,
+                _messages: Vec<serde_json::Value>,
+                _tools: Vec<serde_json::Value>,
+            ) -> Result<LlmResponse, String> {
+                let idx = self.call_count.fetch_add(1, Ordering::SeqCst);
+                self.responses.get(idx).cloned().unwrap_or(Err("exhausted".to_string()))
+            }
+        }
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -1450,5 +1494,35 @@ mod tests {
         assert!(session_unread.contains_key("agent-1"));
         assert_eq!(session_unread.get("agent-1").unwrap().len(), 1);
         assert_eq!(session_unread.get("agent-2").unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_call_llm_retry_succeeds_on_third_attempt() {
+        let provider = MockProvider::new(vec![
+            Err("network error".to_string()),
+            Err("timeout".to_string()),
+            Ok(LlmResponse {
+                content: Some("ok".to_string()),
+                tool_calls: vec![],
+                usage: None,
+            }),
+        ]);
+
+        let result = Scheduler::call_llm_with_retry(&provider, "", vec![]).await;
+        assert!(result.is_ok());
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn test_call_llm_retry_fails_after_three_attempts() {
+        let provider = MockProvider::new(vec![
+            Err("network error".to_string()),
+            Err("timeout".to_string()),
+            Err("rate limit".to_string()),
+        ]);
+
+        let result = Scheduler::call_llm_with_retry(&provider, "", vec![]).await;
+        assert!(result.is_err());
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), 3);
     }
 }
