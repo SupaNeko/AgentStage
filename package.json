@@ -18,7 +18,9 @@
     "lucide-svelte": "^1.0.1"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
