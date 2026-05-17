@@ -153,8 +153,9 @@ impl PromptAssembler {
         let instruction = Self::build_instruction(conn, agent_id, &agent.name)?;
         layers.push(instruction);
 
+        let (user_name, _user_persona) = Self::get_user_persona(conn);
         let prompt = layers.join("\n\n");
-        let prompt_with_vars = Self::apply_variables(&prompt, &agent.name);
+        let prompt_with_vars = Self::apply_variables(&prompt, &agent.name, &user_name);
 
         crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, total_chars={}", agent_id, prompt_with_vars.len()));
         
@@ -272,10 +273,10 @@ impl PromptAssembler {
     }
 
     /// 变量替换：{{char}} → agent_name, {{user}} → 用户名称
-    fn apply_variables(prompt: &str, agent_name: &str) -> String {
+    fn apply_variables(prompt: &str, agent_name: &str, user_name: &str) -> String {
         prompt
             .replace("{{char}}", agent_name)
-            .replace("{{user}}", prompt_templates::USER_NAME)
+            .replace("{{user}}", user_name)
             .replace("{{group}}", "群聊")
     }
 

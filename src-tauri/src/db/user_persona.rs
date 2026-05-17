@@ -24,13 +24,26 @@ pub fn list_user_personas(conn: &Connection) -> Result<Vec<UserPersona>, rusqlit
 pub fn create_user_persona(conn: &Connection, req: &CreateUserPersonaRequest) -> Result<UserPersona, rusqlite::Error> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
+
+    // Normalize avatar_path: if absolute, convert to relative for portable storage
+    let avatar_path = req.avatar_path.as_ref().map(|p| {
+        if let Ok(data_dir) = crate::get_data_dir() {
+            let data_dir_str = data_dir.to_string_lossy().to_string();
+            if p.starts_with(&data_dir_str) {
+                let relative = &p[data_dir_str.len()..];
+                return relative.trim_start_matches('\\').trim_start_matches('/').to_string();
+            }
+        }
+        p.clone()
+    });
+
     conn.execute(
         "INSERT INTO user_personas (id, name, description, avatar_path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        (&id, &req.name, &req.description, &req.avatar_path, &now),
+        (&id, &req.name, &req.description, &avatar_path, &now),
     )?;
     Ok(UserPersona {
         id, name: req.name.clone(), description: req.description.clone(),
-        avatar_path: req.avatar_path.clone(), created_at: now, updated_at: now,
+        avatar_path, created_at: now, updated_at: now,
     })
 }
 
