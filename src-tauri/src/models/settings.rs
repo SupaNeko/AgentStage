@@ -14,6 +14,8 @@ pub struct AppSettings {
     pub enter_to_send: bool,
     pub launch_on_startup: bool,
     pub minimize_to_tray: bool,
+    pub active_persona_id: Option<String>,
+    pub default_avatar_path: Option<String>,
     pub updated_at: i64,
 }
 
@@ -30,6 +32,8 @@ pub struct SettingsResponse {
     pub enter_to_send: bool,
     pub launch_on_startup: bool,
     pub minimize_to_tray: bool,
+    pub active_persona_id: Option<String>,
+    pub default_avatar_path: Option<String>,
 }
 
 impl From<AppSettings> for SettingsResponse {
@@ -46,6 +50,8 @@ impl From<AppSettings> for SettingsResponse {
             enter_to_send: s.enter_to_send,
             launch_on_startup: s.launch_on_startup,
             minimize_to_tray: s.minimize_to_tray,
+            active_persona_id: s.active_persona_id,
+            default_avatar_path: s.default_avatar_path,
         }
     }
 }
@@ -63,4 +69,6 @@ pub struct UpdateAppSettingsRequest {
     pub enter_to_send: Option<bool>,
     pub launch_on_startup: Option<bool>,
     pub minimize_to_tray: Option<bool>,
+    pub active_persona_id: Option<String>,
+    pub default_avatar_path: Option<String>,
 }

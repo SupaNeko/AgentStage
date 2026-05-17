@@ -12,6 +12,8 @@ export interface AppSettings {
     language: string;
     launch_on_startup?: boolean;
     minimize_to_tray?: boolean;
+    active_persona_id?: string | null;
+    default_avatar_path?: string | null;
 }
 
 class SettingsStore {
@@ -40,6 +42,8 @@ class SettingsStore {
             language: partial.language,
             launch_on_startup: partial.launch_on_startup,
             minimize_to_tray: partial.minimize_to_tray,
+            active_persona_id: partial.active_persona_id,
+            default_avatar_path: partial.default_avatar_path,
         };
         const updated = await invoke<AppSettings>('update_settings', { req });
         this.settings = updated;

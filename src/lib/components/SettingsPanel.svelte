@@ -83,7 +83,7 @@
 
 <AvatarUploadModal
     open={showAvatarModal}
-    targetType="user"
+    targetType="user_default"
     targetId="user"
     currentAvatar={userAvatar}
     onClose={() => showAvatarModal = false}

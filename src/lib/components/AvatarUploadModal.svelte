@@ -5,15 +5,15 @@
     import { resolveAvatarUrl } from '$lib/utils';
 
     interface Props {
-        open: boolean;
-        targetType: 'user' | 'agent' | 'group';
+        open?: boolean;
+        targetType: 'user_default' | 'user_persona' | 'agent' | 'group';
         targetId: string;
-        currentAvatar: string | null;
+        currentAvatar?: string | null;
         onClose: () => void;
         onUploaded: (path: string) => void;
     }
 
-    let { open, targetType, targetId, currentAvatar, onClose, onClose: _onClose, onUploaded }: Props = $props();
+    let { open = true, targetType, targetId, currentAvatar = null, onClose, onUploaded }: Props = $props();
 
     let uploading = $state(false);
     let fileInput: HTMLInputElement | undefined = $state(undefined);
