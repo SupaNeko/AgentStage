@@ -17,12 +17,17 @@ const SYSTEM_PROMPT_STEP2: &str = r#"你是一个专业的角色设定创作师�
 
 【绝对严格的输出格式要求】
 你必须使用以下两个 XML 标签包裹对应内容，标签名必须完全匹配，不能有任何拼写错误：
-- <detailed_persona>详细人设内容</detailed_persona>
-- <simplified_persona>简易人设内容</simplified_persona>
+输出模板：
+```
+<detailed_persona>详细人设内容</detailed_persona>
+<simplified_persona>简易人设内容</simplified_persona>
+```
 
 【字数限制（硬性要求）】
 - <detailed_persona> 内的内容必须控制在 2000 个汉字以内
-- <simplified_persona> 内的内容必须控制在 50 个汉字以内，用一两句话客观描述角色身份即可
+- <simplified_persona> 内的内容必须控制在 50 个汉字以内，用一两句话客观描述角色身份，仅说明是谁即可，**禁止在这里描述性格、品行等内容**。
+simplified_persona示例1：Fate系列中的Saber，英灵，职介是剑阶。
+simplified_persona示例1：xxx公司的员工abc，男。
 
 如果你之前的输出格式有误或字数超限，我会指出错误，请你修正后重新输出。修正时只需要输出修正后的完整标签内容，不要道歉或解释。"#;
 
@@ -34,6 +39,9 @@ const SYSTEM_PROMPT_STEP1: &str = r#"你是一个专业的角色设定分析师�
 - personality: 性格特征描述
 - scenario: 所处世界观/场景
 - example_messages: 经典台词或代表性对话
+
+【优先级规则】
+如果"参考角色"和"补充信息"中的描述存在冲突，**必须优先采用"补充信息"中的内容**。补充信息是用户明确给出的设定要求，高于模型自身的知识库和搜索结果。
 
 如果该角色不在你的知识库中（如原创角色），或某项信息无法确定，可将对应字段设为空字符串。"#;
 
@@ -81,6 +89,9 @@ fn build_step2_user_message(
 - 所处场景: {}
 - 经典台词: {}
 - 补充说明: {}
+
+【优先级规则 — 非常重要】
+如果已提取的信息之间存在冲突，或者与参考角色的已知设定不一致，**必须优先采用"补充说明"中的内容**。补充说明是用户明确给出的设定要求，具有最高优先级，高于模型自身的知识库和参考角色的原始设定。
 
 【输出格式要求 — 必须严格遵守】
 <detailed_persona>
