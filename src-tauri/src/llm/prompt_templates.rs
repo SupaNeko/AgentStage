@@ -24,9 +24,9 @@ pub const TOOL_INSTRUCTION_TEMPLATE: &str = r#"你可以使用 send_message 工�
 
 pub const INSTRUCTION_CONTEXT_LIST_FORMAT: &str = "- session_id: {}, 名称: {}, 类型: {}\n";
 
+pub use crate::constants::{DEFAULT_USER_NAME, DEFAULT_USER_PERSONA};
+
 pub const UNKNOWN_SESSION: &str = "未知会话";
-pub const USER_NAME_DEFAULT: &str = "用户";
-pub const USER_PERSONA_DEFAULT: &str = "正在与你聊天的真实用户";
 pub const USER_NAME: &str = "用户";
 pub const SYSTEM_NAME: &str = "系统";
 pub const UNKNOWN_AGENT_PREFIX: &str = "未知角色(";

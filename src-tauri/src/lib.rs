@@ -1,3 +1,4 @@
+pub mod constants;
 pub mod commands;
 pub mod crypto;
 pub mod db;

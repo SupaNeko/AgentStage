@@ -269,10 +269,10 @@ impl PromptAssembler {
             |row| Ok((row.get(0)?, row.get(1)?)),
         );
         match result {
-            Ok((name, desc)) => (name, desc.unwrap_or_else(|| prompt_templates::USER_PERSONA_DEFAULT.to_string())),
+            Ok((name, desc)) => (name, desc.unwrap_or_else(|| prompt_templates::DEFAULT_USER_PERSONA.to_string())),
             Err(_) => (
-                prompt_templates::USER_NAME_DEFAULT.to_string(),
-                prompt_templates::USER_PERSONA_DEFAULT.to_string(),
+                prompt_templates::DEFAULT_USER_NAME.to_string(),
+                prompt_templates::DEFAULT_USER_PERSONA.to_string(),
             ),
         }
     }
