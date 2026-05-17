@@ -1,13 +1,15 @@
 class AppState {
-    currentView = $state<'agents' | 'chat' | 'history'>('chat');
+    currentView = $state<'agents' | 'chat' | 'history' | 'profile'>('chat');
     selectedAgentId = $state<string | null>(null);
     selectedSessionId = $state<string | null>(null);
     settingsOpen = $state(false);
 
-    switchView(view: 'agents' | 'chat' | 'history') {
+    switchView(view: 'agents' | 'chat' | 'history' | 'profile') {
         this.currentView = view;
-        // Reset selections when switching views
         if (view === 'agents') {
+            this.selectedSessionId = null;
+        } else if (view === 'profile') {
+            this.selectedAgentId = null;
             this.selectedSessionId = null;
         } else {
             this.selectedAgentId = null;

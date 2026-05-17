@@ -1,8 +1,9 @@
 <script lang="ts">
     import { appState } from '$lib/stores/appState.svelte';
-    import { Bot, MessageSquare, History, Settings } from 'lucide-svelte';
+    import { Bot, MessageSquare, History, Settings, User } from 'lucide-svelte';
 
     const navItems = [
+        { id: 'profile' as const, label: '个人', icon: User },
         { id: 'agents' as const, label: '角色管理', icon: Bot },
         { id: 'chat' as const, label: '聊天', icon: MessageSquare },
         { id: 'history' as const, label: '历史会话', icon: History },
