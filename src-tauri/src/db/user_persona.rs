@@ -64,6 +64,14 @@ pub fn get_user_persona_by_id(conn: &Connection, id: &str) -> Result<UserPersona
     )
 }
 
+pub fn get_user_persona_by_name(conn: &Connection, name: &str) -> Result<Option<UserPersona>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, avatar_path, created_at, updated_at FROM user_personas WHERE name = ?1"
+    )?;
+    let mut rows = stmt.query_map([name], row_to_persona)?;
+    rows.next().transpose()
+}
+
 pub fn delete_user_persona(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM user_personas WHERE id = ?1", [id])?;
     conn.execute(

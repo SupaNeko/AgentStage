@@ -30,8 +30,7 @@ pub const TOOL_INSTRUCTION_TEMPLATE: &str = r#"你可以使用以下工具：
 
 3. update_relationship：更新你对某个参与者的主观关系描述
 当你对某个参与者的看法或关系发生变化时（如从陌生变为朋友、产生好感或反感），可以调用此工具更新你的主观关系认定。参数：
-- target_id: 目标参与者 ID
-- target_type: "agent" 或 "user_persona"
+- target_name: 目标参与者的精确名称（从【你认识的参与者】列表中获取）
 - old_text: 当前关系描述的完整文本（空字符串表示尚无描述）
 - new_text: 新的关系描述文本（200字以内，只描述整体关系定位和态度，不记录具体事件）
 注意：必须提供准确的 old_text，如果匹配失败会返回错误，你需要重新查询后再修改。"#;

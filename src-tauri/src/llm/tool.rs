@@ -71,18 +71,13 @@ pub fn update_relationship_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "update_relationship",
-            "description": "更新你对某个参与者的主观关系描述。这用于记录你对对方的整体定位（如朋友/同事/竞争对手）和基本态度（如喜欢/讨厌/尊敬），不是记忆具体事件。请遵守以下规则：\n1. 只更新整体关系定位，不要记录日常琐事（如\"他今天吃了汉堡\"）\n2. 描述控制在 200 字以内\n3. 必须提供 old_text（当前关系描述的完整内容），系统会匹配替换\n4. 如果 old_text 不匹配（说明你记错了当前关系），系统会返回错误，请重新查询后再修改",
+            "description": "更新你对某个参与者的主观关系描述。这用于记录你对对方的整体定位（如朋友/同事/竞争对手）和基本态度（如喜欢/讨厌/尊敬），不是记忆具体事件。请遵守以下规则：\n1. 只更新整体关系定位，不要记录日常琐事（如\"他今天吃了汉堡\"）\n2. 描述控制在 200 字以内\n3. 必须提供 old_text（当前关系描述的完整内容），系统会匹配替换\n4. 如果 old_text 不匹配（说明你记错了当前关系），系统会返回错误，请重新查询后再修改\n5. target_name 必须是参与者的精确名称（见【你认识的参与者】列表）",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "target_id": {
+                    "target_name": {
                         "type": "string",
-                        "description": "目标参与者的 ID（agent_id 或 user_persona_id）"
-                    },
-                    "target_type": {
-                        "type": "string",
-                        "enum": ["agent", "user_persona"],
-                        "description": "目标类型"
+                        "description": "目标参与者的精确名称（从【你认识的参与者】列表中获取）"
                     },
                     "old_text": {
                         "type": "string",
@@ -93,7 +88,7 @@ pub fn update_relationship_tool_schema() -> serde_json::Value {
                         "description": "新的关系描述文本（200字以内）"
                     }
                 },
-                "required": ["target_id", "target_type", "old_text", "new_text"]
+                "required": ["target_name", "old_text", "new_text"]
             }
         }
     })
@@ -354,15 +349,18 @@ impl ToolExecutor {
         let args: serde_json::Value = serde_json::from_str(arguments)
             .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
 
-        let target_id = args["target_id"].as_str().unwrap_or("");
-        let target_type = args["target_type"].as_str().unwrap_or("");
+        let target_name = args["target_name"].as_str().unwrap_or("");
         let old_text = args["old_text"].as_str().unwrap_or("");
         let new_text = args["new_text"].as_str().unwrap_or("");
 
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG ToolExecutor::execute_update_relationship] parsed target_id={}, target_type={}",
-            target_id, target_type
+            "[DEBUG ToolExecutor::execute_update_relationship] parsed target_name='{}', old_text_len={}, new_text_len={}",
+            target_name, old_text.len(), new_text.len()
         ));
+
+        if target_name.is_empty() {
+            return Err(ToolError::InvalidArguments("target_name 不能为空".to_string()));
+        }
 
         // 校验长度
         if new_text.chars().count() > 200 {
@@ -376,20 +374,64 @@ impl ToolExecutor {
 
         let conn = self.db_state.0.lock().await;
 
+        // 根据名称查找目标
+        let (target_id, target_type) = if let Ok(Some(agent)) = agent_repo::get_agent_by_name(&conn, target_name) {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG ToolExecutor::execute_update_relationship] resolved to agent id={}", agent.id
+            ));
+            (agent.id, "agent".to_string())
+        } else {
+            // 尝试查找当前激活的用户人设
+            let active_id: Option<String> = conn.query_row(
+                "SELECT active_persona_id FROM app_settings WHERE id = 1", [], |row| row.get(0),
+            ).ok().flatten();
+            if let Some(pid) = active_id {
+                if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
+                    if persona.name == target_name {
+                        crate::logger::backend("DEBUG", &format!(
+                            "[DEBUG ToolExecutor::execute_update_relationship] resolved to user_persona id={}", pid
+                        ));
+                        (pid, "user_persona".to_string())
+                    } else {
+                        crate::logger::backend("WARN", &format!(
+                            "[DEBUG ToolExecutor::execute_update_relationship] active persona name '{}' does not match target_name '{}'", persona.name, target_name
+                        ));
+                        return Err(ToolError::InvalidArguments(format!(
+                            "找不到目标参与者 '{}'", target_name
+                        )));
+                    }
+                } else {
+                    return Err(ToolError::InvalidArguments(format!(
+                        "找不到目标参与者 '{}'", target_name
+                    )));
+                }
+            } else {
+                return Err(ToolError::InvalidArguments(format!(
+                    "找不到目标参与者 '{}'", target_name
+                )));
+            }
+        };
+
         // old_text 匹配校验
-        let current = crate::db::agent_relationship::get_relationship(&conn, agent_id, target_id, target_type)
+        let current = crate::db::agent_relationship::get_relationship(&conn, agent_id, &target_id, &target_type)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_relationship] compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
+            current, current.len(), old_text, old_text.len(), current == old_text
+        ));
 
         if current != old_text {
             crate::logger::backend("WARN", &format!(
-                "[DEBUG ToolExecutor::execute_update_relationship] old_text mismatch. current='{}', old_text='{}'", current, old_text
+                "[DEBUG ToolExecutor::execute_update_relationship] old_text mismatch"
             ));
             return Err(ToolError::InvalidArguments(format!(
-                "old_text 不匹配。当前关系描述为：\"{}\"，请基于这个内容重新提交修改。", current
+                "old_text 不匹配。当前关系描述为：\"{}\"（长度{}），你提交的是：\"{}\"（长度{}）。请基于当前内容重新提交修改。",
+                current, current.len(), old_text, old_text.len()
             )));
         }
 
-        crate::db::agent_relationship::upsert_relationship(&conn, agent_id, target_id, target_type, new_text)
+        crate::db::agent_relationship::upsert_relationship(&conn, agent_id, &target_id, &target_type, new_text)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
         crate::logger::backend("DEBUG", &format!(

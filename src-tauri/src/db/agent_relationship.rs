@@ -7,15 +7,32 @@ pub fn get_relationship(
     target_id: &str,
     target_type: &str,
 ) -> Result<String> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::get_relationship] observer_id={}, target_id={}, target_type={}",
+        observer_id, target_id, target_type
+    ));
     let text: Result<String> = conn.query_row(
         "SELECT relationship_text FROM agent_relationships WHERE observer_id = ?1 AND target_id = ?2 AND target_type = ?3",
         (observer_id, target_id, target_type),
         |row| row.get(0),
     );
     match text {
-        Ok(t) => Ok(t),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(String::new()),
-        Err(e) => Err(e),
+        Ok(t) => {
+            crate::logger::backend("DEBUG", &format!(
+                "[DEBUG agent_relationship::get_relationship] found text='{}'", t
+            ));
+            Ok(t)
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            crate::logger::backend("DEBUG", "[DEBUG agent_relationship::get_relationship] no rows, returning empty");
+            Ok(String::new())
+        }
+        Err(e) => {
+            crate::logger::backend("ERROR", &format!(
+                "[DEBUG agent_relationship::get_relationship] error: {}", e
+            ));
+            Err(e)
+        }
     }
 }
 
@@ -26,6 +43,10 @@ pub fn upsert_relationship(
     target_type: &str,
     relationship_text: &str,
 ) -> Result<()> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::upsert_relationship] observer_id={}, target_id={}, target_type={}, text='{}'",
+        observer_id, target_id, target_type, relationship_text
+    ));
     let now = chrono::Utc::now().timestamp_millis();
     conn.execute(
         "INSERT INTO agent_relationships (observer_id, target_id, target_type, relationship_text, updated_at)
@@ -35,6 +56,7 @@ pub fn upsert_relationship(
              updated_at = excluded.updated_at",
         (observer_id, target_id, target_type, relationship_text, now),
     )?;
+    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::upsert_relationship] success");
     Ok(())
 }
 
@@ -42,6 +64,9 @@ pub fn list_relationships_by_observer(
     conn: &Connection,
     observer_id: &str,
 ) -> Result<Vec<RelationshipItem>> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::list_relationships_by_observer] observer_id={}", observer_id
+    ));
     let mut stmt = conn.prepare(
         r#"
         SELECT target_id, target_type, target_name, target_avatar, target_label, relationship_text, updated_at
@@ -121,7 +146,16 @@ pub fn list_relationships_by_observer(
         })
     })?;
 
-    rows.collect()
+    let result: Result<Vec<RelationshipItem>> = rows.collect();
+    match &result {
+        Ok(items) => crate::logger::backend("DEBUG", &format!(
+            "[DEBUG agent_relationship::list_relationships_by_observer] returned {} items", items.len()
+        )),
+        Err(e) => crate::logger::backend("ERROR", &format!(
+            "[DEBUG agent_relationship::list_relationships_by_observer] error: {}", e
+        )),
+    }
+    result
 }
 
 pub fn delete_relationships_by_target(
