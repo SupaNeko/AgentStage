@@ -3,6 +3,19 @@ use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
 use crate::llm::tool::fill_character_fields_tool_schema;
 use crate::models::generate_persona::{GeneratePersonaRequest, GeneratePersonaResponse, ModelConfig};
+use once_cell::sync::Lazy;
+
+static DETAILED_PERSONA_RE: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(r"(?s)<detailed_persona>\s*(.*?)\s*</detailed_persona>").unwrap()
+});
+
+static SIMPLIFIED_PERSONA_RE: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(r"(?s)<simplified_persona>\s*(.*?)\s*</simplified_persona>").unwrap()
+});
+
+const SYSTEM_PROMPT_STEP2: &str = r#"你是一个专业的角色设定创作师。你的任务是根据已提取的角色信息，生成高质量的"详细人设"和"简易人设"。
+
+请严格按照用户要求的格式输出，使用 <detailed_persona> 和 <simplified_persona> 标签包裹对应内容。"#;
 
 const SYSTEM_PROMPT_STEP1: &str = r#"你是一个专业的角色设定分析师。你的任务是根据用户提供的参考角色信息和补充内容，提取并结构化角色的核心设定信息。
 
@@ -70,7 +83,7 @@ fn build_step2_user_message(
 </simplified_persona>
 
 注意：
-1. 必须包含 <detailed_persona> 和 </simplified_persona> 标签
+1. 必须包含 <detailed_persona>...</detailed_persona> 和 <simplified_persona>...</simplified_persona> 标签对
 2. 标签之间不要添加其他说明文字
 3. 如果参考角色信息不足，可基于补充信息和你的知识合理发挥"#,
         personality, scenario, example_messages, creator_notes
@@ -78,16 +91,13 @@ fn build_step2_user_message(
 }
 
 fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
-    let detailed_re = regex::Regex::new(r"(?s)<detailed_persona>\s*(.*?)\s*</detailed_persona>").unwrap();
-    let simplified_re = regex::Regex::new(r"(?s)<simplified_persona>\s*(.*?)\s*</simplified_persona>").unwrap();
-
-    let detailed = detailed_re
+    let detailed = DETAILED_PERSONA_RE
         .captures(content)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().trim().to_string())
         .ok_or_else(|| "未找到 <detailed_persona> 标签".to_string())?;
 
-    let simplified = simplified_re
+    let simplified = SIMPLIFIED_PERSONA_RE
         .captures(content)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().trim().to_string())
@@ -257,7 +267,7 @@ pub async fn generate(
     ];
 
     // 9. Step 2: Persona generation (no tools, force direct output)
-    let response2 = provider.chat(SYSTEM_PROMPT_STEP1, step2_messages, vec![]).await?;
+    let response2 = provider.chat(SYSTEM_PROMPT_STEP2, step2_messages, vec![]).await?;
 
     let content2 = response2.content.ok_or_else(|| "第2步 AI 未返回内容".to_string())?;
 

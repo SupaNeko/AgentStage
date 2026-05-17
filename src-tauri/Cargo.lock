@@ -51,6 +51,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "once_cell",
  "rand",
  "regex",
  "reqwest 0.12.28",
