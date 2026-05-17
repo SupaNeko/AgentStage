@@ -37,7 +37,7 @@ pub fn create_user_persona(conn: &Connection, req: &CreateUserPersonaRequest) ->
 pub fn update_user_persona(conn: &Connection, req: &UpdateUserPersonaRequest) -> Result<UserPersona, rusqlite::Error> {
     let now = chrono::Utc::now().timestamp_millis();
     conn.execute(
-        "UPDATE user_personas SET name = COALESCE(?2, name), description = ?3, avatar_path = ?4, updated_at = ?5 WHERE id = ?1",
+        "UPDATE user_personas SET name = COALESCE(?2, name), description = COALESCE(?3, description), avatar_path = COALESCE(?4, avatar_path), updated_at = ?5 WHERE id = ?1",
         (&req.id, &req.name, &req.description, &req.avatar_path, &now),
     )?;
     get_user_persona_by_id(conn, &req.id)
@@ -52,6 +52,10 @@ pub fn get_user_persona_by_id(conn: &Connection, id: &str) -> Result<UserPersona
 
 pub fn delete_user_persona(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM user_personas WHERE id = ?1", [id])?;
+    conn.execute(
+        "UPDATE app_settings SET active_persona_id = NULL WHERE id = 1 AND active_persona_id = ?1",
+        [id],
+    )?;
     Ok(())
 }
 
