@@ -109,7 +109,7 @@ pub struct CreateAgentRequest {
     pub thinking_mode: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct UpdateAgentRequest {
     pub id: String,
     pub name: Option<String>,

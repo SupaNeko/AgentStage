@@ -1,4 +1,5 @@
 pub mod openai;
+pub mod persona_generation;
 pub mod provider;
 pub mod prompt;
 pub mod history_prompt;

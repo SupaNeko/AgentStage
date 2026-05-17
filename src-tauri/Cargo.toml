@@ -34,4 +34,5 @@ sha2 = "0.10"
 reqwest = { version = "0.12", features = ["json"] }
 async-trait = "0.1"
 base64 = "0.22"
+regex = "1.10"
 
