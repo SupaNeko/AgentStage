@@ -23,7 +23,8 @@ impl PromptAssembler {
         let mut layers: Vec<String> = Vec::new();
 
         // Layer 1: System Prompt
-        layers.push(prompt_templates::SYSTEM_PROMPT.to_string());
+        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        layers.push(prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now));
 
         // Layer 2: Self Persona
         let agent = Self::get_agent(conn, agent_id)?;
@@ -191,10 +192,43 @@ impl PromptAssembler {
 
         let mut context_list = String::new();
         for (session_id, session_name, session_type) in &sessions {
+            let current_page: i32 = conn.query_row(
+                "SELECT COALESCE(ps.current_chat_page, gs.current_chat_page, 0)
+                 FROM sessions s
+                 LEFT JOIN private_sessions ps ON s.id = ps.session_id
+                 LEFT JOIN group_sessions gs ON s.id = gs.session_id
+                 WHERE s.id = ?1",
+                [session_id],
+                |row| row.get(0),
+            ).unwrap_or(0);
+
+            let msg_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND page_index = ?2 AND is_deleted = 0",
+                rusqlite::params![session_id, current_page],
+                |row| row.get(0),
+            ).unwrap_or(0);
+
+            let empty_label = if msg_count == 0 {
+                "（该会话还没有聊天消息）"
+            } else {
+                ""
+            };
+
             context_list.push_str(&format!(
-                "- session_id: {}, 名称: {}, 类型: {}\n",
-                session_id, session_name, session_type
+                "- session_id: {}, 名称: {}, 类型: {}{}\n",
+                session_id, session_name, session_type, empty_label
             ));
+
+            if session_type == "group" {
+                let members = Self::get_group_member_names(conn, session_id, agent_id)?;
+                if !members.is_empty() {
+                    context_list.push_str(&format!(
+                        "【{}】群聊中的其它成员:{}\n",
+                        session_name,
+                        members.join("，")
+                    ));
+                }
+            }
         }
 
         let instruction = format!(
@@ -204,6 +238,53 @@ impl PromptAssembler {
         );
 
         Ok(instruction)
+    }
+
+    fn get_group_member_names(
+        conn: &Connection,
+        session_id: &str,
+        agent_id: &str,
+    ) -> Result<Vec<String>, String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT participant_type, participant_id
+                 FROM group_members
+                 WHERE session_id = ?1 AND is_active = 1
+                 ORDER BY participant_type DESC, participant_id ASC"
+            )
+            .map_err(|e| e.to_string())?;
+
+        let rows = stmt
+            .query_map([session_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut names = Vec::new();
+        for row in rows {
+            let (ptype, pid) = row.map_err(|e| e.to_string())?;
+
+            // 排除当前 agent 自己
+            if ptype == "agent" && pid == agent_id {
+                continue;
+            }
+
+            let name = if ptype == "user" {
+                Self::get_user_persona(conn).0
+            } else {
+                conn.query_row(
+                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
+                    [&pid],
+                    |row| row.get(0),
+                ).unwrap_or_else(|_| {
+                    prompt_templates::UNKNOWN_AGENT_PREFIX.to_string() + &pid + ")"
+                })
+            };
+
+            names.push(name);
+        }
+
+        Ok(names)
     }
 
     /// 获取 Agent 参与的所有会话列表
@@ -865,5 +946,26 @@ mod tests {
         let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         let user_count = prompt.matches("用户（好友）").count();
         assert_eq!(user_count, 1, "User entry should appear exactly once in participants, got {} occurrences", user_count);
+    }
+
+    #[test]
+    fn test_empty_session_appears_in_context_list() {
+        let conn = init_test_db();
+        insert_agent(&conn, "agent1", "Test Agent", "A test persona");
+        insert_session(&conn, "sess_empty", "private");
+        insert_private_session(&conn, "sess_empty", "agent1", 0);
+        insert_session_settings(&conn, "sess_empty", 50);
+        // No messages inserted for sess_empty
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        println!("{}", prompt);
+        assert!(
+            prompt.contains("sess_empty"),
+            "Empty session should appear in context_list. Prompt:\n{}", prompt
+        );
+        assert!(
+            prompt.contains("该会话还没有聊天消息"),
+            "Empty session should be labeled in context_list. Prompt:\n{}", prompt
+        );
     }
 }
