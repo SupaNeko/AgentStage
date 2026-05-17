@@ -116,16 +116,28 @@ fn log_llm_response(step: &str, attempt: usize, content: &str, tool_calls_count:
 }
 
 fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
+    // 1. 先移除 <think>...</think> 思考标签内的所有内容
+    static THINK_RE: Lazy<regex::Regex> = Lazy::new(|| {
+        regex::Regex::new(r"(?s)<think>.*?</think>").unwrap()
+    });
+    let cleaned = THINK_RE.replace_all(content, "");
+
+    // 2. 提取最后一个 <detailed_persona> 标签对（正式输出通常在最后）
     let detailed = DETAILED_PERSONA_RE
-        .captures(content)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().trim().to_string())
+        .captures_iter(&cleaned)
+        .filter_map(|c| c.get(1))
+        .map(|m| m.as_str().trim())
+        .last()
+        .map(|s| s.to_string())
         .ok_or_else(|| "未找到 <detailed_persona> 标签".to_string())?;
 
+    // 3. 提取最后一个 <simplified_persona> 标签对
     let simplified = SIMPLIFIED_PERSONA_RE
-        .captures(content)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().trim().to_string())
+        .captures_iter(&cleaned)
+        .filter_map(|c| c.get(1))
+        .map(|m| m.as_str().trim())
+        .last()
+        .map(|s| s.to_string())
         .ok_or_else(|| "未找到 <simplified_persona> 标签".to_string())?;
 
     if detailed.is_empty() {
