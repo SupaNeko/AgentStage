@@ -406,4 +406,9 @@ pub const MIGRATION_V9: &str = r#"
 ALTER TABLE group_sessions ADD COLUMN is_dissolved INTEGER DEFAULT 0 CHECK(is_dissolved IN (0, 1));
 "#;
 
+pub const MIGRATION_V11: &str = r#"
+DELETE FROM user_personas WHERE is_default = 1;
+ALTER TABLE app_settings ADD COLUMN active_persona_id TEXT;
+ALTER TABLE app_settings ADD COLUMN default_avatar_path TEXT;
+"#;
 
