@@ -4,7 +4,8 @@
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import { resolveAvatarUrl } from '$lib/utils';
     import type { UserPersona } from '$lib/stores/userPersonaStore.svelte';
-    import { ChevronDown, ChevronUp } from 'lucide-svelte';
+    import { ChevronDown, ChevronUp, User } from 'lucide-svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
 
     let {
         persona,
@@ -29,7 +30,11 @@
     }
 
     async function handleActivate() {
-        await userPersonaStore.activatePersona(persona.id);
+        try {
+            await userPersonaStore.activatePersona(persona.id);
+        } catch (e) {
+            toastStore.show('启用失败: ' + String(e), 'error');
+        }
     }
 
     async function handleSave() {
@@ -52,16 +57,24 @@
         expanded = false;
     }
 
-    function handleUseDefaultAvatar() {
+    async function handleUseDefaultAvatar() {
         const defaultPath = settingsStore.settings?.default_avatar_path;
         if (defaultPath) {
-            userPersonaStore.updatePersona({ id: persona.id, avatar_path: defaultPath });
+            try {
+                await userPersonaStore.updatePersona({ id: persona.id, avatar_path: defaultPath });
+            } catch (e) {
+                toastStore.show('设置头像失败: ' + String(e), 'error');
+            }
         }
     }
 
-    function handleAvatarUploaded(path: string) {
+    async function handleAvatarUploaded(path: string) {
         avatarUploadOpen = false;
-        userPersonaStore.updatePersona({ id: persona.id, avatar_path: path });
+        try {
+            await userPersonaStore.updatePersona({ id: persona.id, avatar_path: path });
+        } catch (e) {
+            toastStore.show('上传头像失败: ' + String(e), 'error');
+        }
     }
 </script>
 
@@ -86,7 +99,7 @@
             {#if persona.avatar_path}
                 <img src={resolveAvatarUrl(persona.avatar_path)} alt="" class="w-full h-full object-cover" />
             {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <User size={18} class="text-gray-400" />
             {/if}
         </button>
 

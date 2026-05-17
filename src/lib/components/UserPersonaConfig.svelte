@@ -5,7 +5,9 @@
     import UserPersonaItem from './UserPersonaItem.svelte';
     import CreateUserPersonaModal from './CreateUserPersonaModal.svelte';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
-    import { Plus } from 'lucide-svelte';
+    import { Plus, User } from 'lucide-svelte';
+    import { onMount } from 'svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
 
     let avatarUploadOpen = $state(false);
     let createModalOpen = $state(false);
@@ -18,11 +20,15 @@
     }
 
     async function handleDeactivate() {
-        await userPersonaStore.activatePersona(null);
+        try {
+            await userPersonaStore.activatePersona(null);
+        } catch (e) {
+            toastStore.show('关闭失败: ' + String(e), 'error');
+        }
     }
 
     // Load on mount
-    $effect(() => {
+    onMount(() => {
         userPersonaStore.loadPersonas();
         userPersonaStore.loadCurrentPersona();
     });
@@ -39,7 +45,7 @@
 
 {#if createModalOpen}
     <CreateUserPersonaModal
-        onclose={() => createModalOpen = false}
+        onClose={() => createModalOpen = false}
         oncreated={() => userPersonaStore.loadPersonas()}
     />
 {/if}
@@ -62,7 +68,7 @@
                 {#if settingsStore.settings?.default_avatar_path}
                     <img src={resolveAvatarUrl(settingsStore.settings.default_avatar_path)} alt="default" class="w-full h-full object-cover" />
                 {:else}
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <User size={20} class="text-gray-400" />
                 {/if}
             </button>
             <span class="text-sm font-medium text-text-secondary">默认头像</span>

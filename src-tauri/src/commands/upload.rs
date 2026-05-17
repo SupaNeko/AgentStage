@@ -63,15 +63,19 @@ pub async fn upload_avatar(
             user_persona::update_default_avatar(&conn, &relative_path).map_err(|e| e.to_string())?;
         }
         "user_persona" => {
-            user_persona::update_user_persona(
-                &conn,
-                &crate::models::user_persona::UpdateUserPersonaRequest {
-                    id: req.target_id.clone(),
-                    name: None,
-                    description: None,
-                    avatar_path: Some(relative_path.clone()),
-                },
-            ).map_err(|e| e.to_string())?;
+            // For new personas (temp ID), the row doesn't exist yet.
+            // Just return the path; frontend will include it in create_user_persona.
+            if let Ok(_) = user_persona::get_user_persona_by_id(&conn, &req.target_id) {
+                user_persona::update_user_persona(
+                    &conn,
+                    &crate::models::user_persona::UpdateUserPersonaRequest {
+                        id: req.target_id.clone(),
+                        name: None,
+                        description: None,
+                        avatar_path: Some(relative_path.clone()),
+                    },
+                ).map_err(|e| e.to_string())?;
+            }
         }
         _ => return Err("Invalid target_type".to_string()),
     }
