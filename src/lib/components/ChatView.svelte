@@ -10,6 +10,7 @@
     import type { GroupMember, SessionConfig, Session, Message } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
     import { historyStore } from '$lib/stores/historyStore.svelte';
+    import { userPersonaStore } from '$lib/stores/userPersonaStore.svelte';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
 
     interface Props {
@@ -271,7 +272,8 @@
                 session_id: sessionId,
                 sender_type: 'user',
                 sender_id: 'user',
-                sender_name: '用户',
+                sender_name: userPersonaStore.currentPersona?.name ?? '用户',
+                sender_avatar: userPersonaStore.currentPersona?.avatar_path ?? null,
                 content,
                 created_at: Date.now(),
                 message_type: 'text',
@@ -312,7 +314,8 @@
             session_id: sessionId,
             sender_type: 'user',
             sender_id: 'user',
-            sender_name: '用户',
+            sender_name: userPersonaStore.currentPersona?.name ?? '用户',
+            sender_avatar: userPersonaStore.currentPersona?.avatar_path ?? null,
             content,
             created_at: Date.now(),
             message_type: 'text',
