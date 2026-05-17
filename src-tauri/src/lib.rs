@@ -20,6 +20,7 @@ use commands::settings::{get_settings, update_settings};
 use commands::upload::upload_avatar;
 use commands::user_persona::{list_user_personas, create_user_persona, update_user_persona, delete_user_persona, get_current_user_persona, activate_user_persona};
 use commands::agent_relationship::{list_agent_relationships, update_agent_relationship};
+use commands::generate_persona::generate_persona;
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -108,6 +109,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             create_agent,
+            generate_persona,
             get_agent,
             list_agents,
             update_agent,
