@@ -263,17 +263,12 @@ impl PromptAssembler {
     }
 
     fn get_user_persona(conn: &Connection) -> (String, String) {
-        let result: Result<(String, Option<String>), rusqlite::Error> = conn.query_row(
-            "SELECT name, description FROM user_personas WHERE is_default = 1 LIMIT 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        );
-        match result {
-            Ok((name, desc)) => (name, desc.unwrap_or_else(|| prompt_templates::DEFAULT_USER_PERSONA.to_string())),
-            Err(_) => (
-                prompt_templates::DEFAULT_USER_NAME.to_string(),
-                prompt_templates::DEFAULT_USER_PERSONA.to_string(),
-            ),
+        use crate::db::user_persona;
+        use crate::constants::{DEFAULT_USER_NAME, DEFAULT_USER_PERSONA};
+
+        match user_persona::get_current_user_persona(conn) {
+            Ok(p) => (p.name, p.description),
+            Err(_) => (DEFAULT_USER_NAME.to_string(), DEFAULT_USER_PERSONA.to_string()),
         }
     }
 
