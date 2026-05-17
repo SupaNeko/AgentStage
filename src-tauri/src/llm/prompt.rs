@@ -788,6 +788,7 @@ mod tests {
             "INSERT INTO user_personas (id, name, description, is_default, created_at, updated_at) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
             ("persona1", "伊莉雅", "魔伊世界观中的小学生魔术师", 0i64),
         ).unwrap();
+        conn.execute("INSERT INTO app_settings (id, updated_at) VALUES (1, 0)", []).unwrap();
         conn.execute("UPDATE app_settings SET active_persona_id = ?1 WHERE id = 1", ["persona1"]).unwrap();
 
         let msg = Message {
