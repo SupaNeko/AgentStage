@@ -7,7 +7,7 @@
 
     interface Props {
         open: boolean;
-        agentId?: string;
+        agentId: string;
         onClose: () => void;
         onGenerated: (result: GeneratePersonaResult) => void;
     }
@@ -40,7 +40,6 @@
             const result = await invoke<GeneratePersonaResult>('generate_persona', {
                 req: {
                     agent_id: agentId ?? null,
-                    model_config: null,
                     reference_character: referenceCharacter.trim() || null,
                     supplement: supplement.trim() || null,
                 },
