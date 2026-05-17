@@ -1,7 +1,10 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { X, Bot } from 'lucide-svelte';
+    import { X, Bot, Sparkles, Loader2 } from 'lucide-svelte';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { logger } from '$lib/logger';
+    import type { GeneratePersonaResult } from '$lib/types';
 
     let { open = $bindable(false), onSuccess }: { open: boolean; onSuccess?: () => void } = $props();
 
@@ -21,8 +24,51 @@
     let showGenerateFields = $state(false);
     let referenceCharacter = $state('');
     let additionalInfo = $state('');
+    let generating = $state(false);
     let submitting = $state(false);
     let error = $state('');
+
+    async function handleGeneratePersona() {
+        const hasRef = referenceCharacter.trim().length > 0;
+        const hasSupp = additionalInfo.trim().length > 0;
+        if (!hasRef && !hasSupp) {
+            toastStore.show('参考角色和补充信息至少填写一项', 'error', 3000);
+            return;
+        }
+        if (!form.model_name || !form.api_key) {
+            toastStore.show('请先在下方填写模型名称和 API Key', 'error', 3000);
+            return;
+        }
+
+        generating = true;
+        try {
+            const result = await invoke<GeneratePersonaResult>('generate_persona', {
+                req: {
+                    agent_id: null,
+                    model_config: {
+                        model_provider: form.model_provider,
+                        model_name: form.model_name,
+                        base_url: form.base_url || null,
+                        api_key: form.api_key,
+                        temperature: form.temperature,
+                        max_tokens: form.max_tokens,
+                        thinking_mode: form.thinking_mode,
+                    },
+                    reference_character: referenceCharacter.trim() || null,
+                    supplement: additionalInfo.trim() || null,
+                },
+            });
+            logger.debug('[DEBUG CreateAgentModal] persona generated');
+            form.detailed_persona = result.detailed_persona;
+            form.simplified_persona = result.simplified_persona;
+            toastStore.show('人设生成完成', 'success', 2000);
+        } catch (err: any) {
+            logger.error('Failed to generate persona:', err);
+            toastStore.show('生成失败: ' + String(err), 'error', 5000);
+        } finally {
+            generating = false;
+        }
+    }
 
     async function handleSubmit(e: Event) {
         e.preventDefault();
@@ -108,10 +154,17 @@
                         </div>
                         <button
                             type="button"
-                            disabled
-                            class="px-4 py-2 bg-primary/50 text-white rounded-lg text-sm cursor-not-allowed"
+                            onclick={handleGeneratePersona}
+                            disabled={generating || (!referenceCharacter.trim() && !additionalInfo.trim())}
+                            class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition-colors disabled:opacity-50"
                         >
-                            生成
+                            {#if generating}
+                                <Loader2 size={16} class="animate-spin" />
+                                <span>生成中...</span>
+                            {:else}
+                                <Sparkles size={16} />
+                                <span>生成</span>
+                            {/if}
                         </button>
                     </div>
                 {/if}
