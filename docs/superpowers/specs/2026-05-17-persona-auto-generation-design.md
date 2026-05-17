@@ -223,7 +223,7 @@ System Prompt 中明确要求：
 
 输出格式要求：
 <detailed_persona>
-（详细人设内容，直接注入 System Prompt 的完整设定，不限制字数）
+（详细人设内容，直接注入 System Prompt 的完整设定，2000字以内）
 </detailed_persona>
 
 <simplified_persona>
@@ -421,7 +421,7 @@ function handleGenerated(result: ...) {
 
 输出格式要求：
 <detailed_persona>
-（详细人设，直接注入 System Prompt 的完整设定，不限制字数）
+（详细人设，直接注入 System Prompt 的完整设定，2000字以内）
 </detailed_persona>
 
 <simplified_persona>
