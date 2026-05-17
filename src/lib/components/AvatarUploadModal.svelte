@@ -1,6 +1,6 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { X, Upload } from 'lucide-svelte';
+    import { X, Upload, User } from 'lucide-svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { resolveAvatarUrl } from '$lib/utils';
 
@@ -222,7 +222,7 @@
                         <img src={resolveAvatarUrl(currentAvatar)} alt="当前头像" class="w-24 h-24 rounded-full object-cover" />
                     {:else}
                         <div class="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                            <span class="text-2xl">?</span>
+                            <User size={40} />
                         </div>
                     {/if}
                     <input type="file" accept="image/*" bind:this={fileInput} onchange={handleFileSelect} class="hidden" />

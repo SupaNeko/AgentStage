@@ -25,7 +25,10 @@
     }
 
     async function handleCreate() {
-        if (!name.trim()) return;
+        if (!name.trim()) {
+            toastStore.show('角色名不能为空', 'error');
+            return;
+        }
         saving = true;
         try {
             await userPersonaStore.createPersona({

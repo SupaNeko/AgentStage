@@ -46,6 +46,8 @@
                 description: draftDesc.trim() || undefined,
             });
             expanded = false;
+        } catch (e) {
+            toastStore.show('保存失败: ' + String(e), 'error');
         } finally {
             saving = false;
         }
