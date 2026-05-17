@@ -48,8 +48,17 @@ impl PromptAssembler {
             let mut stmt = conn.prepare(
                 "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at, 
                         m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
-                        COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
-                        a.avatar_path as sender_avatar,
+                        COALESCE(a.name, 
+                            CASE WHEN m.sender_type = 'user' THEN 
+                                COALESCE((SELECT up.name FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), '用户')
+                            ELSE '未知' END
+                        ) as sender_name,
+                        COALESCE(a.avatar_path, 
+                            CASE WHEN m.sender_type = 'user' THEN 
+                                COALESCE((SELECT up.avatar_path FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), 
+                                         (SELECT default_avatar_path FROM app_settings WHERE id = 1))
+                            END
+                        ) as sender_avatar,
                         m.page_index
                   FROM messages m
                   JOIN (
@@ -443,7 +452,14 @@ impl PromptAssembler {
         sender_id: &str,
     ) -> Result<String, String> {
         match sender_type {
-            "user" => Ok(prompt_templates::USER_NAME.to_string()),
+            "user" => {
+                let result: Result<String, rusqlite::Error> = conn.query_row(
+                    "SELECT COALESCE(up.name, '用户') FROM app_settings LEFT JOIN user_personas up ON up.id = app_settings.active_persona_id WHERE app_settings.id = 1",
+                    [],
+                    |row| row.get(0),
+                );
+                Ok(result.unwrap_or_else(|_| "用户".to_string()))
+            }
             "system" => Ok(prompt_templates::SYSTEM_NAME.to_string()),
             "agent" => {
                 let result: Result<String, rusqlite::Error> = conn.query_row(

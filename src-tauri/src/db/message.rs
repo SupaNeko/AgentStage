@@ -59,8 +59,17 @@ pub fn insert_message(
 pub fn get_message_by_id(conn: &Connection, id: &str) -> Result<Option<Message>> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.sender_type, m.sender_id,
-                COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
-                a.avatar_path as sender_avatar,
+                COALESCE(a.name, 
+                    CASE WHEN m.sender_type = 'user' THEN 
+                        COALESCE((SELECT up.name FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), '用户')
+                    ELSE '未知' END
+                ) as sender_name,
+                COALESCE(a.avatar_path, 
+                    CASE WHEN m.sender_type = 'user' THEN 
+                        COALESCE((SELECT up.avatar_path FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), 
+                                 (SELECT default_avatar_path FROM app_settings WHERE id = 1))
+                    END
+                ) as sender_avatar,
                 m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted, m.page_index
          FROM messages m
          LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
@@ -95,8 +104,17 @@ pub fn get_messages_by_session(
 ) -> Result<Vec<Message>> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.session_id, m.sender_type, m.sender_id, 
-                COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
-                a.avatar_path as sender_avatar,
+                COALESCE(a.name, 
+                    CASE WHEN m.sender_type = 'user' THEN 
+                        COALESCE((SELECT up.name FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), '用户')
+                    ELSE '未知' END
+                ) as sender_name,
+                COALESCE(a.avatar_path, 
+                    CASE WHEN m.sender_type = 'user' THEN 
+                        COALESCE((SELECT up.avatar_path FROM user_personas up WHERE up.id = (SELECT active_persona_id FROM app_settings WHERE id = 1)), 
+                                 (SELECT default_avatar_path FROM app_settings WHERE id = 1))
+                    END
+                ) as sender_avatar,
                 m.content, m.created_at, m.message_type, m.tool_call_data, m.generation_info, m.is_deleted, m.page_index
          FROM messages m
          LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
