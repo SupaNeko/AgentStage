@@ -1,10 +1,12 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { X, Bot, Sparkles, Loader2 } from 'lucide-svelte';
+    import { X, Bot, Sparkles, Loader2, Wifi, Eye, EyeOff, Import } from 'lucide-svelte';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
+    import ImportModelConfigModal from './ImportModelConfigModal.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
-    import type { GeneratePersonaResult } from '$lib/types';
+    import { PROVIDER_DEFAULTS } from '$lib/modelConfig';
+    import type { Agent, GeneratePersonaResult } from '$lib/types';
 
     let { open = $bindable(false), onSuccess }: { open: boolean; onSuccess?: () => void } = $props();
 
@@ -17,9 +19,9 @@
         example_messages: '',
         creator_notes: '',
         model_provider: 'openai',
-        model_name: 'gpt-4o',
+        model_name: PROVIDER_DEFAULTS.openai.modelName,
         api_key: '',
-        base_url: '',
+        base_url: PROVIDER_DEFAULTS.openai.baseUrl,
         temperature: 0.7,
         max_tokens: 2048,
         thinking_mode: false,
@@ -31,6 +33,62 @@
     let generating = $state(false);
     let submitting = $state(false);
     let error = $state('');
+    let testingApi = $state(false);
+    let testResult = $state<{ success: boolean; latencyMs: number; message: string } | null>(null);
+    let apiKeyVisible = $state(false);
+    let showImportModal = $state(false);
+
+    function handleImportModelConfig(sourceAgent: Agent) {
+        form.model_provider = sourceAgent.model_provider || 'openai';
+        form.model_name = sourceAgent.model_name || '';
+        form.base_url = sourceAgent.base_url || '';
+        form.temperature = sourceAgent.temperature;
+        form.max_tokens = sourceAgent.max_tokens;
+        form.thinking_mode = sourceAgent.thinking_mode ?? false;
+        form.api_key = sourceAgent.api_key || '';
+        testResult = null;
+        toastStore.show(`已导入 "${sourceAgent.name}" 的模型配置`, 'success', 2000);
+    }
+
+    function handleProviderChange() {
+        const defaults = PROVIDER_DEFAULTS[form.model_provider] ?? PROVIDER_DEFAULTS.custom;
+        form.model_name = defaults.modelName;
+        form.base_url = defaults.baseUrl;
+        testResult = null;
+    }
+
+    async function handleTestApi() {
+        if (!form.api_key) {
+            toastStore.show('请先填写 API Key', 'error', 3000);
+            return;
+        }
+        if (!form.model_name) {
+            toastStore.show('请先填写模型名称', 'error', 3000);
+            return;
+        }
+        testingApi = true;
+        testResult = null;
+        try {
+            const result = await invoke<{ success: boolean; latency_ms: number; message: string }>('test_api_connection', {
+                req: {
+                    model_provider: form.model_provider,
+                    model_name: form.model_name,
+                    base_url: form.base_url || null,
+                    api_key: form.api_key,
+                }
+            });
+            testResult = { success: result.success, latencyMs: result.latency_ms, message: result.message };
+            if (result.success) {
+                toastStore.show(`连接成功 (${result.latency_ms}ms)`, 'success', 3000);
+            } else {
+                toastStore.show(`连接失败: ${result.message}`, 'error', 5000);
+            }
+        } catch (err: any) {
+            toastStore.show('测试失败: ' + String(err), 'error', 5000);
+        } finally {
+            testingApi = false;
+        }
+    }
 
     async function handleGeneratePersona() {
         const hasRef = referenceCharacter.trim().length > 0;
@@ -103,7 +161,7 @@
             await invoke('create_agent', { req });
             open = false;
             onSuccess?.();
-            form = { name: '', detailed_persona: '', simplified_persona: '', personality: '', scenario: '', example_messages: '', creator_notes: '', model_provider: 'openai', model_name: 'gpt-4o', api_key: '', base_url: '', temperature: 0.7, max_tokens: 2048, thinking_mode: false };
+            form = { name: '', detailed_persona: '', simplified_persona: '', personality: '', scenario: '', example_messages: '', creator_notes: '', model_provider: 'openai', model_name: PROVIDER_DEFAULTS.openai.modelName, api_key: '', base_url: PROVIDER_DEFAULTS.openai.baseUrl, temperature: 0.7, max_tokens: 2048, thinking_mode: false };
         } catch (err: any) {
             error = err.toString();
         } finally {
@@ -197,41 +255,87 @@
                 <p class="text-xs text-text-secondary mt-1">这是给其它角色看的角色名片（角色简介）</p>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium mb-1" for="ca-provider">模型提供商 <span class="text-red-500">*</span></label>
-                    <select id="ca-provider" bind:value={form.model_provider}
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20">
-                        <option value="openai">OpenAI</option>
-                        <option value="anthropic">Anthropic</option>
-                        <option value="google">Google</option>
-                        <option value="kimi">Kimi (Moonshot)</option>
-                        <option value="minimax">MiniMax</option>
-                        <option value="custom">自定义</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1" for="ca-model">模型名称 <span class="text-red-500">*</span></label>
-                    <input id="ca-model" type="text" bind:value={form.model_name} required
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
-                </div>
-            </div>
-
             <div>
-                <label class="block text-sm font-medium mb-1" for="ca-baseurl">Base URL</label>
-                <input id="ca-baseurl" type="text" bind:value={form.base_url}
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    placeholder="可选，默认使用官方地址" />
-            </div>
-
-            <div>
-                <label class="block text-sm font-medium mb-1" for="ca-apikey">API Key <span class="text-red-500">*</span></label>
-                <input id="ca-apikey" type="password" bind:value={form.api_key} required
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
-            </div>
-
-            <div class="grid grid-cols-2 gap-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wide">模型配置</h3>
+                    <button
+                        type="button"
+                        onclick={() => showImportModal = true}
+                        class="flex items-center gap-1.5 text-xs text-primary hover:text-primary-dark transition-colors"
+                    >
+                        <Import size={13} />
+                        <span>从其他角色导入</span>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1" for="ca-provider">模型提供商 <span class="text-red-500">*</span></label>
+                        <select id="ca-provider" bind:value={form.model_provider} onchange={handleProviderChange}
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20">
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="google">Google</option>
+                            <option value="kimi">Kimi (Moonshot)</option>
+                            <option value="minimax">MiniMax</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1" for="ca-model">模型名称 <span class="text-red-500">*</span></label>
+                        <input id="ca-model" type="text" bind:value={form.model_name} required
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-sm font-medium mb-1" for="ca-baseurl">Base URL</label>
+                        <input id="ca-baseurl" type="text" bind:value={form.base_url}
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="可选，默认使用官方地址" />
+                    </div>
+                    <div class="col-span-2 flex gap-3 items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium mb-1" for="ca-apikey">API Key <span class="text-red-500">*</span></label>
+                            <div class="relative">
+                                <input id="ca-apikey" type={apiKeyVisible ? 'text' : 'password'} bind:value={form.api_key} required
+                                    class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                                <button type="button"
+                                    onclick={() => apiKeyVisible = !apiKeyVisible}
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
+                                    title={apiKeyVisible ? '隐藏' : '显示'}>
+                                    {#if apiKeyVisible}
+                                        <EyeOff size={16} />
+                                    {:else}
+                                        <Eye size={16} />
+                                    {/if}
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" onclick={handleTestApi} disabled={testingApi}
+                            class="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border text-text-primary rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
+                            {#if testingApi}
+                                <Loader2 size={14} class="animate-spin" />
+                                <span>测试中...</span>
+                            {:else}
+                                <Wifi size={14} />
+                                <span>测试连接</span>
+                            {/if}
+                        </button>
+                    </div>
+                {#if testResult}
+                    <div class="col-span-2">
+                        {#if testResult.success}
+                            <div class="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+                                <span>✅</span>
+                                <span>连接成功 ({testResult.latencyMs}ms)</span>
+                            </div>
+                        {:else}
+                            <div class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                                <span>❌</span>
+                                <span>{testResult.message}</span>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
                 <div>
                     <label class="block text-sm font-medium mb-1" for="ca-temp">Temperature</label>
                     <input id="ca-temp" type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
@@ -242,12 +346,11 @@
                     <input id="ca-maxtok" type="number" bind:value={form.max_tokens} min={1}
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
                 </div>
-            </div>
-
-            <div class="flex items-center gap-2">
-                <input id="ca-thinking" type="checkbox" bind:checked={form.thinking_mode}
-                    class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
-                <label for="ca-thinking" class="text-sm">启用思考模式（如支持）</label>
+                <div class="col-span-2 flex items-center gap-2">
+                    <input id="ca-thinking" type="checkbox" bind:checked={form.thinking_mode}
+                        class="w-4 h-4 rounded border-border text-primary focus:ring-primary/20" />
+                    <label for="ca-thinking" class="text-sm">启用思考模式（如支持）</label>
+                </div>
             </div>
 
             {#if error}
@@ -265,3 +368,9 @@
     </div>
 </div>
 {/if}
+
+<ImportModelConfigModal
+    open={showImportModal}
+    currentAgentId=""
+    onImport={handleImportModelConfig}
+/>

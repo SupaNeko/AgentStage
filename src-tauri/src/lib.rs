@@ -7,7 +7,7 @@ pub mod llm;
 pub mod models;
 pub mod scheduler;
 
-use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent};
+use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, test_api_connection};
 use commands::log::log_frontend;
 use commands::message::{get_session_messages, send_user_message, send_history_message};
 use commands::session::{
@@ -114,6 +114,7 @@ pub fn run() {
             list_agents,
             update_agent,
             delete_agent,
+            test_api_connection,
             create_private_session,
             list_sessions,
             list_history_sessions,

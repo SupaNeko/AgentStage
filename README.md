@@ -1,5 +1,7 @@
 # AgentStage
 
+> 📖 **[功能使用指南](./docs/user-guide.md)** — 快速了解如何创建角色、配置模型、发起会话、使用人设系统等核心功能。
+
 > ⚠️ **警告：项目正在积极开发中（WIP）**
 >
 > AgentStage 目前处于早期开发阶段，核心功能仍在迭代，部分特性尚未完善，可能存在 Bug 或不稳定表现。
@@ -105,7 +107,7 @@ cd src-tauri && cargo test
 
 ## 注意事项
 
-1. **API Key 安全**：API Key 在 Rust 后端使用 AES-256-GCM 加密存储，前端永远不会收到密文
+1. **API Key 本地存储**：API Key 随角色配置保存在本地 SQLite 数据库中，仅在本地使用，不会上传到任何服务器
 2. **LLM 调用全部走后端**：前端不直接调用任何 LLM API，所有请求通过 Tauri IPC 由 Rust 代理执行
 3. **数据库迁移**：修改 `src-tauri/src/db/schema.rs` 后，需要在 `src-tauri/src/db/migration.rs` 中添加迁移脚本
 4. **Windows 专用**：当前仅支持 Windows 平台（依赖 WebView2）

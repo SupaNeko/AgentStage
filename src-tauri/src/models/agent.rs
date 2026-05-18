@@ -50,6 +50,7 @@ pub struct AgentResponse {
     pub top_p: f64,
     pub presence_penalty: f64,
     pub frequency_penalty: f64,
+    pub api_key: String,
     pub thinking_mode: bool,
     pub is_deleted: bool,
     pub deleted_at: Option<i64>,
@@ -59,6 +60,10 @@ pub struct AgentResponse {
 
 impl From<Agent> for AgentResponse {
     fn from(agent: Agent) -> Self {
+        let api_key = agent.api_key_encrypted
+            .as_ref()
+            .and_then(|enc| crate::crypto::decrypt(enc).ok())
+            .unwrap_or_default();
         Self {
             id: agent.id,
             name: agent.name,
@@ -79,6 +84,7 @@ impl From<Agent> for AgentResponse {
             top_p: agent.top_p,
             presence_penalty: agent.presence_penalty,
             frequency_penalty: agent.frequency_penalty,
+            api_key,
             thinking_mode: agent.thinking_mode,
             is_deleted: agent.is_deleted,
             deleted_at: agent.deleted_at,
@@ -134,4 +140,19 @@ pub struct UpdateAgentRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeleteAgentRequest {
     pub id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TestApiConnectionRequest {
+    pub model_provider: String,
+    pub model_name: String,
+    pub base_url: Option<String>,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TestApiConnectionResponse {
+    pub success: bool,
+    pub latency_ms: u64,
+    pub message: String,
 }

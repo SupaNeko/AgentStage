@@ -38,7 +38,13 @@ export class SessionStore {
 
     addSession(session: Session) {
         logger.debug('[DEBUG sessionStore.addSession]', { id: session.id });
-        this.sessions = [session, ...this.sessions];
+        const exists = this.sessions.some(s => s.id === session.id);
+        if (exists) {
+            // 已有会话则更新并置顶，避免重复
+            this.sessions = [session, ...this.sessions.filter(s => s.id !== session.id)];
+        } else {
+            this.sessions = [session, ...this.sessions];
+        }
     }
 
     updateSessionPreview(sessionId: string, preview: string, time: number) {
