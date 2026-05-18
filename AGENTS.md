@@ -146,6 +146,23 @@ const agents = await invoke<Agent[]>('list_agents');
 
 ---
 
+## Development Workflow
+
+### Bug Fixes
+
+1. **Explain the root cause first**: After identifying the issue, clearly explain to the user what caused the bug (which code path, what logic) before proposing any fix.
+2. **Describe the fix from a behavioral perspective**: Outline what behavior will change and why it resolves the issue. Do **not** provide specific file/line/code-level changes at this stage. Also mention any side effects or risks the fix may introduce.
+3. **Wait for user confirmation**: Only proceed with the fix after the user explicitly approves the proposed approach.
+4. **No silent fixes**: Never modify code and commit without informing the user and getting their approval first.
+
+### Feature Development
+
+1. **Add corresponding test cases**: After completing each feature, add tests (Rust backend or frontend, depending on the scope) that cover the new functionality.
+2. **Tests must cover core paths and edge cases**: Including but not limited to happy path, idempotency on repeated operations, data residue after deletion/dissolution, and permission boundaries.
+3. **Commit tests together with feature code**: Test cases should be part of the same commit, or a follow-up commit immediately after the feature commit. Do not omit tests.
+
+---
+
 ## Reference Projects (cloned locally)
 
 | Path | Purpose |
