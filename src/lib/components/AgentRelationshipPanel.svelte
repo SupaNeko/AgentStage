@@ -4,6 +4,10 @@
     import { resolveAvatarUrl } from '$lib/utils';
     import { logger } from '$lib/logger';
     import type { RelationshipItem } from '$lib/types';
+    import AddRelationshipModal from './AddRelationshipModal.svelte';
+    import ConfirmDeleteRelationshipModal from './ConfirmDeleteRelationshipModal.svelte';
+    import { Plus, X } from 'lucide-svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
 
     let { agentId }: { agentId: string } = $props();
 
@@ -11,6 +15,9 @@
     let loading = $state(false);
     let error = $state('');
     let saveTimeouts = $state<Record<string, ReturnType<typeof setTimeout>>>({});
+    let showAddModal = $state(false);
+    let showDeleteModal = $state(false);
+    let deleteTarget = $state<RelationshipItem | null>(null);
 
     async function loadRelationships() {
         loading = true;
@@ -62,6 +69,25 @@
         saveRelationship(item);
     }
 
+    async function handleRemove(item: RelationshipItem) {
+        try {
+            await invoke('remove_friendship', {
+                observerId: agentId,
+                targetId: item.target_id,
+            });
+            logger.debug('[DEBUG AgentRelationshipPanel] removed', { agentId, targetId: item.target_id });
+            loadRelationships();
+        } catch (err) {
+            logger.error('Failed to remove friendship:', err);
+            toastStore.show('删除关系失败: ' + String(err), 'error');
+        }
+    }
+
+    function openDeleteModal(item: RelationshipItem) {
+        deleteTarget = item;
+        showDeleteModal = true;
+    }
+
     $effect(() => {
         if (agentId) {
             loadRelationships();
@@ -78,6 +104,13 @@
         <div class="text-text-secondary text-sm py-8 text-center">
             <p>该角色尚未与其他参与者建立关联</p>
             <p class="mt-1">在群聊或私聊中会自动显示关联对象</p>
+            <button
+                onclick={() => showAddModal = true}
+                class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors"
+            >
+                <Plus size={16} />
+                添加关系
+            </button>
         </div>
     {:else}
         <p class="text-xs text-text-secondary mb-4">
@@ -103,6 +136,15 @@
                             <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-text-secondary">
                                 {item.target_label}
                             </span>
+                            {#if item.target_label === '好友'}
+                                <button
+                                    onclick={() => openDeleteModal(item)}
+                                    class="ml-auto p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                    title="删除关系"
+                                >
+                                    <X size={14} />
+                                </button>
+                            {/if}
                         </div>
                         <div class="relative">
                             <textarea
@@ -121,6 +163,34 @@
                     </div>
                 </div>
             {/each}
+            <button
+                onclick={() => showAddModal = true}
+                class="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary hover:bg-primary/5 transition-colors"
+            >
+                <Plus size={16} />
+                <span class="text-sm">添加关系</span>
+            </button>
         </div>
     {/if}
 </div>
+
+<AddRelationshipModal
+    open={showAddModal}
+    observerId={agentId}
+    existingFriendIds={items.filter(i => i.target_label === '好友' && i.target_type === 'agent').map(i => i.target_id)}
+    onClose={() => showAddModal = false}
+    onAdded={() => { showAddModal = false; loadRelationships(); }}
+/>
+
+{#if deleteTarget}
+    <ConfirmDeleteRelationshipModal
+        open={showDeleteModal}
+        targetName={deleteTarget.target_name}
+        onClose={() => { showDeleteModal = false; deleteTarget = null; }}
+        onConfirm={async () => {
+            await handleRemove(deleteTarget!);
+            showDeleteModal = false;
+            deleteTarget = null;
+        }}
+    />
+{/if}
