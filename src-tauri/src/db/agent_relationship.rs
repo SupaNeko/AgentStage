@@ -207,3 +207,153 @@ pub fn remove_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) 
     crate::logger::backend("DEBUG", "[DEBUG agent_relationship::remove_friendship] success");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V8).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_add_friendship_creates_bidirectional_records() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        add_friendship(&conn, "agent1", "agent2").unwrap();
+
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships WHERE participant_type_2 = 'agent'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 2, "add_friendship should create bidirectional records");
+
+        // Verify both directions exist
+        let forward: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships WHERE agent_id_1 = 'agent1' AND agent_id_2 = 'agent2'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(forward, 1);
+
+        let reverse: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships WHERE agent_id_1 = 'agent2' AND agent_id_2 = 'agent1'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(reverse, 1);
+    }
+
+    #[test]
+    fn test_add_friendship_is_idempotent() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        add_friendship(&conn, "agent1", "agent2").unwrap();
+        add_friendship(&conn, "agent1", "agent2").unwrap(); // duplicate
+
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships WHERE participant_type_2 = 'agent'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 2, "Duplicate add_friendship should not create extra records");
+    }
+
+    #[test]
+    fn test_remove_friendship_deletes_bidirectional_records() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        add_friendship(&conn, "agent1", "agent2").unwrap();
+        remove_friendship(&conn, "agent1", "agent2").unwrap();
+
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships WHERE participant_type_2 = 'agent'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 0, "remove_friendship should delete both directions");
+    }
+
+    #[test]
+    fn test_list_relationships_excludes_dissolved_groups() {
+        let conn = init_test_db();
+
+        // Insert app settings and user persona (required by list_relationships_by_observer)
+        conn.execute(
+            "INSERT INTO app_settings (id, updated_at) VALUES (1, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, created_at, updated_at) VALUES ('up1', 'User', '', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "UPDATE app_settings SET active_persona_id = 'up1' WHERE id = 1",
+            [],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        // Create group session with agent1 and agent2
+        let session = crate::db::session::create_group_session(&conn, "Test Group", &["agent1".into(), "agent2".into()]).unwrap();
+
+        // Before disband: agent1 should see agent2 as groupmate
+        let relationships = list_relationships_by_observer(&conn, "agent1").unwrap();
+        let groupmate = relationships.iter().find(|r| r.target_id == "agent2" && r.target_label == "群友");
+        assert!(groupmate.is_some(), "agent2 should appear as groupmate before disband");
+
+        // Disband group
+        crate::db::session::disband_group(&conn, &session.id).unwrap();
+
+        // After disband: agent1 should no longer see agent2 as groupmate
+        let relationships_after = list_relationships_by_observer(&conn, "agent1").unwrap();
+        let groupmate_after = relationships_after.iter().find(|r| r.target_id == "agent2");
+        assert!(groupmate_after.is_none(), "agent2 should NOT appear as groupmate after group is dissolved");
+    }
+}

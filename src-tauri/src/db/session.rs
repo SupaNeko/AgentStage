@@ -594,6 +594,10 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V8).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
         conn
     }
 
@@ -1012,5 +1016,123 @@ mod tests {
 
         let none = crate::db::agent::get_agent_by_name(&conn, "Unknown").unwrap();
         assert!(none.is_none());
+    }
+
+    #[test]
+    fn test_add_group_member_does_not_create_friendships() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent3", "Agent Three", 0i64),
+        ).unwrap();
+
+        let session = create_group_session(&conn, "Test Group", &["agent1".into(), "agent2".into()]).unwrap();
+
+        // Verify no friendships exist before adding member
+        let count_before: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_before, 0, "No friendships should exist before adding member");
+
+        // Add new member
+        add_group_member(&conn, &session.id, "agent3").unwrap();
+
+        // Verify still no friendships created
+        let count_after: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM friendships",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_after, 0, "Adding group member should NOT create friendships");
+    }
+
+    #[test]
+    fn test_disband_group_archives_current_page() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        let session = create_group_session(&conn, "Test Group", &["agent1".into(), "agent2".into()]).unwrap();
+
+        // Verify only 1 page exists before disband
+        let page_count_before: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_pages WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(page_count_before, 1);
+
+        // Disband group
+        disband_group(&conn, &session.id).unwrap();
+
+        // Verify group is dissolved
+        let is_dissolved: bool = conn.query_row(
+            "SELECT is_dissolved FROM group_sessions WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get::<_, i32>(0).map(|v| v != 0),
+        ).unwrap();
+        assert!(is_dissolved, "Group should be dissolved");
+
+        // Verify current page was archived (new page created)
+        let page_count_after: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_pages WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(page_count_after, 2, "Disband should archive current page by creating a new one");
+    }
+
+    #[test]
+    fn test_soft_delete_session_archives_current_page() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+
+        let session = create_private_session(&conn, "agent1").unwrap();
+
+        // Verify only 1 page exists before delete
+        let page_count_before: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_pages WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(page_count_before, 1);
+
+        // Soft delete session
+        soft_delete_session(&conn, &session.id).unwrap();
+
+        // Verify session is deleted
+        let is_deleted: bool = conn.query_row(
+            "SELECT is_deleted FROM sessions WHERE id = ?1",
+            [&session.id],
+            |row| row.get::<_, i32>(0).map(|v| v != 0),
+        ).unwrap();
+        assert!(is_deleted, "Session should be soft deleted");
+
+        // Verify current page was archived (new page created)
+        let page_count_after: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_pages WHERE session_id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(page_count_after, 2, "Soft delete should archive current page by creating a new one");
     }
 }
