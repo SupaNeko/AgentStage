@@ -546,6 +546,9 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
 }
 
 pub fn disband_group(conn: &Connection, session_id: &str) -> Result<bool> {
+    // 先归档当前会话，确保当前 page 的消息进入历史记录
+    let _ = reset_session(conn, session_id)?;
+
     let rows = conn.execute(
         "UPDATE group_sessions SET is_dissolved = 1 WHERE session_id = ?1",
         [session_id],
