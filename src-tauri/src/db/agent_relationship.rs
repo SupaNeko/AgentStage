@@ -169,3 +169,40 @@ pub fn delete_relationships_by_target(
     )?;
     Ok(())
 }
+
+pub fn add_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) -> Result<()> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::add_friendship] agent_id_1={}, agent_id_2={}",
+        agent_id_1, agent_id_2
+    ));
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "INSERT OR IGNORE INTO friendships (id, agent_id_1, agent_id_2, participant_type_2, created_at, source_session_id)
+         VALUES (?1, ?2, ?3, 'agent', ?4, NULL)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), agent_id_1, agent_id_2, now],
+    )?;
+    conn.execute(
+        "INSERT OR IGNORE INTO friendships (id, agent_id_1, agent_id_2, participant_type_2, created_at, source_session_id)
+         VALUES (?1, ?2, ?3, 'agent', ?4, NULL)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), agent_id_2, agent_id_1, now],
+    )?;
+    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::add_friendship] success");
+    Ok(())
+}
+
+pub fn remove_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) -> Result<()> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::remove_friendship] agent_id_1={}, agent_id_2={}",
+        agent_id_1, agent_id_2
+    ));
+    conn.execute(
+        "DELETE FROM friendships WHERE agent_id_1 = ?1 AND agent_id_2 = ?2 AND participant_type_2 = 'agent'",
+        (agent_id_1, agent_id_2),
+    )?;
+    conn.execute(
+        "DELETE FROM friendships WHERE agent_id_1 = ?1 AND agent_id_2 = ?2 AND participant_type_2 = 'agent'",
+        (agent_id_2, agent_id_1),
+    )?;
+    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::remove_friendship] success");
+    Ok(())
+}
