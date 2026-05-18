@@ -562,28 +562,6 @@ pub fn add_group_member(conn: &Connection, session_id: &str, agent_id: &str) -> 
         (session_id, agent_id, now),
     )?;
 
-    let other_agents: Vec<String> = {
-        let mut stmt = conn.prepare(
-            "SELECT participant_id FROM group_members
-             WHERE session_id = ?1 AND participant_type = 'agent' AND participant_id != ?2"
-        )?;
-        let rows = stmt.query_map([session_id, agent_id], |row| row.get(0))?;
-        rows.filter_map(|r| r.ok()).collect()
-    };
-
-    for other_id in other_agents {
-        conn.execute(
-            "INSERT OR IGNORE INTO friendships (id, agent_id_1, agent_id_2, participant_type_2, created_at, source_session_id)
-             VALUES (?1, ?2, ?3, 'agent', ?4, ?5)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), agent_id, &other_id, now, session_id],
-        )?;
-        conn.execute(
-            "INSERT OR IGNORE INTO friendships (id, agent_id_1, agent_id_2, participant_type_2, created_at, source_session_id)
-             VALUES (?1, ?2, ?3, 'agent', ?4, ?5)",
-            rusqlite::params![uuid::Uuid::new_v4().to_string(), &other_id, agent_id, now, session_id],
-        )?;
-    }
-
     tx.commit()?;
     Ok(())
 }
