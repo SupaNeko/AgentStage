@@ -34,6 +34,7 @@
 | AGT-13 | AI 辅助生成人设 | 基于用户输入的关键词或描述，调用 LLM 自动生成角色的详细人设和简易人设 | P1 | ✅ 已实现 | 减少用户手动编写人设的成本 |
 | AGT-14 | 角色关系设定及维护 | 为每个角色配置对其他角色/用户人设的**单向关系描述**（主观看法，如"他是我的好朋友""不太喜欢他"），区别于客观简易人设。在Prompt【你认识的参与者】中注入。提供`update_relationship`工具让agent自主维护关系（200字限制，新旧文本匹配编辑）。角色详情页分标签页：【角色配置】/【关系设定】。用户删除人设后级联删除相关关系 | P1 | ✅ 已实现 | Migration V12 + agent_relationship repository + update_relationship tool + AgentRelationshipPanel UI |
 | AGT-15 | 禁止创建同名角色 | 创建角色时若已存在同名非删除角色，阻断创建并提示用户 | P1 | ✅ 已实现 | 后端 `get_agent_by_name` 前置检查，前端按钮上方显示错误 |
+| AGT-16 | 手动好友关系管理 | 在角色关系设定中支持手动添加/删除好友关系。添加时通过多选弹窗选择目标角色（支持将群友升级为好友），双向生效，主观描述保持为空。删除时仅可删除好友关系（群友不可删除），双向生效，删除后若双方仍在同群则降级为群友。同时修复群聊拉人时错误建立好友关系的Bug | P1 | ⬜ 待实现 | 新增 `add_friendships` / `remove_friendship` 命令 + `AddRelationshipModal` / `ConfirmDeleteRelationshipModal` 弹窗 |
 
 ---
 
