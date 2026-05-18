@@ -546,10 +546,19 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
 }
 
 pub fn disband_group(conn: &Connection, session_id: &str) -> Result<bool> {
+    let tx = conn.unchecked_transaction()?;
+
     let rows = conn.execute(
         "UPDATE group_sessions SET is_dissolved = 1 WHERE session_id = ?1",
         [session_id],
     )?;
+
+    conn.execute(
+        "DELETE FROM group_members WHERE session_id = ?1",
+        [session_id],
+    )?;
+
+    tx.commit()?;
     Ok(rows > 0)
 }
 

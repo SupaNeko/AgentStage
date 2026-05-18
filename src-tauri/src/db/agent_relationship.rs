@@ -119,6 +119,7 @@ pub fn list_relationships_by_observer(
                 2 as sort_order
             FROM group_members gm_observer
             JOIN group_members gm_target ON gm_observer.session_id = gm_target.session_id
+            JOIN group_sessions gs ON gs.session_id = gm_observer.session_id AND gs.is_dissolved = 0
             JOIN agents a ON a.id = gm_target.participant_id AND gm_target.participant_type = 'agent'
             LEFT JOIN agent_relationships ar 
                 ON ar.observer_id = ?1 AND ar.target_id = a.id AND ar.target_type = 'agent'
