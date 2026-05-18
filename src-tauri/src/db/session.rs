@@ -272,6 +272,9 @@ pub fn create_agent_agent_session(conn: &Connection, a_id: &str, b_id: &str) -> 
 }
 
 pub fn soft_delete_session(conn: &Connection, session_id: &str) -> Result<bool> {
+    // 先归档当前会话，确保当前 page 的消息进入历史记录
+    let _ = reset_session(conn, session_id)?;
+
     let now = chrono::Utc::now().timestamp_millis();
     let rows = conn.execute(
         "UPDATE sessions SET is_deleted = 1, deleted_at = ?2 WHERE id = ?1 AND is_deleted = 0",
