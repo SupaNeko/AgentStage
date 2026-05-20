@@ -7,7 +7,7 @@ pub mod llm;
 pub mod models;
 pub mod scheduler;
 
-use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, test_api_connection};
+use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, test_api_connection, reset_agent_memory};
 use commands::log::log_frontend;
 use commands::message::{get_session_messages, send_user_message, send_history_message};
 use commands::session::{
@@ -19,7 +19,7 @@ use commands::session::{
 use commands::settings::{get_settings, update_settings};
 use commands::upload::upload_avatar;
 use commands::user_persona::{list_user_personas, create_user_persona, update_user_persona, delete_user_persona, get_current_user_persona, activate_user_persona};
-use commands::agent_relationship::{list_agent_relationships, update_agent_relationship, add_friendships, remove_friendship};
+use commands::agent_relationship::{list_agent_relationships, update_agent_relationship, add_friendships, remove_friendship, update_agent_memory};
 use commands::generate_persona::generate_persona;
 use db::connection::init_db;
 use scheduler::Scheduler;
@@ -114,6 +114,7 @@ pub fn run() {
             list_agents,
             update_agent,
             delete_agent,
+            reset_agent_memory,
             test_api_connection,
             create_private_session,
             list_sessions,
@@ -148,6 +149,7 @@ pub fn run() {
             update_agent_relationship,
             add_friendships,
             remove_friendship,
+            update_agent_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
