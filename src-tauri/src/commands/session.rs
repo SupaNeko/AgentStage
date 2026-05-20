@@ -107,10 +107,17 @@ pub async fn reset_session(
     req: crate::models::session::ResetSessionRequest,
 ) -> Result<String, String> {
     let conn = get_db(&state).await?;
-    let result = session_repo::reset_session(&conn, &req.session_id)
+    let (page_id, new_page_index) = session_repo::reset_session(&conn, &req.session_id)
         .map_err(|e| e.to_string())?;
     scheduler.cancel_session(&req.session_id).await;
-    Ok(result)
+
+    // Spawn background AI summary task
+    if new_page_index > 0 {
+        let old_page_index = new_page_index - 1;
+        scheduler.spawn_session_summary(req.session_id.clone(), old_page_index);
+    }
+
+    Ok(page_id)
 }
 
 #[tauri::command]
