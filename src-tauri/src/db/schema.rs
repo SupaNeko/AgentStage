@@ -428,3 +428,13 @@ CREATE INDEX IF NOT EXISTS idx_agent_relationships_observer ON agent_relationshi
 CREATE INDEX IF NOT EXISTS idx_agent_relationships_target ON agent_relationships(target_id, target_type);
 "#;
 
+pub const MIGRATION_V13: &str = r#"
+-- V13: 记忆系统基础数据层
+-- 1. agents 表增加长期记忆和记忆开关
+ALTER TABLE agents ADD COLUMN long_term_memory TEXT DEFAULT '';
+ALTER TABLE agents ADD COLUMN memory_enabled INTEGER DEFAULT 1 CHECK(memory_enabled IN (0, 1));
+
+-- 2. agent_relationships 表增加对他人的记忆
+ALTER TABLE agent_relationships ADD COLUMN memory_text TEXT NOT NULL DEFAULT '';
+"#;
+
