@@ -93,6 +93,8 @@ pub struct SessionConfig {
     pub message_limit_enabled: bool,
     pub mute_enabled: bool,
     pub agent_message_count: i32,
+    pub overflow_summary_threshold: Option<i32>,
+    pub last_overflow_summary_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,6 +104,8 @@ pub struct UpdateSessionConfigRequest {
     pub message_limit: Option<i32>,
     pub message_limit_enabled: Option<bool>,
     pub mute_enabled: Option<bool>,
+    pub overflow_summary_threshold: Option<i32>,
+    pub last_overflow_summary_index: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
