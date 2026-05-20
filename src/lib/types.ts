@@ -104,6 +104,7 @@ export interface RelationshipItem {
     target_name: string;
     target_avatar: string | null;
     target_label: string;
+    target_simplified_persona: string;
     relationship_text: string;
     memory_text: string;
     updated_at: number;

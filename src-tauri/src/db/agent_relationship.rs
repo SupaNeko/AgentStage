@@ -69,7 +69,7 @@ pub fn list_relationships_by_observer(
     ));
     let mut stmt = conn.prepare(
         r#"
-        SELECT target_id, target_type, target_name, target_avatar, target_label, relationship_text, memory_text, updated_at
+        SELECT target_id, target_type, target_name, target_avatar, target_label, target_simplified_persona, relationship_text, memory_text, updated_at
         FROM (
             -- 1. 当前激活的用户人设
             SELECT 
@@ -78,6 +78,7 @@ pub fn list_relationships_by_observer(
                 up.name as target_name,
                 up.avatar_path as target_avatar,
                 '用户' as target_label,
+                '' as target_simplified_persona,
                 COALESCE(ar.relationship_text, '') as relationship_text,
                 COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
@@ -97,6 +98,7 @@ pub fn list_relationships_by_observer(
                 a.name as target_name,
                 a.avatar_path as target_avatar,
                 '好友' as target_label,
+                COALESCE(a.simplified_persona, '') as target_simplified_persona,
                 COALESCE(ar.relationship_text, '') as relationship_text,
                 COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
@@ -116,6 +118,7 @@ pub fn list_relationships_by_observer(
                 a.name as target_name,
                 a.avatar_path as target_avatar,
                 '群友' as target_label,
+                COALESCE(a.simplified_persona, '') as target_simplified_persona,
                 COALESCE(ar.relationship_text, '') as relationship_text,
                 COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
@@ -145,6 +148,7 @@ pub fn list_relationships_by_observer(
             target_name: row.get("target_name")?,
             target_avatar: crate::db::resolve_avatar_path(row.get("target_avatar")?),
             target_label: row.get("target_label")?,
+            target_simplified_persona: row.get("target_simplified_persona")?,
             relationship_text: row.get("relationship_text")?,
             memory_text: row.get("memory_text")?,
             updated_at: row.get("updated_at")?,
