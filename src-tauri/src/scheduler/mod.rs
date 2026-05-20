@@ -14,6 +14,7 @@ use crate::db::connection::DbState;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
 use crate::llm::prompt::PromptAssembler;
+use crate::llm::prompt_templates;
 use crate::llm::tool::{send_message_tool_schema, start_private_chat_tool_schema, update_relationship_tool_schema, update_memory_tool_schema, LlmResponse, ToolExecutor};
 use crate::models::message::Message;
 
@@ -360,6 +361,15 @@ impl Scheduler {
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG cancel_session] session_id={} cleaned", session_id
         ));
+    }
+
+    pub fn spawn_session_summary(&self, session_id: String, page_index: i32) {
+        let scheduler = self.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = scheduler.run_session_summary(&session_id, page_index).await {
+                crate::logger::backend("ERROR", &format!("[SessionSummary] failed for session={} page={}: {}", session_id, page_index, e));
+            }
+        });
     }
 
     /// 当有新消息到达时调用（用户发送消息或角色发送消息）
@@ -1013,6 +1023,208 @@ impl Scheduler {
                 let _ = self.try_trigger_agent(&agent_id).await;
             }
         }
+    }
+
+    async fn run_session_summary(&self, session_id: &str, page_index: i32) -> Result<(), String> {
+        crate::logger::backend("DEBUG", &format!("[SessionSummary] start session={} page={}", session_id, page_index));
+
+        let conn = self.db_state.0.lock().await;
+
+        // 1. Find all agent participants in this session
+        let agent_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT participant_id FROM group_members WHERE session_id = ?1 AND participant_type = 'agent' AND is_active = 1"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([session_id], |row| {
+                row.get::<_, String>(0)
+            }).map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        // Also check private sessions
+        let private_agent_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT participant_1_id as pid FROM private_sessions WHERE session_id = ?1 AND participant_1_type = 'agent'
+                 UNION
+                 SELECT participant_2_id as pid FROM private_sessions WHERE session_id = ?1 AND participant_2_type = 'agent'"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([session_id], |row| {
+                row.get::<_, String>(0)
+            }).map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        drop(conn);
+
+        let mut all_agents = agent_ids;
+        all_agents.extend(private_agent_ids);
+        all_agents.sort();
+        all_agents.dedup();
+
+        crate::logger::backend("DEBUG", &format!("[SessionSummary] found {} agents", all_agents.len()));
+
+        // 2. For each agent, run summary if memory_enabled
+        for agent_id in all_agents {
+            let conn = self.db_state.0.lock().await;
+            let agent = match agent_repo::get_by_id(&conn, &agent_id) {
+                Ok(Some(a)) => a,
+                _ => continue,
+            };
+
+            if !agent.memory_enabled {
+                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} memory disabled, skipping", agent_id));
+                continue;
+            }
+
+            // Check agent has valid LLM config
+            if agent.model_provider.is_none() || agent.model_name.is_none() || agent.api_key_encrypted.is_none() {
+                crate::logger::backend("WARN", &format!("[SessionSummary] agent={} missing LLM config, skipping", agent_id));
+                continue;
+            }
+
+            // Get history limit for this session
+            let history_limit: i32 = conn.query_row(
+                "SELECT COALESCE(history_limit, 50) FROM session_settings WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            ).unwrap_or(50);
+
+            // Get messages and participants inside a scoped block so conn is released before await
+            let (messages, participants_text) = {
+                let mut stmt = conn.prepare(
+                    "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
+                            m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
+                            COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                            m.page_index
+                     FROM messages m
+                     LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                     WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
+                     ORDER BY m.created_at DESC
+                     LIMIT ?3"
+                ).map_err(|e| e.to_string())?;
+
+                let rows = stmt.query_map(
+                    rusqlite::params![session_id, page_index, history_limit],
+                    |row| {
+                        Ok(crate::models::message::Message {
+                            id: row.get(0)?,
+                            session_id: row.get(1)?,
+                            sender_type: row.get(2)?,
+                            sender_id: row.get(3)?,
+                            content: row.get(4)?,
+                            created_at: row.get(5)?,
+                            message_type: row.get(6)?,
+                            tool_call_data: row.get(7)?,
+                            generation_info: row.get(8)?,
+                            is_deleted: row.get::<_, i32>(9)? != 0,
+                            sender_name: row.get(10)?,
+                            sender_avatar: None,
+                            page_index: row.get(11)?,
+                        })
+                    }
+                ).map_err(|e| e.to_string())?;
+
+                let mut messages: Vec<crate::models::message::Message> = rows.filter_map(|r| r.ok()).collect();
+                messages.reverse(); // chronological order
+                drop(stmt);
+
+                // Build participants text
+                let participants = PromptAssembler::get_participants(&conn, &agent_id)
+                    .map_err(|e| e.to_string())?;
+                let mut participants_text = String::new();
+                for item in participants {
+                    participants_text.push_str(&format!(
+                        "- {}（{}）：{}\n",
+                        item.target_name, item.target_label, item.target_simplified_persona
+                    ));
+                    if !item.relationship_text.is_empty() {
+                        participants_text.push_str(&format!("  [印象]：{}\n", item.relationship_text));
+                    }
+                    if !item.memory_text.is_empty() {
+                        participants_text.push_str(&format!("  [记忆]：{}\n", item.memory_text));
+                    }
+                }
+
+                (messages, participants_text)
+            };
+
+            drop(conn);
+
+            if messages.is_empty() {
+                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} no messages, skipping", agent_id));
+                continue;
+            }
+
+            // Build session messages text
+            let mut session_messages_text = String::new();
+            for msg in &messages {
+                let time = PromptAssembler::format_time(msg.created_at);
+                session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
+            }
+
+            let long_term_memory = agent.long_term_memory.as_deref().unwrap_or("");
+            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+            let system_prompt = prompt_templates::SUMMARY_SYSTEM_PROMPT
+                .replace("{current_time}", &now)
+                .replace("{detailed_persona}", &agent.detailed_persona)
+                .replace("{long_term_memory}", long_term_memory)
+                .replace("{participants}", &participants_text)
+                .replace("{session_messages}", &session_messages_text);
+
+            // Call LLM
+            let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
+                Ok(k) => k,
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} decrypt failed: {}", agent_id, e));
+                    continue;
+                }
+            };
+
+            let provider = OpenAiCompatibleProvider::new(
+                api_key,
+                agent.base_url,
+                agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
+                agent.temperature,
+                agent.max_tokens,
+            );
+
+            let tools = vec![
+                update_memory_tool_schema(),
+                update_relationship_tool_schema(),
+            ];
+
+            let messages_json = vec![serde_json::json!({
+                "role": "user",
+                "content": "请回顾本次对话，判断是否有值得保存到记忆中的信息。"
+            })];
+
+            crate::logger::backend("DEBUG", &format!("[SessionSummary] calling LLM for agent={}", agent_id));
+
+            let response = match provider.chat(&system_prompt, messages_json, tools).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} LLM call failed: {}", agent_id, e));
+                    continue;
+                }
+            };
+
+            if !response.tool_calls.is_empty() {
+                let mut session_pages = HashMap::new();
+                session_pages.insert(session_id.to_string(), page_index);
+                let executor = ToolExecutor::new(self.db_state.clone());
+                if let Err(e) = executor.execute(&agent_id, response.tool_calls, &session_pages).await {
+                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} tool execution failed: {}", agent_id, e));
+                } else {
+                    crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} tools executed successfully", agent_id));
+                }
+            } else {
+                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} no tools called", agent_id));
+            }
+        }
+
+        crate::logger::backend("DEBUG", &format!("[SessionSummary] complete session={} page={}", session_id, page_index));
+        Ok(())
     }
 
     // Test accessors (hidden from docs)

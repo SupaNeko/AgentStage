@@ -396,7 +396,7 @@ impl PromptAssembler {
             .ok_or_else(|| format!("Agent not found: {}", agent_id))
     }
 
-    fn get_participants(
+    pub(crate) fn get_participants(
         conn: &Connection,
         agent_id: &str,
     ) -> Result<Vec<crate::models::agent_relationship::RelationshipItem>, String> {
