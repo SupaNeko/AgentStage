@@ -1,6 +1,7 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
 use crate::db::agent as agent_repo;
+use crate::db::agent_relationship;
 use crate::db::user_persona as user_persona_repo;
 use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest, DeleteAgentRequest, TestApiConnectionRequest, TestApiConnectionResponse};
 
@@ -62,6 +63,25 @@ pub async fn delete_agent(state: State<'_, DbState>, req: DeleteAgentRequest) ->
 
     let conn = get_db(&state).await?;
     agent_repo::soft_delete(&conn, &req.id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_agent_memory(
+    state: State<'_, DbState>,
+    agent_id: String,
+) -> Result<(), String> {
+    crate::logger::backend("DEBUG", &format!("[DEBUG reset_agent_memory] agent_id={}", agent_id));
+
+    let conn = get_db(&state).await?;
+    
+    agent_repo::clear_long_term_memory(&conn, &agent_id)
+        .map_err(|e| e.to_string())?;
+    
+    agent_relationship::clear_memories_by_observer(&conn, &agent_id)
+        .map_err(|e| e.to_string())?;
+
+    crate::logger::backend("DEBUG", &format!("[DEBUG reset_agent_memory] success agent_id={}", agent_id));
+    Ok(())
 }
 
 #[tauri::command]
