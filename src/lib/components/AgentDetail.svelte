@@ -13,6 +13,7 @@
     import PersonaGenerateModal from './PersonaGenerateModal.svelte';
     import AgentRelationshipPanel from './AgentRelationshipPanel.svelte';
     import ImportModelConfigModal from './ImportModelConfigModal.svelte';
+    import AgentMemoryPanel from './AgentMemoryPanel.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
@@ -20,7 +21,7 @@
     let error = $state('');
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
-    let activeTab = $state<'config' | 'relationships'>('config');
+    let activeTab = $state<'config' | 'relationships' | 'memory'>('config');
     let testingApi = $state(false);
     let testResult = $state<{ success: boolean; latencyMs: number; message: string } | null>(null);
     let showImportModal = $state(false);
@@ -38,6 +39,8 @@
         temperature: 0.7,
         max_tokens: 2048,
         thinking_mode: false,
+        long_term_memory: '',
+        memory_enabled: true,
     });
 
     function handleProviderChange() {
@@ -102,6 +105,8 @@
                     temperature: result.temperature,
                     max_tokens: result.max_tokens,
                     thinking_mode: result.thinking_mode ?? false,
+                    long_term_memory: result.long_term_memory || '',
+                    memory_enabled: result.memory_enabled ?? true,
                 };
             }
         } catch (err) {
@@ -254,6 +259,12 @@
                 >
                     关系设定
                 </button>
+                <button
+                    onclick={() => activeTab = 'memory'}
+                    class="py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'memory' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}"
+                >
+                    记忆
+                </button>
             </div>
         </div>
 
@@ -400,6 +411,12 @@
                 </div>
             {:else if activeTab === 'relationships'}
                 <AgentRelationshipPanel agentId={agent.id} />
+            {:else if activeTab === 'memory'}
+                <AgentMemoryPanel
+                    agentId={agent.id}
+                    bind:longTermMemory={form.long_term_memory}
+                    bind:memoryEnabled={form.memory_enabled}
+                />
             {/if}
         </div>
 
