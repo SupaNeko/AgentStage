@@ -495,7 +495,7 @@ pub fn update_session_config(conn: &Connection, req: &crate::models::session::Up
     Ok(())
 }
 
-pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
+pub fn reset_session(conn: &Connection, session_id: &str) -> Result<(String, i32)> {
     let now = chrono::Utc::now().timestamp_millis();
     let tx = conn.unchecked_transaction()?;
 
@@ -545,7 +545,7 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<String> {
     )?;
 
     tx.commit()?;
-    Ok(page_id)
+    Ok((page_id, new_page_index))
 }
 
 pub fn disband_group(conn: &Connection, session_id: &str) -> Result<bool> {
@@ -713,8 +713,9 @@ mod tests {
         
         let session = create_private_session(&conn, "agent1").unwrap();
         
-        let page_id = reset_session(&conn, &session.id).unwrap();
+        let (page_id, new_page_index) = reset_session(&conn, &session.id).unwrap();
         assert!(!page_id.is_empty());
+        assert_eq!(new_page_index, 1);
         
         let page_index: i32 = conn.query_row(
             "SELECT page_index FROM chat_pages WHERE id = ?1",
