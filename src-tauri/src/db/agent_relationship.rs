@@ -69,7 +69,7 @@ pub fn list_relationships_by_observer(
     ));
     let mut stmt = conn.prepare(
         r#"
-        SELECT target_id, target_type, target_name, target_avatar, target_label, relationship_text, updated_at
+        SELECT target_id, target_type, target_name, target_avatar, target_label, relationship_text, memory_text, updated_at
         FROM (
             -- 1. 当前激活的用户人设
             SELECT 
