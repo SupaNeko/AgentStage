@@ -120,3 +120,5 @@ pub const USER_NAME: &str = "用户";
 pub const SYSTEM_NAME: &str = "系统";
 pub const UNKNOWN_AGENT_PREFIX: &str = "未知角色(";
 pub const UNKNOWN_TYPE_PREFIX: &str = "未知(";
+
+pub const LAYER_MEMORY_TITLE: &str = "【关于你的记忆】";
