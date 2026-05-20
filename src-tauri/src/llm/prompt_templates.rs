@@ -40,7 +40,8 @@ pub const SYSTEM_PROMPT: &str = "你是一个正在参与即时通讯聊天的 A
 ## 6. 可用工具
 - send_message：回复消息
 - start_private_chat：主动发起私聊
-- update_relationship：更新你对某个角色的关系描述";
+- update_relationship：更新你对某个角色的关系描述
+- update_memory：更新你的记忆（关于自己或关于其他参与者）";
 
 
 pub const LAYER_PERSONA_TITLE: &str = "【你的角色设定】";
@@ -107,8 +108,43 @@ pub const TOOL_INSTRUCTION_TEMPLATE: &str = r#"你可以使用以下工具与其
   new_text: "初次见面，看起来是个温和的人，印象不错"
 
 - 场景：和长期好友因为某件事闹翻了
-  old_text: "多年的老朋友，无话不谈"
-  new_text: "曾经的挚友，但最近发生了矛盾，关系有些紧张，暂时不想主动联系"
+   old_text: "多年的老朋友，无话不谈"
+   new_text: "曾经的挚友，但最近发生了矛盾，关系有些紧张，暂时不想主动联系"
+
+## 4. update_memory — 更新记忆
+
+用于记录动态信息：事实、事件、偏好、行为模式等。update_relationship 用于静态关系定位，update_memory 用于动态记忆内容，两者不要混淆。
+
+调用参数：
+- memory_type: "self" 或 "other"
+  - "self": 更新你对自己的长期记忆（上限 3000 字），target_name 留空即可
+  - "other": 更新你对某位参与者的记忆（上限 500 字），target_name 必须填写该参与者的精确名称
+- target_name: 目标参与者的精确名称（memory_type=other 时必填；memory_type=self 时可为空字符串 ""）
+- old_text: 当前记忆的完整文本（精确匹配；如果之前没有记忆则为空字符串 ""）
+- new_text: 新的记忆文本（self 上限 3000 字，other 上限 500 字）
+
+注意：
+- old_text 必须与当前存储的记忆完全一致，否则调用会失败。如果不确定当前的 old_text，请先查询再修改。
+- update_memory 记录动态事实和事件（如"他喜欢喝咖啡"、"上次一起去过海边"），update_relationship 记录静态态度和关系定位（如"朋友/竞争对手/尊敬"）。
+
+示例：
+- 场景：更新对自己的长期记忆
+  memory_type: "self"
+  target_name: ""
+  old_text: ""
+  new_text: "我是一个喜欢在深夜写代码的程序员，养了一只叫豆豆的猫，对科幻小说很感兴趣。"
+
+- 场景：记住某人的喜好（第一次记录）
+  memory_type: "other"
+  target_name: "Alice"
+  old_text: ""
+  new_text: "她不喜欢吃辣，对芒果过敏，喜欢听爵士乐。"
+
+- 场景：更新对某人的记忆（追加信息）
+  memory_type: "other"
+  target_name: "Alice"
+  old_text: "她不喜欢吃辣，对芒果过敏，喜欢听爵士乐。"
+  new_text: "她不喜欢吃辣，对芒果过敏，喜欢听爵士乐。上周她提到正在学习吉他。"
 "#;
 
 pub const INSTRUCTION_CONTEXT_LIST_FORMAT: &str = "- session_id: {}, 名称: {}, 类型: {}\n";
