@@ -191,11 +191,12 @@ impl std::fmt::Display for ToolError {
 #[derive(Clone)]
 pub struct ToolExecutor {
     db_state: DbState,
+    scheduler: crate::scheduler::Scheduler,
 }
 
 impl ToolExecutor {
-    pub fn new(db_state: DbState) -> Self {
-        Self { db_state }
+    pub fn new(db_state: DbState, scheduler: crate::scheduler::Scheduler) -> Self {
+        Self { db_state, scheduler }
     }
 
     pub async fn execute(
@@ -311,6 +312,10 @@ impl ToolExecutor {
             ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
             messages.push(msg);
         }
+        drop(conn);
+
+        // Trigger overflow summary check
+        self.scheduler.spawn_overflow_summary(target_id.to_string());
 
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG ToolExecutor::execute_send_message] wrote {} messages target_id={}, page_index={:?}",
@@ -759,7 +764,8 @@ mod tests {
         create_test_agent(&conn, "agent-2", "Bob");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let session_pages = HashMap::new();
         let tool_call = ToolCall {
             id: "tc-1".to_string(),
@@ -793,7 +799,8 @@ mod tests {
         create_test_agent(&conn, "agent-2", "Bob");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let session_pages = HashMap::new();
 
         let tc1 = ToolCall {
@@ -819,7 +826,8 @@ mod tests {
         create_test_agent(&conn, "agent-1", "Alice");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let tc = ToolCall {
             id: "tc-1".to_string(),
             name: "start_private_chat".to_string(),
@@ -835,7 +843,8 @@ mod tests {
         create_test_agent(&conn, "agent-1", "Alice");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let tc = ToolCall {
             id: "tc-1".to_string(),
             name: "start_private_chat".to_string(),
@@ -855,7 +864,8 @@ mod tests {
         let _ = crate::db::session::create_private_session(&conn, "agent-1").unwrap();
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
 
         let resolved = executor.resolve_target_id("agent-1", "agent-2").await.unwrap();
         assert_eq!(resolved, aa_session.id);
@@ -872,7 +882,8 @@ mod tests {
         create_test_agent(&conn, "agent-1", "Alice");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let tc = ToolCall {
             id: "tc-1".to_string(),
             name: "update_memory".to_string(),
@@ -896,7 +907,8 @@ mod tests {
         create_test_agent(&conn, "agent-2", "Bob");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
         let tc = ToolCall {
             id: "tc-1".to_string(),
             name: "update_memory".to_string(),
@@ -920,7 +932,8 @@ mod tests {
         create_test_agent(&conn, "agent-2", "Bob");
         let db_state = make_db_state(conn);
 
-        let executor = ToolExecutor::new(db_state);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
 
         // self memory > 3000 chars
         let long_self = "a".repeat(3001);
