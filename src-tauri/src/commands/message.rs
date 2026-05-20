@@ -68,6 +68,9 @@ pub async fn send_user_message(
         )),
     }
 
+    // Check overflow summary
+    scheduler.spawn_overflow_summary(req.session_id.clone());
+
     crate::logger::backend("DEBUG", &format!("[DEBUG send_user_message] END session_id={}, message_id={}", req.session_id, message.id));
 
     Ok(message)
