@@ -48,6 +48,7 @@ pub struct Scheduler {
     unread_messages: Arc<Mutex<HashMap<String, HashMap<String, Vec<PendingMessage>>>>>,
     agent_notifications: Arc<Mutex<HashMap<String, HashSet<String>>>>,
     frozen_sessions: Arc<Mutex<HashSet<String>>>,
+    running_summaries: Arc<Mutex<HashSet<String>>>,
     app_handle: Arc<std::sync::Mutex<Option<AppHandle>>>,
     db_state: DbState,
 }
@@ -58,6 +59,7 @@ impl Scheduler {
             unread_messages: Arc::new(Mutex::new(HashMap::new())),
             agent_notifications: Arc::new(Mutex::new(HashMap::new())),
             frozen_sessions: Arc::new(Mutex::new(HashSet::new())),
+            running_summaries: Arc::new(Mutex::new(HashSet::new())),
             app_handle: Arc::new(std::sync::Mutex::new(None)),
             db_state,
         }
@@ -368,6 +370,15 @@ impl Scheduler {
         tauri::async_runtime::spawn(async move {
             if let Err(e) = scheduler.run_session_summary(&session_id, page_index).await {
                 crate::logger::backend("ERROR", &format!("[SessionSummary] failed for session={} page={}: {}", session_id, page_index, e));
+            }
+        });
+    }
+
+    pub fn spawn_overflow_summary(&self, session_id: String) {
+        let scheduler = self.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = scheduler.run_overflow_summary(&session_id).await {
+                crate::logger::backend("ERROR", &format!("[OverflowSummary] failed for session={}: {}", session_id, e));
             }
         });
     }
@@ -809,7 +820,7 @@ impl Scheduler {
         };
 
         // === 阶段 5：执行 Tool Calls ===
-        let executor = ToolExecutor::new(self.db_state.clone());
+                let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
         let agent_messages = match executor.execute(agent_id, response.tool_calls, &session_pages).await {
             Ok(msgs) => msgs,
             Err(e) => {
@@ -1212,7 +1223,7 @@ impl Scheduler {
             if !response.tool_calls.is_empty() {
                 let mut session_pages = HashMap::new();
                 session_pages.insert(session_id.to_string(), page_index);
-                let executor = ToolExecutor::new(self.db_state.clone());
+        let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
                 if let Err(e) = executor.execute(&agent_id, response.tool_calls, &session_pages).await {
                     crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} tool execution failed: {}", agent_id, e));
                 } else {
@@ -1224,6 +1235,219 @@ impl Scheduler {
         }
 
         crate::logger::backend("DEBUG", &format!("[SessionSummary] complete session={} page={}", session_id, page_index));
+        Ok(())
+    }
+
+    async fn run_overflow_summary(&self, session_id: &str) -> Result<(), String> {
+        // Prevent concurrent runs for the same session
+        {
+            let mut running = self.running_summaries.lock().await;
+            if running.contains(session_id) {
+                crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} already running, skipping", session_id));
+                return Ok(());
+            }
+            running.insert(session_id.to_string());
+        }
+
+        let result = self.do_run_overflow_summary(session_id).await;
+
+        {
+            let mut running = self.running_summaries.lock().await;
+            running.remove(session_id);
+        }
+
+        result
+    }
+
+    async fn do_run_overflow_summary(&self, session_id: &str) -> Result<(), String> {
+        crate::logger::backend("DEBUG", &format!("[OverflowSummary] start session={}", session_id));
+
+        let conn = self.db_state.0.lock().await;
+
+        // Get current page index
+        let page_index: i32 = conn.query_row(
+            "SELECT COALESCE(ps.current_chat_page, gs.current_chat_page, 0)
+             FROM sessions s
+             LEFT JOIN private_sessions ps ON s.id = ps.session_id
+             LEFT JOIN group_sessions gs ON s.id = gs.session_id
+             WHERE s.id = ?1",
+            [session_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        // Get threshold and last index
+        let (threshold, last_index): (i32, i32) = conn.query_row(
+            "SELECT COALESCE(overflow_summary_threshold, 50), COALESCE(last_overflow_summary_index, 0)
+             FROM session_settings WHERE session_id = ?1",
+            [session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap_or((50, 0));
+
+        if threshold <= 0 {
+            crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} threshold=0, skipping", session_id));
+            return Ok(());
+        }
+
+        // Count total messages on current page
+        let total_messages: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ?1 AND page_index = ?2 AND is_deleted = 0",
+            rusqlite::params![session_id, page_index],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        if total_messages - last_index < threshold {
+            crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} total={} last={} threshold={} not met", session_id, total_messages, last_index, threshold));
+            return Ok(());
+        }
+
+        // Query messages: OFFSET=last_index, LIMIT=threshold
+        let messages: Vec<crate::models::message::Message> = {
+            let mut stmt = conn.prepare(
+                "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
+                        m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
+                        COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                        m.page_index
+                 FROM messages m
+                 LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                 WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
+                 ORDER BY m.created_at ASC
+                 LIMIT ?3 OFFSET ?4"
+            ).map_err(|e| e.to_string())?;
+
+            let rows = stmt.query_map(
+                rusqlite::params![session_id, page_index, threshold, last_index],
+                |row| {
+                    Ok(crate::models::message::Message {
+                        id: row.get(0)?,
+                        session_id: row.get(1)?,
+                        sender_type: row.get(2)?,
+                        sender_id: row.get(3)?,
+                        content: row.get(4)?,
+                        created_at: row.get(5)?,
+                        message_type: row.get(6)?,
+                        tool_call_data: row.get(7)?,
+                        generation_info: row.get(8)?,
+                        is_deleted: row.get::<_, i32>(9)? != 0,
+                        sender_name: row.get(10)?,
+                        sender_avatar: None,
+                        page_index: row.get(11)?,
+                    })
+                }
+            ).map_err(|e| e.to_string())?;
+
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        drop(conn);
+
+        if messages.is_empty() {
+            return Ok(());
+        }
+
+        // Build session messages text
+        let mut session_messages_text = String::new();
+        for msg in &messages {
+            let time = PromptAssembler::format_time(msg.created_at);
+            session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
+        }
+
+        // Find agents and run summary (same pattern as run_session_summary)
+        let conn = self.db_state.0.lock().await;
+        let agent_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT participant_id FROM group_members WHERE session_id = ?1 AND participant_type = 'agent' AND is_active = 1"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([session_id], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        let private_agent_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT participant_1_id as pid FROM private_sessions WHERE session_id = ?1 AND participant_1_type = 'agent'
+                 UNION
+                 SELECT participant_2_id as pid FROM private_sessions WHERE session_id = ?1 AND participant_2_type = 'agent'"
+            ).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([session_id], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        drop(conn);
+
+        let mut all_agents = agent_ids;
+        all_agents.extend(private_agent_ids);
+        all_agents.sort();
+        all_agents.dedup();
+
+        for agent_id in all_agents {
+            let conn = self.db_state.0.lock().await;
+            let agent = match agent_repo::get_by_id(&conn, &agent_id) {
+                Ok(Some(a)) => a,
+                _ => continue,
+            };
+            if !agent.memory_enabled { continue; }
+            if agent.model_provider.is_none() || agent.model_name.is_none() || agent.api_key_encrypted.is_none() { continue; }
+
+            let participants = PromptAssembler::get_participants(&conn, &agent_id)
+                .map_err(|e| e.to_string())?;
+            drop(conn);
+
+            let mut participants_text = String::new();
+            for item in participants {
+                participants_text.push_str(&format!("- {}（{}）：{}\n", item.target_name, item.target_label, item.target_simplified_persona));
+                if !item.relationship_text.is_empty() {
+                    participants_text.push_str(&format!("  [印象]：{}\n", item.relationship_text));
+                }
+                if !item.memory_text.is_empty() {
+                    participants_text.push_str(&format!("  [记忆]：{}\n", item.memory_text));
+                }
+            }
+
+            let long_term_memory = agent.long_term_memory.as_deref().unwrap_or("");
+            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let system_prompt = prompt_templates::SUMMARY_SYSTEM_PROMPT
+                .replace("{current_time}", &now)
+                .replace("{detailed_persona}", &agent.detailed_persona)
+                .replace("{long_term_memory}", long_term_memory)
+                .replace("{participants}", &participants_text)
+                .replace("{session_messages}", &session_messages_text);
+
+            let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
+                Ok(k) => k,
+                Err(_) => continue,
+            };
+
+            let provider = OpenAiCompatibleProvider::new(
+                api_key,
+                agent.base_url,
+                agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
+                agent.temperature,
+                agent.max_tokens,
+            );
+
+            let tools = vec![update_memory_tool_schema(), update_relationship_tool_schema()];
+            let messages_json = vec![serde_json::json!({"role": "user", "content": "请回顾本次对话，判断是否有值得保存到记忆中的信息。"})];
+
+            match provider.chat(&system_prompt, messages_json, tools).await {
+                Ok(response) => {
+                    if !response.tool_calls.is_empty() {
+                        let mut session_pages = HashMap::new();
+                        session_pages.insert(session_id.to_string(), page_index);
+                        let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
+                        let _ = executor.execute(&agent_id, response.tool_calls, &session_pages).await;
+                    }
+                }
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!("[OverflowSummary] agent={} LLM failed: {}", agent_id, e));
+                }
+            }
+        }
+
+        // Update last_overflow_summary_index
+        let conn = self.db_state.0.lock().await;
+        let _ = conn.execute(
+            "UPDATE session_settings SET last_overflow_summary_index = last_overflow_summary_index + ?1 WHERE session_id = ?2",
+            rusqlite::params![threshold, session_id],
+        );
+        drop(conn);
+
+        crate::logger::backend("DEBUG", &format!("[OverflowSummary] complete session={}", session_id));
         Ok(())
     }
 
