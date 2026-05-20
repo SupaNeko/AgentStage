@@ -267,6 +267,7 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
         conn
     }
 
@@ -395,5 +396,90 @@ mod tests {
         let relationships_after = list_relationships_by_observer(&conn, "agent1").unwrap();
         let groupmate_after = relationships_after.iter().find(|r| r.target_id == "agent2");
         assert!(groupmate_after.is_none(), "agent2 should NOT appear as groupmate after group is dissolved");
+    }
+
+    #[test]
+    fn test_upsert_memory_only_updates_memory_text() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        upsert_relationship(&conn, "agent1", "agent2", "agent", "好朋友").unwrap();
+        upsert_memory(&conn, "agent1", "agent2", "agent", "他喜欢吃苹果").unwrap();
+
+        let rel_text: String = conn.query_row(
+            "SELECT relationship_text FROM agent_relationships WHERE observer_id = 'agent1' AND target_id = 'agent2'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(rel_text, "好朋友", "upsert_memory should NOT overwrite relationship_text");
+
+        let mem_text: String = conn.query_row(
+            "SELECT memory_text FROM agent_relationships WHERE observer_id = 'agent1' AND target_id = 'agent2'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(mem_text, "他喜欢吃苹果");
+    }
+
+    #[test]
+    fn test_clear_memories_by_observer_preserves_relationships() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent2", "Agent Two", 0i64),
+        ).unwrap();
+
+        upsert_relationship(&conn, "agent1", "agent2", "agent", "好朋友").unwrap();
+        upsert_memory(&conn, "agent1", "agent2", "agent", "他喜欢吃苹果").unwrap();
+
+        clear_memories_by_observer(&conn, "agent1").unwrap();
+
+        let mem_text: String = conn.query_row(
+            "SELECT memory_text FROM agent_relationships WHERE observer_id = 'agent1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(mem_text, "");
+
+        let rel_text: String = conn.query_row(
+            "SELECT relationship_text FROM agent_relationships WHERE observer_id = 'agent1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(rel_text, "好朋友", "relationship_text should be preserved");
+    }
+
+    #[test]
+    fn test_list_relationships_includes_memory_text() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO app_settings (id, updated_at) VALUES (1, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, created_at, updated_at) VALUES ('up1', 'User', '', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "UPDATE app_settings SET active_persona_id = 'up1' WHERE id = 1",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Agent One", 0i64),
+        ).unwrap();
+
+        upsert_memory(&conn, "agent1", "up1", "user_persona", "用户喜欢猫").unwrap();
+
+        let items = list_relationships_by_observer(&conn, "agent1").unwrap();
+        let user_item = items.iter().find(|i| i.target_type == "user_persona").unwrap();
+        assert_eq!(user_item.memory_text, "用户喜欢猫");
     }
 }
