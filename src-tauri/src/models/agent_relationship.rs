@@ -18,5 +18,6 @@ pub struct RelationshipItem {
     pub target_avatar: Option<String>,
     pub target_label: String,
     pub relationship_text: String,
+    pub memory_text: String,
     pub updated_at: i64,
 }

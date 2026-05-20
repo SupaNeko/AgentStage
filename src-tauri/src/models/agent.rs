@@ -21,6 +21,8 @@ pub struct Agent {
     pub top_p: f64,
     pub presence_penalty: f64,
     pub frequency_penalty: f64,
+    pub long_term_memory: Option<String>,
+    pub memory_enabled: bool,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub thinking_mode: bool,
     pub is_deleted: bool,
@@ -50,6 +52,8 @@ pub struct AgentResponse {
     pub top_p: f64,
     pub presence_penalty: f64,
     pub frequency_penalty: f64,
+    pub long_term_memory: Option<String>,
+    pub memory_enabled: bool,
     pub api_key: String,
     pub thinking_mode: bool,
     pub is_deleted: bool,
@@ -84,6 +88,8 @@ impl From<Agent> for AgentResponse {
             top_p: agent.top_p,
             presence_penalty: agent.presence_penalty,
             frequency_penalty: agent.frequency_penalty,
+            long_term_memory: agent.long_term_memory,
+            memory_enabled: agent.memory_enabled,
             api_key,
             thinking_mode: agent.thinking_mode,
             is_deleted: agent.is_deleted,
@@ -113,6 +119,8 @@ pub struct CreateAgentRequest {
     pub temperature: Option<f64>,
     pub max_tokens: Option<i32>,
     pub thinking_mode: Option<bool>,
+    pub long_term_memory: Option<String>,
+    pub memory_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -135,6 +143,8 @@ pub struct UpdateAgentRequest {
     pub temperature: Option<f64>,
     pub max_tokens: Option<i32>,
     pub thinking_mode: Option<bool>,
+    pub long_term_memory: Option<String>,
+    pub memory_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

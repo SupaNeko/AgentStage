@@ -19,6 +19,8 @@ export interface Agent {
     presence_penalty: number;
     frequency_penalty: number;
     api_key: string;
+    long_term_memory?: string;
+    memory_enabled?: boolean;
     thinking_mode?: boolean;
     is_deleted: boolean;
     deleted_at: number | null;
@@ -103,6 +105,7 @@ export interface RelationshipItem {
     target_avatar: string | null;
     target_label: string;
     relationship_text: string;
+    memory_text: string;
     updated_at: number;
 }
 
