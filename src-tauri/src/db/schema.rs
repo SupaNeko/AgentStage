@@ -438,3 +438,9 @@ ALTER TABLE agents ADD COLUMN memory_enabled INTEGER DEFAULT 1 CHECK(memory_enab
 ALTER TABLE agent_relationships ADD COLUMN memory_text TEXT NOT NULL DEFAULT '';
 "#;
 
+pub const MIGRATION_V14: &str = r#"
+-- V14: Overflow message batch processing
+ALTER TABLE session_settings ADD COLUMN overflow_summary_threshold INTEGER DEFAULT 50;
+ALTER TABLE session_settings ADD COLUMN last_overflow_summary_index INTEGER DEFAULT 0;
+"#;
+
