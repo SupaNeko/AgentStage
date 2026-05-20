@@ -1,6 +1,5 @@
 use chrono::{Local, LocalResult, TimeZone};
 use rusqlite::Connection;
-use std::collections::HashSet;
 
 use crate::llm::prompt_templates;
 use crate::models::message::Message;
@@ -30,16 +29,30 @@ impl PromptAssembler {
         let agent = Self::get_agent(conn, agent_id)?;
         layers.push(format!("{}\n{}", prompt_templates::LAYER_PERSONA_TITLE, agent.detailed_persona));
 
+        // Layer 2.5: Long-term Memory
+        if agent.memory_enabled {
+            if let Some(ref mem) = agent.long_term_memory {
+                if !mem.is_empty() {
+                    layers.push(format!("{}\n{}", prompt_templates::LAYER_MEMORY_TITLE, mem));
+                }
+            }
+        }
+
         // Layer 3: Participants Introduction
         let participants = Self::get_participants(conn, agent_id)?;
         if !participants.is_empty() {
             let mut layer = String::from(prompt_templates::LAYER_PARTICIPANTS_TITLE);
             layer.push('\n');
-                for (name, relation, persona, rel_text) in participants {
-                if rel_text.is_empty() {
-                    layer.push_str(&format!("- {}（{}）：{}\n", name, relation, persona));
-                } else {
-                    layer.push_str(&format!("- {}（{}）：{}{}{}\n", name, relation, persona, prompt_templates::RELATIONSHIP_SUFFIX_PREFIX, rel_text));
+            for item in participants {
+                layer.push_str(&format!(
+                    "- {}（{}）：{}\n",
+                    item.target_name, item.target_label, item.target_simplified_persona
+                ));
+                if !item.relationship_text.is_empty() {
+                    layer.push_str(&format!("  [印象]：{}\n", item.relationship_text));
+                }
+                if agent.memory_enabled && !item.memory_text.is_empty() {
+                    layer.push_str(&format!("  [记忆]：{}\n", item.memory_text));
                 }
             }
             layers.push(layer);
@@ -386,118 +399,9 @@ impl PromptAssembler {
     fn get_participants(
         conn: &Connection,
         agent_id: &str,
-    ) -> Result<Vec<(String, String, String, String)>, String> {
-        let mut seen: HashSet<String> = HashSet::new();
-        let mut participants: Vec<(String, String, String, String)> = Vec::new();
-
-        // 获取当前激活的用户人设 ID
-        let active_persona_id: Option<String> = conn.query_row(
-            "SELECT active_persona_id FROM app_settings WHERE id = 1",
-            [],
-            |row| row.get(0),
-        ).ok().flatten();
-
-        // 1. Collect private chat partners
-        let mut stmt = conn
-            .prepare(
-                "SELECT ps.participant_1_type, ps.participant_1_id, ps.participant_2_type, ps.participant_2_id \
-                 FROM private_sessions ps \
-                 JOIN sessions s ON ps.session_id = s.id \
-                 WHERE s.is_deleted = 0 \
-                 AND ((ps.participant_1_type = 'agent' AND ps.participant_1_id = ?1) \
-                   OR (ps.participant_2_type = 'agent' AND ps.participant_2_id = ?1))"
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([agent_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-
-        let (user_name, user_persona) = Self::get_user_persona(conn);
-
-        for row in rows {
-            let (p1_type, p1_id, p2_type, p2_id) = row.map_err(|e| e.to_string())?;
-            let other = if p1_type == "agent" && p1_id == agent_id {
-                (p2_type, p2_id)
-            } else {
-                (p1_type, p1_id)
-            };
-
-            if other.0 == "user" {
-                if seen.insert("__user__".to_string()) {
-                    let rel_text = if let Some(ref pid) = active_persona_id {
-                        crate::db::agent_relationship::get_relationship(conn, agent_id, pid, "user_persona")
-                            .unwrap_or_default()
-                    } else {
-                        String::new()
-                    };
-                    participants.push((user_name.clone(), "好友".to_string(), user_persona.clone(), rel_text));
-                }
-            } else if seen.insert(other.1.clone()) {
-                let other_id = other.1.clone();
-                let name: Result<String, rusqlite::Error> = conn.query_row(
-                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
-                    [&other_id],
-                    |row| row.get(0),
-                );
-                if let Ok(name) = name {
-                    let persona: Result<String, rusqlite::Error> = conn.query_row(
-                        "SELECT simplified_persona FROM agents WHERE id = ?1 AND is_deleted = 0",
-                        [&other_id],
-                        |row| row.get(0),
-                    );
-                    let rel_text = crate::db::agent_relationship::get_relationship(conn, agent_id, &other_id, "agent")
-                        .unwrap_or_default();
-                    participants.push((name, "好友".to_string(), persona.unwrap_or_default(), rel_text));
-                }
-            }
-        }
-        drop(stmt);
-
-        // 2. Collect group chat members
-        let mut stmt = conn
-            .prepare(
-                "SELECT DISTINCT gm.participant_id \
-                 FROM group_members gm \
-                 JOIN sessions s ON gm.session_id = s.id \
-                 WHERE gm.session_id IN ( \
-                     SELECT session_id FROM group_members WHERE participant_id = ?1 AND participant_type = 'agent' \
-                 ) AND gm.participant_type = 'agent' AND gm.participant_id != ?1 AND s.is_deleted = 0"
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([agent_id], |row| {
-                Ok(row.get::<_, String>(0)?)
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let id = row.map_err(|e| e.to_string())?;
-            if seen.insert(id.clone()) {
-                let name: Result<String, rusqlite::Error> = conn.query_row(
-                    "SELECT name FROM agents WHERE id = ?1 AND is_deleted = 0",
-                    [&id],
-                    |row| row.get(0),
-                );
-                if let Ok(name) = name {
-                    let persona: Result<String, rusqlite::Error> = conn.query_row(
-                        "SELECT simplified_persona FROM agents WHERE id = ?1 AND is_deleted = 0",
-                        [&id],
-                        |row| row.get(0),
-                    );
-                    let rel_text = crate::db::agent_relationship::get_relationship(conn, agent_id, &id, "agent")
-                        .unwrap_or_default();
-                    participants.push((name, "好友".to_string(), persona.unwrap_or_default(), rel_text));
-                }
-            }
-        }
-
-        Ok(participants)
+    ) -> Result<Vec<crate::models::agent_relationship::RelationshipItem>, String> {
+        crate::db::agent_relationship::list_relationships_by_observer(conn, agent_id)
+            .map_err(|e| e.to_string())
     }
 
     fn get_session_name(
