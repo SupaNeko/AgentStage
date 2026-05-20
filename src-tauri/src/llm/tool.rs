@@ -94,6 +94,39 @@ pub fn update_relationship_tool_schema() -> serde_json::Value {
     })
 }
 
+pub fn update_memory_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "update_memory",
+            "description": "更新你的记忆。update_memory 用于记录动态信息（事实、事件、偏好、行为模式等），而 update_relationship 用于记录静态的关系定位和态度。请严格遵守以下规则：\n1. memory_type=\"self\" 时，更新你对自己的长期记忆（上限 3000 字），target_name 可留空\n2. memory_type=\"other\" 时，更新你对某位参与者的记忆（上限 500 字），target_name 必须填写该参与者的精确名称\n3. 必须提供 old_text（当前记忆的完整内容），系统会精确匹配替换\n4. 如果 old_text 不匹配，系统会返回错误，请重新查询后再修改\n5. target_name 必须是【你认识的参与者】列表中的精确名称",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_type": {
+                        "type": "string",
+                        "enum": ["self", "other"],
+                        "description": "记忆类型：self 表示更新关于自己的长期记忆，other 表示更新关于另一位参与者的记忆"
+                    },
+                    "target_name": {
+                        "type": "string",
+                        "description": "目标参与者的精确名称（memory_type=other 时必填；memory_type=self 时可为空字符串）"
+                    },
+                    "old_text": {
+                        "type": "string",
+                        "description": "当前记忆的完整文本（空字符串表示尚无记忆）"
+                    },
+                    "new_text": {
+                        "type": "string",
+                        "description": "新的记忆文本（self 上限 3000 字，other 上限 500 字）"
+                    }
+                },
+                "required": ["memory_type", "target_name", "old_text", "new_text"]
+            }
+        }
+    })
+}
+
 pub fn fill_character_fields_tool_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "function",
@@ -207,6 +240,10 @@ impl ToolExecutor {
                 "update_relationship" => {
                     let _msgs = self.execute_update_relationship(agent_id, &tc.arguments).await?;
                     // update_relationship 不返回消息，仅修改数据库
+                }
+                "update_memory" => {
+                    let _msgs = self.execute_update_memory(agent_id, &tc.arguments).await?;
+                    // update_memory 不返回消息，仅修改数据库
                 }
                 _ => {
                     crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
@@ -470,6 +507,169 @@ impl ToolExecutor {
         Ok(Vec::new())
     }
 
+    async fn execute_update_memory(
+        &self,
+        agent_id: &str,
+        arguments: &str,
+    ) -> Result<Vec<Message>, ToolError> {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_memory] START agent_id={}, args_raw={}",
+            agent_id, arguments
+        ));
+
+        let args: serde_json::Value = serde_json::from_str(arguments)
+            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+
+        let memory_type = args["memory_type"].as_str().unwrap_or("");
+        let target_name = args["target_name"].as_str().unwrap_or("");
+        let old_text = args["old_text"].as_str().unwrap_or("");
+        let new_text = args["new_text"].as_str().unwrap_or("");
+
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG ToolExecutor::execute_update_memory] parsed memory_type='{}', target_name='{}', old_text_len={}, new_text_len={}",
+            memory_type, target_name, old_text.len(), new_text.len()
+        ));
+
+        match memory_type {
+            "self" => {
+                if new_text.chars().count() > 3000 {
+                    crate::logger::backend("WARN", &format!(
+                        "[DEBUG ToolExecutor::execute_update_memory] Self memory too long: {} chars", new_text.chars().count()
+                    ));
+                    return Err(ToolError::InvalidArguments(format!(
+                        "自我记忆超过 3000 字限制（当前 {} 字）", new_text.chars().count()
+                    )));
+                }
+
+                let conn = self.db_state.0.lock().await;
+
+                let current: String = conn.query_row(
+                    "SELECT COALESCE(long_term_memory, '') FROM agents WHERE id = ?1",
+                    [agent_id],
+                    |row| row.get(0),
+                ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG ToolExecutor::execute_update_memory] self compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
+                    current, current.len(), old_text, old_text.len(), current == old_text
+                ));
+
+                if current != old_text {
+                    crate::logger::backend("WARN", &format!(
+                        "[DEBUG ToolExecutor::execute_update_memory] self old_text mismatch"
+                    ));
+                    return Err(ToolError::InvalidArguments(format!(
+                        "old_text 不匹配。当前自我记忆为：\"{}\"（长度{}），你提交的是：\"{}\"（长度{}）。请基于当前内容重新提交修改。",
+                        current, current.len(), old_text, old_text.len()
+                    )));
+                }
+
+                conn.execute(
+                    "UPDATE agents SET long_term_memory = ?1 WHERE id = ?2",
+                    rusqlite::params![new_text, agent_id],
+                ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG ToolExecutor::execute_update_memory] END updated self memory for agent_id={}",
+                    agent_id
+                ));
+
+                Ok(Vec::new())
+            }
+            "other" => {
+                if new_text.chars().count() > 500 {
+                    crate::logger::backend("WARN", &format!(
+                        "[DEBUG ToolExecutor::execute_update_memory] Other memory too long: {} chars", new_text.chars().count()
+                    ));
+                    return Err(ToolError::InvalidArguments(format!(
+                        "他人记忆超过 500 字限制（当前 {} 字）", new_text.chars().count()
+                    )));
+                }
+
+                if target_name.is_empty() {
+                    return Err(ToolError::InvalidArguments("memory_type=other 时 target_name 不能为空".to_string()));
+                }
+
+                let conn = self.db_state.0.lock().await;
+
+                // 根据名称查找目标
+                let (target_id, target_type) = if let Ok(Some(agent)) = agent_repo::get_agent_by_name(&conn, target_name) {
+                    crate::logger::backend("DEBUG", &format!(
+                        "[DEBUG ToolExecutor::execute_update_memory] resolved to agent id={}", agent.id
+                    ));
+                    (agent.id, "agent".to_string())
+                } else {
+                    // 尝试查找当前激活的用户人设
+                    let active_id: Option<String> = conn.query_row(
+                        "SELECT active_persona_id FROM app_settings WHERE id = 1", [], |row| row.get(0),
+                    ).ok().flatten();
+                    if let Some(pid) = active_id {
+                        if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
+                            if persona.name == target_name {
+                                crate::logger::backend("DEBUG", &format!(
+                                    "[DEBUG ToolExecutor::execute_update_memory] resolved to user_persona id={}", pid
+                                ));
+                                (pid, "user_persona".to_string())
+                            } else {
+                                crate::logger::backend("WARN", &format!(
+                                    "[DEBUG ToolExecutor::execute_update_memory] active persona name '{}' does not match target_name '{}'", persona.name, target_name
+                                ));
+                                return Err(ToolError::InvalidArguments(format!(
+                                    "找不到目标参与者 '{}'", target_name
+                                )));
+                            }
+                        } else {
+                            return Err(ToolError::InvalidArguments(format!(
+                                "找不到目标参与者 '{}'", target_name
+                            )));
+                        }
+                    } else {
+                        return Err(ToolError::InvalidArguments(format!(
+                            "找不到目标参与者 '{}'", target_name
+                        )));
+                    }
+                };
+
+                // old_text 匹配校验
+                let current: String = conn.query_row(
+                    "SELECT COALESCE(memory_text, '') FROM agent_relationships WHERE observer_id = ?1 AND target_id = ?2 AND target_type = ?3",
+                    rusqlite::params![agent_id, &target_id, &target_type],
+                    |row| row.get(0),
+                ).unwrap_or_default();
+
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG ToolExecutor::execute_update_memory] other compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
+                    current, current.len(), old_text, old_text.len(), current == old_text
+                ));
+
+                if current != old_text {
+                    crate::logger::backend("WARN", &format!(
+                        "[DEBUG ToolExecutor::execute_update_memory] other old_text mismatch"
+                    ));
+                    return Err(ToolError::InvalidArguments(format!(
+                        "old_text 不匹配。当前对 '{}' 的记忆为：\"{}\"（长度{}），你提交的是：\"{}\"（长度{}）。请基于当前内容重新提交修改。",
+                        target_name, current, current.len(), old_text, old_text.len()
+                    )));
+                }
+
+                crate::db::agent_relationship::upsert_memory(&conn, agent_id, &target_id, &target_type, new_text)
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG ToolExecutor::execute_update_memory] END updated memory agent_id={} -> target_id={}",
+                    agent_id, target_id
+                ));
+
+                Ok(Vec::new())
+            }
+            _ => {
+                Err(ToolError::InvalidArguments(format!(
+                    "不支持的 memory_type: '{}'，必须是 'self' 或 'other'", memory_type
+                )))
+            }
+        }
+    }
+
     async fn resolve_target_id(
         &self,
         agent_id: &str,
@@ -524,7 +724,7 @@ mod tests {
     use tokio::sync::Mutex;
     use rusqlite::Connection;
     use crate::db::connection::DbState;
-    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8};
+    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8, MIGRATION_V13};
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -537,6 +737,7 @@ mod tests {
         conn.execute_batch(MIGRATION_V6).unwrap();
         conn.execute_batch(MIGRATION_V7).unwrap();
         conn.execute_batch(MIGRATION_V8).unwrap();
+        conn.execute_batch(MIGRATION_V13).unwrap();
         conn
     }
 
@@ -664,4 +865,5 @@ mod tests {
         let fallback = crate::db::session::get_private_session_by_agent_id(&*conn_guard, "agent-1").unwrap().unwrap();
         assert_eq!(resolved2, fallback.id);
     }
+
 }
