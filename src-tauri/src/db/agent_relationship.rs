@@ -79,6 +79,7 @@ pub fn list_relationships_by_observer(
                 up.avatar_path as target_avatar,
                 '用户' as target_label,
                 COALESCE(ar.relationship_text, '') as relationship_text,
+                COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
                 0 as sort_order
             FROM app_settings s
@@ -97,6 +98,7 @@ pub fn list_relationships_by_observer(
                 a.avatar_path as target_avatar,
                 '好友' as target_label,
                 COALESCE(ar.relationship_text, '') as relationship_text,
+                COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
                 1 as sort_order
             FROM friendships f
@@ -115,6 +117,7 @@ pub fn list_relationships_by_observer(
                 a.avatar_path as target_avatar,
                 '群友' as target_label,
                 COALESCE(ar.relationship_text, '') as relationship_text,
+                COALESCE(ar.memory_text, '') as memory_text,
                 COALESCE(ar.updated_at, 0) as updated_at,
                 2 as sort_order
             FROM group_members gm_observer
@@ -143,6 +146,7 @@ pub fn list_relationships_by_observer(
             target_avatar: crate::db::resolve_avatar_path(row.get("target_avatar")?),
             target_label: row.get("target_label")?,
             relationship_text: row.get("relationship_text")?,
+            memory_text: row.get("memory_text")?,
             updated_at: row.get("updated_at")?,
         })
     })?;
@@ -205,6 +209,42 @@ pub fn remove_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) 
         (agent_id_2, agent_id_1),
     )?;
     crate::logger::backend("DEBUG", "[DEBUG agent_relationship::remove_friendship] success");
+    Ok(())
+}
+
+pub fn upsert_memory(
+    conn: &Connection,
+    observer_id: &str,
+    target_id: &str,
+    target_type: &str,
+    memory_text: &str,
+) -> Result<()> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::upsert_memory] observer_id={}, target_id={}, target_type={}, text_len={}",
+        observer_id, target_id, target_type, memory_text.len()
+    ));
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "INSERT INTO agent_relationships (observer_id, target_id, target_type, memory_text, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(observer_id, target_id, target_type) DO UPDATE SET
+             memory_text = excluded.memory_text,
+             updated_at = excluded.updated_at",
+        (observer_id, target_id, target_type, memory_text, now),
+    )?;
+    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::upsert_memory] success");
+    Ok(())
+}
+
+pub fn clear_memories_by_observer(conn: &Connection, observer_id: &str) -> Result<()> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG agent_relationship::clear_memories_by_observer] observer_id={}", observer_id
+    ));
+    conn.execute(
+        "UPDATE agent_relationships SET memory_text = '' WHERE observer_id = ?1",
+        [observer_id],
+    )?;
+    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::clear_memories_by_observer] success");
     Ok(())
 }
 
