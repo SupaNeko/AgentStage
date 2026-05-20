@@ -134,6 +134,23 @@
                 </div>
 
                 <div>
+                    <label class="block text-sm font-medium mb-1">溢出总结阈值</label>
+                    <p class="text-xs text-text-secondary mb-2">当超出历史消息限制的消息累计达到此数量时，自动触发 AI 总结。设为 0 关闭该功能。</p>
+                    <input
+                        type="number"
+                        min={0}
+                        max={500}
+                        value={config.overflow_summary_threshold ?? 50}
+                        onchange={(e) => {
+                            const v = parseInt(e.currentTarget.value);
+                            config = { ...config!, overflow_summary_threshold: v };
+                            queueSave({ overflow_summary_threshold: v });
+                        }}
+                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                </div>
+
+                <div>
                     <div class="flex items-center justify-between mb-1">
                         <label class="text-sm font-medium">自动消息限制</label>
                         <button
