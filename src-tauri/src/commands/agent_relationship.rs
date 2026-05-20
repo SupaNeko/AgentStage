@@ -51,3 +51,27 @@ pub async fn remove_friendship(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn update_agent_memory(
+    state: State<'_, DbState>,
+    observer_id: String,
+    target_id: String,
+    target_type: String,
+    memory_text: String,
+) -> Result<(), String> {
+    crate::logger::backend("DEBUG", &format!(
+        "[DEBUG update_agent_memory] observer_id={}, target_id={}, target_type={}, text_len={}",
+        observer_id, target_id, target_type, memory_text.len()
+    ));
+
+    if memory_text.chars().count() > 500 {
+        return Err(format!("记忆内容超过 500 字限制（当前 {} 字）", memory_text.chars().count()));
+    }
+
+    let conn = get_db(&state).await?;
+    agent_relationship::upsert_memory(&conn, &observer_id, &target_id, &target_type, &memory_text)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
