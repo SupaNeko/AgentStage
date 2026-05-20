@@ -53,11 +53,13 @@ ALTER TABLE session_settings ADD COLUMN last_overflow_summary_index INTEGER DEFA
 
 ### 4.1 触发位置
 
-在 **Scheduler 的后台扫描循环**（`start_background_scan`，每 5 秒）中增加一个检测步骤。
+在**每次消息插入后**异步检查，不堵塞消息的正常处理流程。
+
+具体位置：
+- **用户发送消息**：`commands/message.rs` 的 `send_user_message` 中，消息插入完成后 spawn 异步检查
+- **Agent 发送消息**：`llm/tool.rs` 的 `execute_send_message` 中，消息插入完成后 spawn 异步检查
 
 ### 4.2 触发条件
-
-对每个活跃会话（`is_deleted = 0`）：
 
 ```
 IF overflow_summary_threshold > 0
@@ -75,6 +77,10 @@ UPDATE session_settings
 SET last_overflow_summary_index = last_overflow_summary_index + overflow_summary_threshold
 WHERE session_id = ?;
 ```
+
+### 4.4 异步触发、不堵塞回复
+
+检查逻辑本身很轻量（一次 COUNT 查询），在消息插入后立即执行。如果条件满足，通过 `scheduler.spawn_overflow_summary(...)` 启动后台任务，**当前消息的正常回复流程不受影响**。
 
 ---
 
@@ -150,7 +156,15 @@ LIMIT ?3 OFFSET ?4
 
 ### 7.2 重置会话时
 
-`reset_session` 创建新 page 后，`last_overflow_summary_index` **不清零**。因为新 page 的消息是从 0 开始计数的，旧 page 的消息已经被归档。但如果用户希望重置后重新计数，可以手动在配置中重置 `last_overflow_summary_index`（暂不提供 UI）。
+`reset_session` 创建新 page 后，**将 `last_overflow_summary_index` 清零**：
+
+```sql
+UPDATE session_settings
+SET last_overflow_summary_index = 0
+WHERE session_id = ?;
+```
+
+因为新 page 的消息是从 0 开始计数的，旧 page 的消息已经被归档，之前的处理位置不再适用。
 
 ### 7.3 消息删除
 
@@ -158,9 +172,9 @@ LIMIT ?3 OFFSET ?4
 
 ### 7.4 多触发并发
 
-后台扫描每 5 秒一次，如果一次总结执行时间超过 5 秒，下一次扫描会再次检测同一会话。但由于 `last_overflow_summary_index` 在总结完成后才更新，未完成的总结不会导致重复触发（因为条件仍然满足，但同一会话的多次触发应该被防止）。
+消息可能连续快速插入，导致短时间内多次满足触发条件。但由于 `last_overflow_summary_index` 在总结完成后才更新，未完成的总结期间后续检查仍会看到相同的条件。
 
-**防护措施**：在 `run_overflow_summary` 开始时，检查是否已有同一会话的总结任务在运行。可以通过一个内存中的 `HashSet<String>`（运行中会话集合）来防止并发。
+**防护措施**：在 `run_overflow_summary` 开始时，检查是否已有同一会话的总结任务在运行。通过 Scheduler 中一个内存中的 `HashSet<String>`（运行中会话集合）来防止并发。
 
 ---
 
@@ -191,7 +205,9 @@ LIMIT ?3 OFFSET ?4
 | `src/db/migration.rs` | 修改 | 注册 V14 |
 | `src/models/session.rs` | 修改 | SessionConfig / UpdateSessionConfigRequest 增加字段 |
 | `src/db/session.rs` | 修改 | `get_session_config` / `update_session_config` 支持新字段 |
-| `src/scheduler/mod.rs` | 修改 | `start_background_scan` 增加溢出检测；新增 `run_overflow_summary` |
+| `src/scheduler/mod.rs` | 修改 | 新增 `spawn_overflow_summary` 和 `run_overflow_summary` |
+| `src/commands/message.rs` | 修改 | `send_user_message` 消息后异步触发溢出检查 |
+| `src/llm/tool.rs` | 修改 | `execute_send_message` 消息后异步触发溢出检查 |
 | `src/lib/components/SessionConfigPanel.svelte` | 修改 | 增加 overflow_summary_threshold 输入框 |
 | `src/lib/types.ts` | 修改 | SessionConfig 类型增加新字段 |
 
