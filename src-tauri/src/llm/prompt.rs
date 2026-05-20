@@ -508,6 +508,8 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
         conn
     }
 
@@ -826,7 +828,7 @@ mod tests {
 
         let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         assert!(prompt.contains("和伊莉雅的私聊"), "Private session name should use persona name");
-        assert!(prompt.contains("伊莉雅（好友）：魔伊世界观中的小学生魔术师"), "Participant list should use persona");
+        assert!(prompt.contains("- 伊莉雅（用户）："), "Participant list should use persona");
     }
 
     #[test]
@@ -848,7 +850,7 @@ mod tests {
         insert_message(&conn, &msg);
 
         let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        let user_count = prompt.matches("用户（好友）").count();
+        let user_count = prompt.matches("用户（用户）").count();
         assert_eq!(user_count, 1, "User entry should appear exactly once in participants, got {} occurrences", user_count);
     }
 
@@ -871,5 +873,69 @@ mod tests {
             prompt.contains("该会话还没有聊天消息"),
             "Empty session should be labeled in context_list. Prompt:\n{}", prompt
         );
+    }
+
+    #[test]
+    fn test_prompt_includes_long_term_memory() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, long_term_memory, memory_enabled, created_at, updated_at) VALUES (?1, ?2, ?3, '', '喜欢吃甜食', 1, ?4, ?4)",
+            ("agent1", "Test Agent", "A test persona", 0i64),
+        ).unwrap();
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(prompt.contains("【关于你的记忆】"), "Prompt should contain memory section");
+        assert!(prompt.contains("喜欢吃甜食"), "Prompt should contain long-term memory content");
+    }
+
+    #[test]
+    fn test_prompt_skips_memory_when_disabled() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, long_term_memory, memory_enabled, created_at, updated_at) VALUES (?1, ?2, ?3, '', '喜欢吃甜食', 0, ?4, ?4)",
+            ("agent1", "Test Agent", "A test persona", 0i64),
+        ).unwrap();
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(!prompt.contains("【关于你的记忆】"), "Prompt should NOT contain memory section when disabled");
+        assert!(!prompt.contains("喜欢吃甜食"), "Prompt should NOT contain memory content when disabled");
+    }
+
+    #[test]
+    fn test_prompt_structured_participants() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            ("agent1", "Alice", "Alice persona", "", 0i64),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            ("agent2", "Bob", "Bob persona", "Bob 的简介", 0i64),
+        ).unwrap();
+        let now = 0i64;
+        conn.execute(
+            "INSERT INTO friendships (id, agent_id_1, agent_id_2, participant_type_2, created_at, source_session_id) VALUES ('f1', 'agent1', 'agent2', 'agent', ?1, NULL)",
+            [now],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO agent_relationships (observer_id, target_id, target_type, relationship_text, memory_text, updated_at) VALUES ('agent1', 'agent2', 'agent', '好朋友', '他喜欢吃苹果', ?1)",
+            [now],
+        ).unwrap();
+
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+
+        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        println!("{}", prompt);
+        assert!(prompt.contains("- Bob（好友）：Bob 的简介"), "Participant line should include name, label, and simplified persona. Got:\n{}", prompt);
+        assert!(prompt.contains("[印象]：好朋友"), "Should contain [印象] line. Got:\n{}", prompt);
+        assert!(prompt.contains("[记忆]：他喜欢吃苹果"), "Should contain [记忆] line. Got:\n{}", prompt);
     }
 }
