@@ -617,7 +617,33 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V14).unwrap();
         conn
+    }
+
+    fn insert_session(conn: &Connection, session_id: &str, session_type: &str) {
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+            rusqlite::params![session_id, session_type, now],
+        ).unwrap();
+    }
+
+    fn insert_private_session(conn: &Connection, session_id: &str, agent_id: &str, page: i32) {
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, current_chat_page, created_at) VALUES (?1, 'user', 'user', 'agent', ?2, ?3, ?4)",
+            rusqlite::params![session_id, agent_id, page, now],
+        ).unwrap();
+    }
+
+    fn insert_session_settings(conn: &Connection, session_id: &str, history_limit: i32) {
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO session_settings (session_id, history_limit, message_limit, message_limit_enabled, mute_enabled, created_at, updated_at) VALUES (?1, ?2, 10, 1, 0, ?3, ?3)",
+            rusqlite::params![session_id, history_limit, now],
+        ).unwrap();
     }
 
     #[test]
@@ -713,6 +739,8 @@ mod tests {
             message_limit: Some(20),
             message_limit_enabled: Some(false),
             mute_enabled: Some(true),
+            overflow_summary_threshold: None,
+            last_overflow_summary_index: None,
         }).unwrap();
         
         let config = get_session_config(&conn, &session.id, "private").unwrap();
@@ -1174,5 +1202,27 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(page_count_after, 2, "Soft delete should archive current page by creating a new one");
+    }
+
+    #[test]
+    fn test_reset_session_clears_overflow_index() {
+        let conn = init_test_db();
+        insert_session(&conn, "sess1", "private");
+        insert_private_session(&conn, "sess1", "agent1", 0);
+        insert_session_settings(&conn, "sess1", 50);
+        
+        // Set overflow index to non-zero
+        conn.execute(
+            "UPDATE session_settings SET last_overflow_summary_index = 100 WHERE session_id = 'sess1'",
+            [],
+        ).unwrap();
+        
+        reset_session(&conn, "sess1").unwrap();
+        
+        let index: i32 = conn.query_row(
+            "SELECT last_overflow_summary_index FROM session_settings WHERE session_id = 'sess1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(index, 0, "reset_session should clear last_overflow_summary_index");
     }
 }
