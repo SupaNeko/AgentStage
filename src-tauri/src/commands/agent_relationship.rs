@@ -107,6 +107,10 @@ mod tests {
         DbState(Arc::new(Mutex::new(conn)))
     }
 
+    fn make_state(db_state: &DbState) -> tauri::State<'_, DbState> {
+        unsafe { std::mem::transmute(db_state) }
+    }
+
     fn create_test_agent(conn: &Connection, agent_id: &str, name: &str) {
         conn.execute(
             "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
@@ -123,7 +127,7 @@ mod tests {
 
         let long_text = "a".repeat(501);
         let result = update_agent_memory(
-            db_state, "agent1".to_string(), "agent2".to_string(), "agent".to_string(), long_text,
+            make_state(&db_state), "agent1".to_string(), "agent2".to_string(), "agent".to_string(), long_text,
         ).await;
 
         assert!(result.is_err());
@@ -138,7 +142,7 @@ mod tests {
         let db_state = make_db_state(conn);
 
         let result = update_agent_memory(
-            db_state, "agent1".to_string(), "agent2".to_string(), "agent".to_string(), "他喜欢吃苹果".to_string(),
+            make_state(&db_state), "agent1".to_string(), "agent2".to_string(), "agent".to_string(), "他喜欢吃苹果".to_string(),
         ).await;
 
         assert!(result.is_ok());
