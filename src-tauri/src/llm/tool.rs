@@ -866,4 +866,80 @@ mod tests {
         assert_eq!(resolved2, fallback.id);
     }
 
+    #[tokio::test]
+    async fn test_update_memory_self_updates_long_term_memory() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        let db_state = make_db_state(conn);
+
+        let executor = ToolExecutor::new(db_state);
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "update_memory".to_string(),
+            arguments: r#"{"memory_type":"self","target_name":"","old_text":"","new_text":"我喜欢在雨天读书"}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let memory: String = conn_guard.query_row(
+            "SELECT long_term_memory FROM agents WHERE id = 'agent-1'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(memory, "我喜欢在雨天读书");
+    }
+
+    #[tokio::test]
+    async fn test_update_memory_other_updates_agent_memory() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        create_test_agent(&conn, "agent-2", "Bob");
+        let db_state = make_db_state(conn);
+
+        let executor = ToolExecutor::new(db_state);
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "update_memory".to_string(),
+            arguments: r#"{"memory_type":"other","target_name":"Bob","old_text":"","new_text":"他讨厌吃香菜"}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let memory: String = conn_guard.query_row(
+            "SELECT memory_text FROM agent_relationships WHERE observer_id = 'agent-1' AND target_id = 'agent-2'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(memory, "他讨厌吃香菜");
+    }
+
+    #[tokio::test]
+    async fn test_update_memory_enforces_char_limits() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        create_test_agent(&conn, "agent-2", "Bob");
+        let db_state = make_db_state(conn);
+
+        let executor = ToolExecutor::new(db_state);
+
+        // self memory > 3000 chars
+        let long_self = "a".repeat(3001);
+        let tc_self = ToolCall {
+            id: "tc-self".to_string(),
+            name: "update_memory".to_string(),
+            arguments: format!(r#"{{"memory_type":"self","target_name":"","old_text":"","new_text":"{}"}}"#, long_self),
+        };
+        let result_self = executor.execute("agent-1", vec![tc_self], &HashMap::new()).await;
+        assert!(matches!(result_self, Err(ToolError::InvalidArguments(_))));
+
+        // other memory > 500 chars
+        let long_other = "b".repeat(501);
+        let tc_other = ToolCall {
+            id: "tc-other".to_string(),
+            name: "update_memory".to_string(),
+            arguments: format!(r#"{{"memory_type":"other","target_name":"Bob","old_text":"","new_text":"{}"}}"#, long_other),
+        };
+        let result_other = executor.execute("agent-1", vec![tc_other], &HashMap::new()).await;
+        assert!(matches!(result_other, Err(ToolError::InvalidArguments(_))));
+    }
 }
