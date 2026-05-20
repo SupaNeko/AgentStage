@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::agent::{Agent, CreateAgentRequest, UpdateAgentRequest};
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, api_key_encrypted, thinking_mode, is_deleted, deleted_at, created_at, updated_at";
+const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, is_deleted, deleted_at, created_at, updated_at";
 
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
@@ -25,12 +25,14 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
         top_p: row.get(16)?,
         presence_penalty: row.get(17)?,
         frequency_penalty: row.get(18)?,
-        api_key_encrypted: row.get(19)?,
-        thinking_mode: row.get::<_, i32>(20)? != 0,
-        is_deleted: row.get::<_, i32>(21)? != 0,
-        deleted_at: row.get(22)?,
-        created_at: row.get(23)?,
-        updated_at: row.get(24)?,
+        long_term_memory: row.get(19)?,
+        memory_enabled: row.get::<_, i32>(20)? != 0,
+        api_key_encrypted: row.get(21)?,
+        thinking_mode: row.get::<_, i32>(22)? != 0,
+        is_deleted: row.get::<_, i32>(23)? != 0,
+        deleted_at: row.get(24)?,
+        created_at: row.get(25)?,
+        updated_at: row.get(26)?,
     })
 }
 
@@ -45,13 +47,14 @@ pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
             id, name, avatar_path, detailed_persona, simplified_persona,
             personality, scenario, example_messages, first_message, creator_notes, tags,
             model_provider, model_name, base_url,
-            temperature, max_tokens, api_key_encrypted, thinking_mode, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"#,
+            temperature, max_tokens, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)"#,
         rusqlite::params![
             &id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
             &req.tags, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature.unwrap_or(0.7), req.max_tokens.unwrap_or(2048),
+            &req.long_term_memory, req.memory_enabled.unwrap_or(true) as i32,
             &api_key_encrypted, req.thinking_mode.unwrap_or(false) as i32, now, now,
         ],
     )?;
@@ -99,15 +102,18 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
             base_url = COALESCE(?14, base_url),
             temperature = COALESCE(?15, temperature),
             max_tokens = COALESCE(?16, max_tokens),
-            api_key_encrypted = COALESCE(?17, api_key_encrypted),
-            thinking_mode = COALESCE(?18, thinking_mode),
-            updated_at = ?19
+            long_term_memory = COALESCE(?17, long_term_memory),
+            memory_enabled = COALESCE(?18, memory_enabled),
+            api_key_encrypted = COALESCE(?19, api_key_encrypted),
+            thinking_mode = COALESCE(?20, thinking_mode),
+            updated_at = ?21
         WHERE id = ?1 AND is_deleted = 0"#,
         rusqlite::params![
             &req.id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
             &req.tags, &req.model_provider, &req.model_name, &req.base_url,
             req.temperature, req.max_tokens,
+            req.long_term_memory, req.memory_enabled.map(|v| v as i32),
             api_key_encrypted,
             req.thinking_mode.map(|v| v as i32),
             now,
@@ -115,6 +121,14 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
     )?;
     
     get_by_id(conn, &req.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
+}
+
+pub fn clear_long_term_memory(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE agents SET long_term_memory = '' WHERE id = ?1",
+        [id],
+    )?;
+    Ok(())
 }
 
 pub fn soft_delete(conn: &Connection, id: &str) -> Result<bool> {
