@@ -726,6 +726,26 @@ mod tests {
     }
 
     #[test]
+    fn test_reset_session_returns_tuple_and_increments_page_index() {
+        let conn = init_test_db();
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            ("agent1", "Test Agent", 0i64),
+        ).unwrap();
+        
+        let session = create_private_session(&conn, "agent1").unwrap();
+        
+        let (page_id_1, new_page_index_1) = reset_session(&conn, &session.id).unwrap();
+        assert!(!page_id_1.is_empty());
+        assert_eq!(new_page_index_1, 1);
+        
+        let (page_id_2, new_page_index_2) = reset_session(&conn, &session.id).unwrap();
+        assert!(!page_id_2.is_empty());
+        assert_eq!(new_page_index_2, 2);
+        assert_ne!(page_id_1, page_id_2);
+    }
+
+    #[test]
     fn test_prompt_assemble_with_new_session() {
         let conn = init_test_db();
         conn.execute(
