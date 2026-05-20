@@ -408,7 +408,8 @@ pub fn get_session_config(conn: &Connection, session_id: &str, session_type: &st
     conn.query_row(
         "SELECT ss.session_id, COALESCE(ss.history_limit, ?2), COALESCE(ss.message_limit, ?3),
                 ss.message_limit_enabled, ss.mute_enabled,
-                COALESCE(ps.agent_message_count, gs.agent_message_count, 0)
+                COALESCE(ps.agent_message_count, gs.agent_message_count, 0),
+                ss.overflow_summary_threshold, ss.last_overflow_summary_index
          FROM session_settings ss
          LEFT JOIN private_sessions ps ON ss.session_id = ps.session_id
          LEFT JOIN group_sessions gs ON ss.session_id = gs.session_id
@@ -422,6 +423,8 @@ pub fn get_session_config(conn: &Connection, session_id: &str, session_type: &st
                 message_limit_enabled: row.get::<_, i32>(3)? != 0,
                 mute_enabled: row.get::<_, i32>(4)? != 0,
                 agent_message_count: row.get(5)?,
+                overflow_summary_threshold: row.get(6)?,
+                last_overflow_summary_index: row.get(7)?,
             })
         },
     )
@@ -461,6 +464,8 @@ pub fn update_session_config(conn: &Connection, req: &crate::models::session::Up
     let message_limit = req.message_limit;
     let message_limit_enabled = req.message_limit_enabled.map(|v| v as i32);
     let mute_enabled = req.mute_enabled.map(|v| v as i32);
+    let overflow_summary_threshold = req.overflow_summary_threshold;
+    let last_overflow_summary_index = req.last_overflow_summary_index;
 
     let mut sets = Vec::new();
     let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
@@ -479,6 +484,14 @@ pub fn update_session_config(conn: &Connection, req: &crate::models::session::Up
     }
     if let Some(ref v) = mute_enabled {
         sets.push("mute_enabled = ?");
+        params.push(v as &dyn rusqlite::ToSql);
+    }
+    if let Some(ref v) = overflow_summary_threshold {
+        sets.push("overflow_summary_threshold = ?");
+        params.push(v as &dyn rusqlite::ToSql);
+    }
+    if let Some(ref v) = last_overflow_summary_index {
+        sets.push("last_overflow_summary_index = ?");
         params.push(v as &dyn rusqlite::ToSql);
     }
 
@@ -537,6 +550,12 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<(String, i32
 
     // 解除冻结
     conn.execute("DELETE FROM session_frozen_states WHERE session_id = ?1", [session_id])?;
+
+    // 清空 overflow summary index
+    conn.execute(
+        "UPDATE session_settings SET last_overflow_summary_index = 0 WHERE session_id = ?1",
+        [session_id],
+    )?;
 
     // 清空会话最后消息预览（新 page 没有消息）
     conn.execute(
