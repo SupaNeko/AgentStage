@@ -75,3 +75,72 @@ pub async fn update_agent_memory(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use rusqlite::Connection;
+    use crate::db::connection::DbState;
+    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8, MIGRATION_V9, MIGRATION_V11, MIGRATION_V12, MIGRATION_V13};
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        conn.execute_batch(MIGRATION_V5).unwrap();
+        conn.execute_batch(MIGRATION_V6).unwrap();
+        conn.execute_batch(MIGRATION_V7).unwrap();
+        conn.execute_batch(MIGRATION_V8).unwrap();
+        conn.execute_batch(MIGRATION_V9).unwrap();
+        conn.execute_batch(MIGRATION_V11).unwrap();
+        conn.execute_batch(MIGRATION_V12).unwrap();
+        conn.execute_batch(MIGRATION_V13).unwrap();
+        conn
+    }
+
+    fn make_db_state(conn: Connection) -> DbState {
+        DbState(Arc::new(Mutex::new(conn)))
+    }
+
+    fn create_test_agent(conn: &Connection, agent_id: &str, name: &str) {
+        conn.execute(
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, '', '', ?3, ?3)",
+            (agent_id, name, 0i64),
+        ).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_update_agent_memory_enforces_500_char_limit() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent1", "Alice");
+        create_test_agent(&conn, "agent2", "Bob");
+        let db_state = make_db_state(conn);
+
+        let long_text = "a".repeat(501);
+        let result = update_agent_memory(
+            db_state, "agent1".to_string(), "agent2".to_string(), "agent".to_string(), long_text,
+        ).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("500"));
+    }
+
+    #[tokio::test]
+    async fn test_update_agent_memory_saves_within_limit() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent1", "Alice");
+        create_test_agent(&conn, "agent2", "Bob");
+        let db_state = make_db_state(conn);
+
+        let result = update_agent_memory(
+            db_state, "agent1".to_string(), "agent2".to_string(), "agent".to_string(), "他喜欢吃苹果".to_string(),
+        ).await;
+
+        assert!(result.is_ok());
+    }
+}
