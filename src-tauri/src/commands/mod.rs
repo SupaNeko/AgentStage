@@ -5,5 +5,6 @@ pub mod log;
 pub mod message;
 pub mod session;
 pub mod settings;
+pub mod timer;
 pub mod upload;
 pub mod user_persona;
