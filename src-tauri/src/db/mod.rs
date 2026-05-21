@@ -6,6 +6,7 @@ pub mod connection;
 pub mod frozen_state;
 pub mod migration;
 pub mod schema;
+pub mod scheduled_task;
 pub mod session;
 pub mod message;
 pub mod settings;

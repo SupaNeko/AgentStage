@@ -7,7 +7,7 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 group_message_limit_default, private_limit_enabled_default, \
                 group_limit_enabled_default, theme, font_size, language, \
                 enter_to_send, launch_on_startup, minimize_to_tray, \
-                active_persona_id, default_avatar_path, updated_at \
+                active_persona_id, default_avatar_path, quiet_hours_start, quiet_hours_end, updated_at \
          FROM app_settings WHERE id = 1",
         [],
         |row| {
@@ -26,7 +26,9 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 minimize_to_tray: row.get::<_, i32>(11)? != 0,
                 active_persona_id: row.get(12).ok(),
                 default_avatar_path: row.get(13).ok(),
-                updated_at: row.get(14)?,
+                quiet_hours_start: row.get(14)?,
+                quiet_hours_end: row.get(15)?,
+                updated_at: row.get(16)?,
             })
         },
     );
@@ -55,7 +57,7 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
             group_limit_enabled_default = ?5, theme = ?6, font_size = ?7,
             language = ?8, enter_to_send = ?9, launch_on_startup = ?10,
             minimize_to_tray = ?11, active_persona_id = ?12,
-            default_avatar_path = ?13, updated_at = ?14 WHERE id = 1",
+            default_avatar_path = ?13, quiet_hours_start = ?14, quiet_hours_end = ?15, updated_at = ?16 WHERE id = 1",
         rusqlite::params![
             req.global_min_trigger_interval.unwrap_or(current.global_min_trigger_interval),
             req.private_message_limit_default.unwrap_or(current.private_message_limit_default),
@@ -70,6 +72,8 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
             req.minimize_to_tray.unwrap_or(current.minimize_to_tray) as i32,
             req.active_persona_id.as_deref().or(current.active_persona_id.as_deref()),
             req.default_avatar_path.as_deref().or(current.default_avatar_path.as_deref()),
+            current.quiet_hours_start,
+            current.quiet_hours_end,
             now,
         ],
     )?;
@@ -93,6 +97,10 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V8).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V14).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V15).unwrap();
         conn
     }
 

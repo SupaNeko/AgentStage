@@ -444,3 +444,38 @@ ALTER TABLE session_settings ADD COLUMN overflow_summary_threshold INTEGER DEFAU
 ALTER TABLE session_settings ADD COLUMN last_overflow_summary_index INTEGER DEFAULT 0;
 "#;
 
+pub const MIGRATION_V15: &str = r#"
+-- CHAT-41: Scheduled tasks
+CREATE TABLE scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    trigger_mode TEXT,
+    after_minutes INTEGER,
+    year INTEGER,
+    month INTEGER,
+    day INTEGER,
+    hour INTEGER,
+    minute INTEGER,
+    interval_minutes INTEGER,
+    next_trigger_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    target_session_id TEXT,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_scheduled_tasks_next_trigger 
+ON scheduled_tasks(next_trigger_at) WHERE is_active = 1;
+
+-- CHAT-42: Proactive session config on agents
+ALTER TABLE agents ADD COLUMN proactive_enabled INTEGER DEFAULT 0;
+ALTER TABLE agents ADD COLUMN proactive_min_minutes INTEGER DEFAULT 90;
+ALTER TABLE agents ADD COLUMN proactive_max_minutes INTEGER DEFAULT 180;
+
+-- CHAT-42: Quiet hours in settings
+ALTER TABLE settings ADD COLUMN quiet_hours_start INTEGER DEFAULT 0;
+ALTER TABLE settings ADD COLUMN quiet_hours_end INTEGER DEFAULT 480;
+"#;
+

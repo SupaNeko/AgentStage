@@ -16,6 +16,8 @@ pub struct AppSettings {
     pub minimize_to_tray: bool,
     pub active_persona_id: Option<String>,
     pub default_avatar_path: Option<String>,
+    pub quiet_hours_start: i32,
+    pub quiet_hours_end: i32,
     pub updated_at: i64,
 }
 
@@ -34,6 +36,8 @@ pub struct SettingsResponse {
     pub minimize_to_tray: bool,
     pub active_persona_id: Option<String>,
     pub default_avatar_path: Option<String>,
+    pub quiet_hours_start: i32,
+    pub quiet_hours_end: i32,
 }
 
 impl From<AppSettings> for SettingsResponse {
@@ -52,6 +56,8 @@ impl From<AppSettings> for SettingsResponse {
             minimize_to_tray: s.minimize_to_tray,
             active_persona_id: s.active_persona_id,
             default_avatar_path: s.default_avatar_path,
+            quiet_hours_start: s.quiet_hours_start,
+            quiet_hours_end: s.quiet_hours_end,
         }
     }
 }

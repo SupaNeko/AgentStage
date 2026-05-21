@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result, Row};
 use crate::models::agent::{Agent, CreateAgentRequest, UpdateAgentRequest};
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, is_deleted, deleted_at, created_at, updated_at";
+const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, proactive_enabled, proactive_min_minutes, proactive_max_minutes, is_deleted, deleted_at, created_at, updated_at";
 
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
@@ -29,10 +29,13 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
         memory_enabled: row.get::<_, i32>(20)? != 0,
         api_key_encrypted: row.get(21)?,
         thinking_mode: row.get::<_, i32>(22)? != 0,
-        is_deleted: row.get::<_, i32>(23)? != 0,
-        deleted_at: row.get(24)?,
-        created_at: row.get(25)?,
-        updated_at: row.get(26)?,
+        proactive_enabled: row.get::<_, i32>(23)? != 0,
+        proactive_min_minutes: row.get(24)?,
+        proactive_max_minutes: row.get(25)?,
+        is_deleted: row.get::<_, i32>(26)? != 0,
+        deleted_at: row.get(27)?,
+        created_at: row.get(28)?,
+        updated_at: row.get(29)?,
     })
 }
 

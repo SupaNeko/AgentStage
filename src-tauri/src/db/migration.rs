@@ -73,6 +73,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "overflow_summary_fields",
         sql: super::schema::MIGRATION_V14,
     },
+    Migration {
+        version: 15,
+        name: "timer_and_proactive_session",
+        sql: super::schema::MIGRATION_V15,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
