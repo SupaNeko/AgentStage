@@ -23,11 +23,29 @@ impl PromptAssembler {
 
         // Layer 1: System Prompt
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        layers.push(prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now));
+        layers.push(format!("{}\n{}",
+            prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now),
+            prompt_templates::TIMER_CAPABILITY
+        ));
 
         // Layer 2: Self Persona
         let agent = Self::get_agent(conn, agent_id)?;
         layers.push(format!("{}\n{}", prompt_templates::LAYER_PERSONA_TITLE, agent.detailed_persona));
+
+        // Layer 2.8: Pending Timers
+        let pending_timers = Self::get_pending_timers(conn, agent_id)?;
+        if !pending_timers.is_empty() {
+            let mut layer = String::from(prompt_templates::PENDING_TIMERS_TITLE);
+            layer.push('\n');
+            for (task_id, description, next_at) in pending_timers {
+                let time_str = match Local.timestamp_millis_opt(next_at) {
+                    LocalResult::Single(dt) => dt.format("%m-%d %H:%M").to_string(),
+                    _ => "??".to_string(),
+                };
+                layer.push_str(&format!("{}: {}（下次触发：{}）\n", task_id, description, time_str));
+            }
+            layers.push(layer);
+        }
 
         // Layer 2.5: Long-term Memory
         if agent.memory_enabled {
@@ -385,6 +403,16 @@ impl PromptAssembler {
             .replace("{{char}}", agent_name)
             .replace("{{user}}", user_name)
             .replace("{{group}}", "群聊")
+    }
+
+    fn get_pending_timers(conn: &Connection, agent_id: &str) -> Result<Vec<(String, String, i64)>, String> {
+        let mut stmt = conn.prepare(
+            "SELECT id, description, next_trigger_at FROM scheduled_tasks WHERE agent_id = ?1 AND is_active = 1 ORDER BY next_trigger_at ASC"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([agent_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     }
 
     fn get_agent(

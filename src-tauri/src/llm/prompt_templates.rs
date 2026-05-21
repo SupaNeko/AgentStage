@@ -41,7 +41,9 @@ pub const SYSTEM_PROMPT: &str = "你是一个正在参与即时通讯聊天的 A
 - send_message：回复消息
 - start_private_chat：主动发起私聊
 - update_relationship：更新你对某个角色的关系描述
-- update_memory：更新你的记忆（关于自己或关于其他参与者）";
+- update_memory：更新你的记忆（关于自己或关于其他参与者）
+- create_timer：创建一个定时任务（单次或循环）
+- delete_timer：删除一个定时任务";
 
 
 pub const LAYER_PERSONA_TITLE: &str = "【你的角色设定】";
@@ -158,6 +160,18 @@ pub const UNKNOWN_AGENT_PREFIX: &str = "未知角色(";
 pub const UNKNOWN_TYPE_PREFIX: &str = "未知(";
 
 pub const LAYER_MEMORY_TITLE: &str = "【关于你的记忆】";
+
+pub const TIMER_CAPABILITY: &str = r#"【定时事件能力】
+你拥有设定定时事件的能力：
+- 当你需要记住某个未来的约定、事件或提醒时，可以使用 create_timer 工具设定一个定时任务。
+- 支持单次触发（指定时间或多少分钟后）和循环触发（按固定间隔重复）。
+- 到时间后，你会收到一次特殊调用，Prompt 中会标注【定时任务触发】及事件内容。
+- 你可以在【等待中的定时任务】中查看当前已设定但未触发的任务。
+"#;
+
+pub const TIMER_TRIGGER_TITLE: &str = "【定时任务触发】";
+pub const PROACTIVE_TRIGGER_TITLE: &str = "【主动会话触发】";
+pub const PENDING_TIMERS_TITLE: &str = "【等待中的定时任务】";
 
 pub const SUMMARY_SYSTEM_PROMPT: &str = r#"你是一个记忆整理助手。你的任务是在一次聊天会话结束后，回顾对话内容，判断是否有值得长期保存的信息。
 
