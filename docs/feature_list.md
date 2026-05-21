@@ -98,10 +98,13 @@
 | CHAT-33 | Agent-to-Agent 私聊 | 角色可自主通过 `start_private_chat` Tool 开启与其他角色的私聊并发送第一句话；用户可旁观所有角色间私聊；会话列表和标题显示双头像；消息固定站位；用户不可输入 | P0 | ✅ 已实现 | `start_private_chat` Tool + symmetric private session + 双头像 UI + 禁用输入 + 自动互加好友 |
 | CHAT-34 | 历史消息不污染当前预览 | 历史会话模式中发送的消息不更新 `sessions.last_message_preview`，避免当前 page 为空时预览显示历史消息 | P1 | ✅ 已实现 | `send_history_message` 不更新 preview；前端历史模式不移除 `updateSessionPreview` |
 | CHAT-35 | 发送消息后切会话防覆盖 | 用户在会话 A 发送消息后切到会话 B，A 的 AI 回复到达时不应覆盖 B 的聊天内容；后台静默更新并在会话列表显示未读 | P0 | ✅ 已实现 | `handleSend` 发送成功后检查当前选中会话，已切走则跳过 `loadMessages`；`new_message` 防御检查生效 |
-| CHAT-36 | 记忆功能 — 长期任务维护 | 为每个角色维护跨会话的长期记忆，支持记录和追踪长期任务目标、关键事实和关系演变 | P0 | ⬜ 待实现 | 高优先级：角色应具备跨会话的连续性认知 |
-| CHAT-37 | 重置会话时AI总结记忆 | 每次重置会话（私聊/群聊）时，调用相关角色的AI总结当前page中的可用信息，更新该角色的长期记忆（可配置开关） | P1 | ⬜ 待实现 | 高优先级：不重置时，需在历史会话超长后自动生成总结 |
+| CHAT-36 | 记忆功能 — 长期任务维护 | 为每个角色维护跨会话的长期记忆，支持记录和追踪长期任务目标、关键事实和关系演变 | P0 | ✅ 已实现 | 拆分为 AGT-18（数据模型）、CHAT-39-ext（Prompt注入）、CHAT-37-ext（update_memory工具）、CHAT-37（重置总结）、CHAT-40（溢出总结）、CHAT-41（定时任务）、CHAT-42（主动会话） |
+| CHAT-37 | 重置会话时AI总结记忆 | 每次重置会话（私聊/群聊）时，调用相关角色的AI总结当前page中的可用信息，更新该角色的长期记忆 | P1 | ✅ 已实现 | Scheduler spawn_session_summary + SUMMARY_SYSTEM_PROMPT |
 | CHAT-38 | 禁言逻辑优化 | 优化群聊禁言的实现逻辑，确保禁言状态下所有角色触发机制被完全阻断，包括边缘场景（如定时任务、系统通知触发等） | P0 | ⬜ 待实现 | 高优先级：当前禁言可能存在绕过漏洞 |
-| CHAT-39 | 重构提示词拼接方案 | 将当前PromptAssembler的拼接逻辑重构为标准的 System Prompt + User Message 结构，替代现有的多层混合拼接，提升兼容性和可维护性 | P1 | ⬜ 待实现 | 中优先级：提升对各类模型的兼容性，降低Prompt调试难度 |
+| CHAT-39 | 重构提示词拼接方案 | 将当前PromptAssembler的拼接逻辑重构为标准的 System Prompt + User Message 结构，替代现有的多层混合拼接，提升兼容性和可维护性 | P1 | ✅ 已实现 | CHAT-39-ext: 复用 list_relationships_by_observer + 结构化参与者格式 + 记忆/关系分层注入 |
+| CHAT-40 | 超长消息批量处理 | 当会话消息超出阈值时，自动触发AI批量总结，更新角色长期记忆 | P1 | ✅ 已实现 | overflow_summary_threshold + last_overflow_summary_index + 消息插入时触发 |
+| CHAT-41 | 定时任务工具 | 角色可通过 create_timer/delete_timer 工具设定定时任务（单次/循环），到时间后无视CD触发一次调用 | P1 | ✅ 已实现 | Migration V15 + scheduled_tasks表 + LLM工具 + 前端定时任务面板 |
+| CHAT-42 | 主动会话机制 | 角色在空闲时主动发起话题，可配置时间区间 + 全局安静时段，触发时由角色自选会话 | P1 | ✅ 已实现 | proactive_enabled + proactive_timers内存计时 + 安静时段 + 前端配置 |
 
 ---
 
