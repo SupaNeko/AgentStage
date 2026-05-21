@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::TimeZone;
+use rand::Rng;
 use crate::db::connection::DbState;
 use crate::db::session as session_repo;
 use crate::db::message as message_repo;
@@ -380,6 +381,21 @@ impl ToolExecutor {
 
         // Trigger overflow summary check
         self.scheduler.spawn_overflow_summary(target_id.to_string());
+
+        // Reset proactive timer after sending a message
+        {
+            let conn = self.db_state.0.lock().await;
+            if let Ok(Some(agent)) = agent_repo::get_by_id(&conn, agent_id) {
+                drop(conn);
+                if agent.proactive_enabled {
+                    let min_ms = agent.proactive_min_minutes as i64 * 60 * 1000;
+                    let max_ms = agent.proactive_max_minutes as i64 * 60 * 1000;
+                    let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
+                    let next_at = chrono::Utc::now().timestamp_millis() + random_ms;
+                    self.scheduler.set_proactive_timer(agent_id, next_at).await;
+                }
+            }
+        }
 
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG ToolExecutor::execute_send_message] wrote {} messages target_id={}, page_index={:?}",

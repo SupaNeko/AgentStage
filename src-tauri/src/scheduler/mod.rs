@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use serde::Serialize;
+use chrono::Timelike;
 
 use crate::db::agent as agent_repo;
 use crate::db::session as session_repo;
@@ -10,7 +11,9 @@ use crate::db::settings as settings_repo;
 use crate::db::trigger_state as trigger_repo;
 use crate::db::frozen_state as frozen_state_repo;
 use crate::db::agent_unread as agent_unread_repo;
+use crate::db::scheduled_task as scheduled_task_repo;
 use crate::db::connection::DbState;
+use rand::Rng;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
 use crate::llm::prompt::PromptAssembler;
@@ -44,11 +47,21 @@ impl From<Message> for PendingMessage {
 }
 
 #[derive(Clone)]
+pub enum SpecialTriggerContext {
+    Timer {
+        description: String,
+        target_session_id: Option<String>,
+    },
+    Proactive,
+}
+
+#[derive(Clone)]
 pub struct Scheduler {
     unread_messages: Arc<Mutex<HashMap<String, HashMap<String, Vec<PendingMessage>>>>>,
     agent_notifications: Arc<Mutex<HashMap<String, HashSet<String>>>>,
     frozen_sessions: Arc<Mutex<HashSet<String>>>,
     running_summaries: Arc<Mutex<HashSet<String>>>,
+    proactive_timers: Arc<Mutex<HashMap<String, i64>>>,
     app_handle: Arc<std::sync::Mutex<Option<AppHandle>>>,
     db_state: DbState,
 }
@@ -60,6 +73,7 @@ impl Scheduler {
             agent_notifications: Arc::new(Mutex::new(HashMap::new())),
             frozen_sessions: Arc::new(Mutex::new(HashSet::new())),
             running_summaries: Arc::new(Mutex::new(HashSet::new())),
+            proactive_timers: Arc::new(Mutex::new(HashMap::new())),
             app_handle: Arc::new(std::sync::Mutex::new(None)),
             db_state,
         }
@@ -1033,6 +1047,238 @@ impl Scheduler {
             for agent_id in agent_ids {
                 let _ = self.try_trigger_agent(&agent_id).await;
             }
+        }
+    }
+
+    pub async fn trigger_special(
+        &self,
+        agent_id: &str,
+        context: SpecialTriggerContext,
+    ) -> Result<(), String> {
+        // 1. Set is_triggering (same pattern as trigger_agent)
+        {
+            let conn = self.db_state.0.lock().await;
+            let now = chrono::Utc::now().timestamp_millis();
+            conn.execute(
+                "INSERT INTO trigger_states (agent_id, is_triggering, last_trigger_time, updated_at) 
+                 VALUES (?1, 1, ?2, ?2)
+                 ON CONFLICT(agent_id) DO UPDATE SET is_triggering = 1, updated_at = excluded.updated_at",
+                (agent_id, now),
+            ).map_err(|e| e.to_string())?;
+        }
+
+        // 2. Get agent and provider
+        let agent = {
+            let conn = self.db_state.0.lock().await;
+            agent_repo::get_by_id(&conn, agent_id)
+                .map_err(|e| e.to_string())?
+                .ok_or("Agent not found")?
+        };
+
+        let api_key = if let Some(encrypted) = agent.api_key_encrypted {
+            crate::crypto::decrypt(&encrypted)
+                .map_err(|e| format!("Failed to decrypt API key: {}", e))?
+        } else {
+            crate::logger::backend("ERROR", &format!(
+                "[trigger_special] agent_id={}, no API key configured", agent_id
+            ));
+            self.clear_triggering_flag(agent_id).await?;
+            return Err("Agent has no API key configured".to_string());
+        };
+
+        let provider = OpenAiCompatibleProvider::new(
+            api_key,
+            agent.base_url,
+            agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
+            agent.temperature,
+            agent.max_tokens,
+        );
+
+        // 3. Build base prompt using PromptAssembler
+        let base_prompt = {
+            let conn = self.db_state.0.lock().await;
+            PromptAssembler::assemble(
+                &conn, agent_id, None, None, &[], &std::collections::HashSet::new()
+            ).map_err(|e| e.to_string())?
+        };
+
+        // 4. Append special context layer
+        let special_layer = match &context {
+            SpecialTriggerContext::Timer { description, target_session_id } => {
+                let mut s = format!("【定时任务触发】\n本次调用由定时任务发起。\n定时事件：{}", description);
+                if target_session_id.is_some() {
+                    s.push_str("\n你之前期望在指定会话中处理此事。");
+                }
+                s
+            }
+            SpecialTriggerContext::Proactive => {
+                "【主动会话触发】\n本次调用由主动会话机制触发。\n你可以选择一个会话开始话题、延续之前的话题，或保持沉默。如果决定发起话题，请使用 send_message 工具；如果保持沉默，无需操作。".to_string()
+            }
+        };
+
+        let full_prompt = format!("{}\n\n{}", base_prompt, special_layer);
+
+        // 5. Call LLM
+        let messages = vec![];
+        let response = Self::call_llm(&provider, &full_prompt, messages).await?;
+
+        // 6. Execute tool calls
+        let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
+        let session_pages = HashMap::new();
+        if let Err(e) = executor.execute(agent_id, response.tool_calls, &session_pages).await {
+            crate::logger::backend("ERROR", &format!("[trigger_special] tool execution failed: {}", e));
+        }
+
+        // 7. Clear is_triggering
+        self.clear_triggering_flag(agent_id).await?;
+
+        Ok(())
+    }
+
+    pub async fn start_timer_scan(self) {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            self.scan_scheduled_tasks().await;
+            self.scan_proactive_timers().await;
+        }
+    }
+
+    async fn scan_scheduled_tasks(&self) {
+        let conn = self.db_state.0.lock().await;
+        let now = chrono::Utc::now().timestamp_millis();
+        let tasks = match scheduled_task_repo::get_due_tasks(&conn, now) {
+            Ok(t) => t,
+            Err(e) => {
+                crate::logger::backend("ERROR", &format!("[TimerScan] query failed: {}", e));
+                return;
+            }
+        };
+        drop(conn);
+
+        for task in tasks {
+            {
+                let conn = self.db_state.0.lock().await;
+                if task.task_type == "single" {
+                    if let Err(e) = scheduled_task_repo::deactivate_task(&conn, &task.id) {
+                        crate::logger::backend("ERROR", &format!("[TimerScan] deactivate failed: {}", e));
+                    }
+                } else {
+                    let interval_ms = (task.interval_minutes.unwrap_or(60) as i64) * 60 * 1000;
+                    let new_next = task.next_trigger_at + interval_ms;
+                    if let Err(e) = scheduled_task_repo::update_next_trigger(&conn, &task.id, new_next) {
+                        crate::logger::backend("ERROR", &format!("[TimerScan] update next trigger failed: {}", e));
+                    }
+                }
+            }
+
+            let scheduler = self.clone();
+            let task_clone = task.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = scheduler.trigger_special(
+                    &task_clone.agent_id,
+                    SpecialTriggerContext::Timer {
+                        description: task_clone.description,
+                        target_session_id: task_clone.target_session_id,
+                    }
+                ).await {
+                    crate::logger::backend("ERROR", &format!("[TimerTrigger] failed: {}", e));
+                }
+            });
+        }
+    }
+
+    async fn scan_proactive_timers(&self) {
+        let now = chrono::Utc::now().timestamp_millis();
+        let timers = self.proactive_timers.lock().await.clone();
+
+        for (agent_id, next_at) in timers {
+            if next_at > now {
+                continue;
+            }
+
+            if self.is_in_quiet_hours().await {
+                self.reset_proactive_timer(&agent_id).await;
+                continue;
+            }
+
+            let scheduler = self.clone();
+            let agent_id_clone = agent_id.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = scheduler.trigger_special(
+                    &agent_id_clone,
+                    SpecialTriggerContext::Proactive
+                ).await {
+                    crate::logger::backend("ERROR", &format!("[ProactiveTrigger] failed: {}", e));
+                }
+            });
+
+            self.reset_proactive_timer(&agent_id).await;
+        }
+    }
+
+    async fn is_in_quiet_hours(&self) -> bool {
+        let conn = self.db_state.0.lock().await;
+        let settings = match settings_repo::get_or_create_settings(&conn) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        drop(conn);
+
+        if settings.quiet_hours_start < 0 || settings.quiet_hours_end < 0 {
+            return false;
+        }
+
+        let now = chrono::Local::now();
+        let current_minutes = (now.hour() * 60 + now.minute()) as i32;
+
+        if settings.quiet_hours_start <= settings.quiet_hours_end {
+            current_minutes >= settings.quiet_hours_start && current_minutes < settings.quiet_hours_end
+        } else {
+            current_minutes >= settings.quiet_hours_start || current_minutes < settings.quiet_hours_end
+        }
+    }
+
+    pub async fn set_proactive_timer(&self, agent_id: &str, next_at: i64) {
+        self.proactive_timers.lock().await.insert(agent_id.to_string(), next_at);
+    }
+
+    async fn reset_proactive_timer(&self, agent_id: &str) {
+        let conn = self.db_state.0.lock().await;
+        let agent = match agent_repo::get_by_id(&conn, agent_id) {
+            Ok(Some(a)) => a,
+            _ => return,
+        };
+        drop(conn);
+
+        if !agent.proactive_enabled {
+            self.proactive_timers.lock().await.remove(agent_id);
+            return;
+        }
+
+        let min_ms = agent.proactive_min_minutes as i64 * 60 * 1000;
+        let max_ms = agent.proactive_max_minutes as i64 * 60 * 1000;
+        let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
+        let next = chrono::Utc::now().timestamp_millis() + random_ms;
+        self.proactive_timers.lock().await.insert(agent_id.to_string(), next);
+    }
+
+    pub async fn init_proactive_timers(&self) {
+        let conn = self.db_state.0.lock().await;
+        let agents = match agent_repo::list_all(&conn) {
+            Ok(a) => a.into_iter().filter(|a| a.proactive_enabled).collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        drop(conn);
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut timers = self.proactive_timers.lock().await;
+
+        for agent in agents {
+            let min_ms = agent.proactive_min_minutes as i64 * 60 * 1000;
+            let max_ms = agent.proactive_max_minutes as i64 * 60 * 1000;
+            let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
+            timers.insert(agent.id, now + random_ms);
         }
     }
 
