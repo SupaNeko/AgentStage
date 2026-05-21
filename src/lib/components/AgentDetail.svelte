@@ -14,6 +14,7 @@
     import AgentRelationshipPanel from './AgentRelationshipPanel.svelte';
     import ImportModelConfigModal from './ImportModelConfigModal.svelte';
     import AgentMemoryPanel from './AgentMemoryPanel.svelte';
+    import AgentTimerPanel from './AgentTimerPanel.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
@@ -21,7 +22,7 @@
     let error = $state('');
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
-    let activeTab = $state<'config' | 'relationships' | 'memory'>('config');
+    let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer'>('config');
     let testingApi = $state(false);
     let testResult = $state<{ success: boolean; latencyMs: number; message: string } | null>(null);
     let showImportModal = $state(false);
@@ -265,6 +266,12 @@
                 >
                     记忆
                 </button>
+                <button
+                    onclick={() => activeTab = 'timer'}
+                    class="py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'timer' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}"
+                >
+                    定时任务
+                </button>
             </div>
         </div>
 
@@ -417,6 +424,8 @@
                     bind:longTermMemory={form.long_term_memory}
                     bind:memoryEnabled={form.memory_enabled}
                 />
+            {:else if activeTab === 'timer'}
+                <AgentTimerPanel agentId={agent.id} />
             {/if}
         </div>
 
