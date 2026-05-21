@@ -475,7 +475,7 @@ ALTER TABLE agents ADD COLUMN proactive_min_minutes INTEGER DEFAULT 90;
 ALTER TABLE agents ADD COLUMN proactive_max_minutes INTEGER DEFAULT 180;
 
 -- CHAT-42: Quiet hours in settings
-ALTER TABLE settings ADD COLUMN quiet_hours_start INTEGER DEFAULT 0;
-ALTER TABLE settings ADD COLUMN quiet_hours_end INTEGER DEFAULT 480;
+ALTER TABLE app_settings ADD COLUMN quiet_hours_start INTEGER DEFAULT 0;
+ALTER TABLE app_settings ADD COLUMN quiet_hours_end INTEGER DEFAULT 480;
 "#;
 

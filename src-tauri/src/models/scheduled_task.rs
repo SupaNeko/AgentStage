@@ -32,6 +32,7 @@ pub struct CreateTimerRequest {
     pub hour: Option<i32>,
     pub minute: Option<i32>,
     pub interval_minutes: Option<i32>,
+    pub next_trigger_at: Option<i64>,
     pub target_session_id: Option<String>,
 }
 
