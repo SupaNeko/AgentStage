@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { invoke } from '@tauri-apps/api/core';
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { X, User } from 'lucide-svelte';
@@ -10,11 +11,29 @@
     let showAvatarModal = $state(false);
     let userAvatar = $state<string | null>(null);
 
+    let quietHoursEnabled = $state(false);
+    let quietStart = $state('00:00');
+    let quietEnd = $state('08:00');
+
+    function minutesToTime(minutes: number): string {
+        const h = Math.floor(minutes / 60).toString().padStart(2, '0');
+        const m = (minutes % 60).toString().padStart(2, '0');
+        return `${h}:${m}`;
+    }
+
+    function timeToMinutes(time: string): number {
+        const [h, m] = time.split(':').map(Number);
+        return h * 60 + m;
+    }
+
     $effect(() => {
         if (settingsStore.settings) {
             draft = {
                 global_min_trigger_interval: settingsStore.settings.global_min_trigger_interval,
             };
+            quietHoursEnabled = (settingsStore.settings.quiet_hours_start ?? -1) >= 0;
+            quietStart = minutesToTime(settingsStore.settings.quiet_hours_start ?? 0);
+            quietEnd = minutesToTime(settingsStore.settings.quiet_hours_end ?? 480);
         }
     });
 
@@ -24,6 +43,21 @@
             await settingsStore.update({
                 global_min_trigger_interval: draft.global_min_trigger_interval,
             });
+            if (quietHoursEnabled) {
+                await invoke('update_quiet_hours', {
+                    quiet_hours_start: timeToMinutes(quietStart),
+                    quiet_hours_end: timeToMinutes(quietEnd),
+                });
+            } else {
+                await invoke('update_quiet_hours', {
+                    quiet_hours_start: -1,
+                    quiet_hours_end: -1,
+                });
+            }
+            if (settingsStore.settings) {
+                settingsStore.settings.quiet_hours_start = quietHoursEnabled ? timeToMinutes(quietStart) : -1;
+                settingsStore.settings.quiet_hours_end = quietHoursEnabled ? timeToMinutes(quietEnd) : -1;
+            }
             toastStore.show('已保存', 'success', 2000);
         } catch (err) {
             toastStore.show(`保存失败：${err}`, 'error');
@@ -67,6 +101,22 @@
                     class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
                 <p class="text-xs text-text-secondary mt-1">0 = 不限制，>0 = 防止角色被连续调用的最小间隔秒数</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold mb-2">安静时段</h3>
+                <label class="flex items-center gap-2 mb-2">
+                    <input type="checkbox" bind:checked={quietHoursEnabled} />
+                    <span>启用安静时段</span>
+                </label>
+                {#if quietHoursEnabled}
+                    <div class="flex gap-2 items-center">
+                        <input type="time" bind:value={quietStart} class="px-2 py-1 bg-bg border border-border rounded" />
+                        <span>~</span>
+                        <input type="time" bind:value={quietEnd} class="px-2 py-1 bg-bg border border-border rounded" />
+                    </div>
+                    <p class="text-xs text-text-secondary mt-1">在此期间，所有主动会话和定时任务均不会触发（到达后顺延）。</p>
+                {/if}
             </div>
         </div>
         <div class="p-4 border-t border-border flex justify-end">

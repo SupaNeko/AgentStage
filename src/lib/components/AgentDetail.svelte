@@ -28,6 +28,11 @@
     let showImportModal = $state(false);
     let apiKeyVisible = $state(false);
 
+    // Proactive session state
+    let proactiveEnabled = $state(false);
+    let proactiveMinMinutes = $state(10);
+    let proactiveMaxMinutes = $state(30);
+
     // Form state
     let form = $state({
         name: '',
@@ -109,6 +114,9 @@
                     long_term_memory: result.long_term_memory || '',
                     memory_enabled: result.memory_enabled ?? true,
                 };
+                proactiveEnabled = !!result.proactive_enabled;
+                proactiveMinMinutes = result.proactive_min_minutes ?? 10;
+                proactiveMaxMinutes = result.proactive_max_minutes ?? 30;
             }
         } catch (err) {
             logger.debug('[DEBUG AgentDetail.loadAgent] failed', { id, error: err });
@@ -140,6 +148,12 @@
             };
             const updated = await invoke<Agent>('update_agent', { req: updateReq });
             agent = updated;
+            await invoke('update_agent_proactive', {
+                agent_id: agent.id,
+                proactive_enabled: proactiveEnabled ? 1 : 0,
+                proactive_min_minutes: proactiveMinMinutes,
+                proactive_max_minutes: proactiveMaxMinutes,
+            });
             logger.debug('[DEBUG AgentDetail.handleSave] success', { id: agent.id });
             toastStore.show('已保存', 'success', 2000);
         } catch (err) {
@@ -415,6 +429,25 @@
                         </div>
                     </div>
                     </div>
+
+                    <!-- Proactive Session -->
+                    <div class="mt-6 border-t border-border pt-4">
+                        <h3 class="font-semibold mb-3">主动会话机制</h3>
+                        <label class="flex items-center gap-2 mb-3">
+                            <input type="checkbox" bind:checked={proactiveEnabled} />
+                            <span>启用主动会话</span>
+                        </label>
+                        {#if proactiveEnabled}
+                            <div class="flex gap-2 items-center">
+                                <span class="text-sm">触发时间区间（分钟）</span>
+                                <input type="number" min={1} bind:value={proactiveMinMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded" />
+                                <span>~</span>
+                                <input type="number" min={1} bind:value={proactiveMaxMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded" />
+                            </div>
+                            <p class="text-xs text-text-secondary mt-1">角色每次发消息后，会在此区间内随机一个时间，若期间未再发言则触发一次。</p>
+                        {/if}
+                    </div>
+
                 </div>
             {:else if activeTab === 'relationships'}
                 <AgentRelationshipPanel agentId={agent.id} />
