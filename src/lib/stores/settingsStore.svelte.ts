@@ -14,6 +14,8 @@ export interface AppSettings {
     minimize_to_tray?: boolean;
     active_persona_id?: string | null;
     default_avatar_path?: string | null;
+    quiet_hours_start?: number;
+    quiet_hours_end?: number;
 }
 
 class SettingsStore {

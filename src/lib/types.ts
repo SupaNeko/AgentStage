@@ -22,6 +22,9 @@ export interface Agent {
     long_term_memory?: string;
     memory_enabled?: boolean;
     thinking_mode?: boolean;
+    proactive_enabled?: number;
+    proactive_min_minutes?: number;
+    proactive_max_minutes?: number;
     is_deleted: boolean;
     deleted_at: number | null;
     created_at: number;
@@ -121,4 +124,37 @@ export interface GeneratePersonaResult {
     creator_notes: string | null;
     detailed_persona: string;
     simplified_persona: string;
+}
+
+export interface ScheduledTask {
+    id: string;
+    agent_id: string;
+    description: string;
+    task_type: 'single' | 'recurring';
+    trigger_mode?: 'after_minutes' | 'datetime';
+    after_minutes?: number;
+    year?: number;
+    month?: number;
+    day?: number;
+    hour?: number;
+    minute?: number;
+    interval_minutes?: number;
+    next_trigger_at: number;
+    created_at: number;
+    is_active: number;
+    target_session_id?: string;
+}
+
+export interface TimerFormData {
+    description: string;
+    task_type: 'single' | 'recurring';
+    trigger_mode?: 'after_minutes' | 'datetime';
+    after_minutes?: number;
+    year?: number;
+    month?: number;
+    day?: number;
+    hour?: number;
+    minute?: number;
+    interval_minutes?: number;
+    target_session_id?: string;
 }
