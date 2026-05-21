@@ -126,6 +126,20 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
     get_by_id(conn, &req.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
+pub fn update_proactive_config(
+    conn: &Connection,
+    agent_id: &str,
+    enabled: i32,
+    min_minutes: i32,
+    max_minutes: i32,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE agents SET proactive_enabled = ?1, proactive_min_minutes = ?2, proactive_max_minutes = ?3, updated_at = ?4 WHERE id = ?5",
+        rusqlite::params![enabled, min_minutes, max_minutes, chrono::Utc::now().timestamp_millis(), agent_id],
+    )?;
+    Ok(())
+}
+
 pub fn clear_long_term_memory(conn: &Connection, id: &str) -> Result<()> {
     conn.execute(
         "UPDATE agents SET long_term_memory = '' WHERE id = ?1",
@@ -149,4 +163,66 @@ pub fn get_agent_by_name(conn: &Connection, name: &str) -> Result<Option<Agent>>
     )?;
     let mut rows = stmt.query_map([name], row_to_agent)?;
     rows.next().transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::agent::CreateAgentRequest;
+
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V8).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V14).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V15).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_update_proactive_config() {
+        let conn = init_test_db();
+        let req = CreateAgentRequest {
+            name: "Test Agent".to_string(),
+            avatar_path: None,
+            detailed_persona: "detailed".to_string(),
+            simplified_persona: "simple".to_string(),
+            personality: None,
+            scenario: None,
+            example_messages: None,
+            first_message: None,
+            creator_notes: None,
+            tags: None,
+            model_provider: "openai".to_string(),
+            model_name: "gpt-4".to_string(),
+            base_url: None,
+            api_key: "test-key".to_string(),
+            temperature: None,
+            max_tokens: None,
+            thinking_mode: None,
+            long_term_memory: None,
+            memory_enabled: None,
+        };
+        let agent = create(&conn, &req).unwrap();
+        assert!(!agent.proactive_enabled);
+        assert_eq!(agent.proactive_min_minutes, 90);
+        assert_eq!(agent.proactive_max_minutes, 180);
+
+        update_proactive_config(&conn, &agent.id, 1, 30, 60).unwrap();
+
+        let updated = get_by_id(&conn, &agent.id).unwrap().unwrap();
+        assert!(updated.proactive_enabled);
+        assert_eq!(updated.proactive_min_minutes, 30);
+        assert_eq!(updated.proactive_max_minutes, 60);
+    }
 }

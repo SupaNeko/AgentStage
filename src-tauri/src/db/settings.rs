@@ -80,6 +80,18 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
     Ok(())
 }
 
+pub fn update_quiet_hours(
+    conn: &Connection,
+    start: i32,
+    end: i32,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE app_settings SET quiet_hours_start = ?1, quiet_hours_end = ?2 WHERE id = 1",
+        rusqlite::params![start, end],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +144,19 @@ mod tests {
         assert_eq!(after.global_min_trigger_interval, 60);
         assert_eq!(after.theme, "system");
         assert_eq!(after.font_size, "medium");
+    }
+
+    #[test]
+    fn test_update_quiet_hours() {
+        let conn = init_test_db();
+        let before = get_or_create_settings(&conn).unwrap();
+        assert_eq!(before.quiet_hours_start, 0);
+        assert_eq!(before.quiet_hours_end, 480);
+
+        update_quiet_hours(&conn, 120, 360).unwrap();
+
+        let after = get_or_create_settings(&conn).unwrap();
+        assert_eq!(after.quiet_hours_start, 120);
+        assert_eq!(after.quiet_hours_end, 360);
     }
 }
