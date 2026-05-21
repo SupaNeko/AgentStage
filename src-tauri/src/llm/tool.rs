@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use chrono::TimeZone;
 use crate::db::connection::DbState;
 use crate::db::session as session_repo;
 use crate::db::message as message_repo;
 use crate::db::agent as agent_repo;
 use crate::models::message::Message;
+use crate::models::scheduled_task::CreateTimerRequest;
 
 pub fn split_br_tags(content: &str) -> Vec<String> {
     content.split("<br/>")
@@ -155,6 +157,60 @@ pub fn fill_character_fields_tool_schema() -> serde_json::Value {
     })
 }
 
+pub fn create_timer_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "create_timer",
+            "description": "创建一个定时任务。你可以设定一个未来事件或循环事件，到时间后会收到一次特殊调用。支持两种方式：1. 多少分钟后触发（单次）；2. 指定具体日期时间触发（单次）；3. 按固定间隔循环触发。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": { "type": "string", "description": "事件描述，如'提醒起床'" },
+                    "task_type": { "type": "string", "enum": ["single", "recurring"] },
+                    "trigger_mode": { "type": "string", "enum": ["after_minutes", "datetime"] },
+                    "after_minutes": { "type": "integer" },
+                    "year": { "type": "integer" },
+                    "month": { "type": "integer" },
+                    "day": { "type": "integer" },
+                    "hour": { "type": "integer" },
+                    "minute": { "type": "integer" },
+                    "interval_minutes": { "type": "integer", "description": "循环间隔分钟数" }
+                },
+                "required": ["description", "task_type"]
+            }
+        }
+    })
+}
+
+pub fn delete_timer_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "delete_timer",
+            "description": "删除一个你创建的定时任务。你可以在'等待中的定时任务'中查看任务ID。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": { "type": "string" }
+                },
+                "required": ["task_id"]
+            }
+        }
+    })
+}
+
+pub fn get_all_tool_schemas() -> Vec<serde_json::Value> {
+    vec![
+        send_message_tool_schema(),
+        start_private_chat_tool_schema(),
+        update_relationship_tool_schema(),
+        update_memory_tool_schema(),
+        create_timer_tool_schema(),
+        delete_timer_tool_schema(),
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
@@ -245,6 +301,14 @@ impl ToolExecutor {
                 "update_memory" => {
                     let _msgs = self.execute_update_memory(agent_id, &tc.arguments).await?;
                     // update_memory 不返回消息，仅修改数据库
+                }
+                "create_timer" => {
+                    let _msgs = self.execute_create_timer(agent_id, &tc.arguments).await?;
+                    // create_timer 不返回消息，仅修改数据库
+                }
+                "delete_timer" => {
+                    let _msgs = self.execute_delete_timer(agent_id, &tc.arguments).await?;
+                    // delete_timer 不返回消息，仅修改数据库
                 }
                 _ => {
                     crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
@@ -675,6 +739,91 @@ impl ToolExecutor {
         }
     }
 
+    async fn execute_create_timer(
+        &self,
+        agent_id: &str,
+        arguments: &str,
+    ) -> Result<Vec<Message>, ToolError> {
+        let args: serde_json::Value = serde_json::from_str(arguments)
+            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let description = args["description"].as_str().ok_or(ToolError::InvalidArguments("missing description".to_string()))?;
+        let task_type = args["task_type"].as_str().ok_or(ToolError::InvalidArguments("missing task_type".to_string()))?;
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let next_trigger_at = if task_type == "single" {
+            let trigger_mode = args["trigger_mode"].as_str().ok_or(ToolError::InvalidArguments("missing trigger_mode".to_string()))?;
+            if trigger_mode == "after_minutes" {
+                let minutes = args["after_minutes"].as_i64().ok_or(ToolError::InvalidArguments("missing after_minutes".to_string()))?;
+                if minutes <= 0 { return Err(ToolError::InvalidArguments("after_minutes must be > 0".to_string())); }
+                now + minutes * 60 * 1000
+            } else if trigger_mode == "datetime" {
+                let year = args["year"].as_i64().ok_or(ToolError::InvalidArguments("missing year".to_string()))? as i32;
+                let month = args["month"].as_i64().ok_or(ToolError::InvalidArguments("missing month".to_string()))? as u32;
+                let day = args["day"].as_i64().ok_or(ToolError::InvalidArguments("missing day".to_string()))? as u32;
+                let hour = args["hour"].as_i64().ok_or(ToolError::InvalidArguments("missing hour".to_string()))? as u32;
+                let minute = args["minute"].as_i64().ok_or(ToolError::InvalidArguments("missing minute".to_string()))? as u32;
+                let dt = chrono::Local.with_ymd_and_hms(year, month, day, hour, minute, 0)
+                    .single().ok_or(ToolError::InvalidArguments("invalid datetime".to_string()))?;
+                let ts = dt.timestamp_millis();
+                if ts <= now { return Err(ToolError::InvalidArguments("datetime must be in the future".to_string())); }
+                ts
+            } else {
+                return Err(ToolError::InvalidArguments("invalid trigger_mode".to_string()));
+            }
+        } else if task_type == "recurring" {
+            let interval = args["interval_minutes"].as_i64().ok_or(ToolError::InvalidArguments("missing interval_minutes".to_string()))?;
+            if interval <= 0 { return Err(ToolError::InvalidArguments("interval_minutes must be > 0".to_string())); }
+            now + interval * 60 * 1000
+        } else {
+            return Err(ToolError::InvalidArguments("invalid task_type".to_string()));
+        };
+
+        let req = CreateTimerRequest {
+            description: description.to_string(),
+            task_type: task_type.to_string(),
+            trigger_mode: args["trigger_mode"].as_str().map(|s| s.to_string()),
+            after_minutes: args["after_minutes"].as_i64().map(|v| v as i32),
+            year: args["year"].as_i64().map(|v| v as i32),
+            month: args["month"].as_i64().map(|v| v as i32),
+            day: args["day"].as_i64().map(|v| v as i32),
+            hour: args["hour"].as_i64().map(|v| v as i32),
+            minute: args["minute"].as_i64().map(|v| v as i32),
+            interval_minutes: args["interval_minutes"].as_i64().map(|v| v as i32),
+            next_trigger_at: Some(next_trigger_at),
+            target_session_id: None,
+        };
+
+        let conn = self.db_state.0.lock().await;
+        let task_id = crate::db::scheduled_task::insert_task(&conn, &req, agent_id)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        crate::logger::backend("INFO", &format!("[create_timer] agent_id={} created task_id={}", agent_id, task_id));
+        Ok(Vec::new())
+    }
+
+    async fn execute_delete_timer(
+        &self,
+        agent_id: &str,
+        arguments: &str,
+    ) -> Result<Vec<Message>, ToolError> {
+        let args: serde_json::Value = serde_json::from_str(arguments)
+            .map_err(|e| ToolError::InvalidArguments(e.to_string()))?;
+        let task_id = args["task_id"].as_str().ok_or(ToolError::InvalidArguments("missing task_id".to_string()))?;
+
+        let conn = self.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&conn, agent_id)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        if !tasks.iter().any(|t| t.id == task_id) {
+            return Err(ToolError::InvalidArguments("任务不存在或不属于你".to_string()));
+        }
+
+        crate::db::scheduled_task::delete_task(&conn, task_id)
+            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+        crate::logger::backend("INFO", &format!("[delete_timer] agent_id={} deleted task_id={}", agent_id, task_id));
+        Ok(Vec::new())
+    }
+
     async fn resolve_target_id(
         &self,
         agent_id: &str,
@@ -954,5 +1103,143 @@ mod tests {
         };
         let result_other = executor.execute("agent-1", vec![tc_other], &HashMap::new()).await;
         assert!(matches!(result_other, Err(ToolError::InvalidArguments(_))));
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_timer_after_minutes() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        let db_state = make_db_state(conn);
+
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "create_timer".to_string(),
+            arguments: r#"{"description":"reminder","task_type":"single","trigger_mode":"after_minutes","after_minutes":5}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].description, "reminder");
+        assert_eq!(tasks[0].task_type, "single");
+        assert_eq!(tasks[0].after_minutes, Some(5));
+        assert!(tasks[0].next_trigger_at > chrono::Utc::now().timestamp_millis());
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_timer_datetime() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        let db_state = make_db_state(conn);
+
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "create_timer".to_string(),
+            arguments: r#"{"description":"future event","task_type":"single","trigger_mode":"datetime","year":2099,"month":1,"day":1,"hour":12,"minute":0}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].description, "future event");
+        assert_eq!(tasks[0].year, Some(2099));
+        assert_eq!(tasks[0].month, Some(1));
+        assert_eq!(tasks[0].day, Some(1));
+        assert_eq!(tasks[0].hour, Some(12));
+        assert_eq!(tasks[0].minute, Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_execute_create_timer_recurring() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        let db_state = make_db_state(conn);
+
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "create_timer".to_string(),
+            arguments: r#"{"description":"recurring","task_type":"recurring","interval_minutes":10}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].task_type, "recurring");
+        assert_eq!(tasks[0].interval_minutes, Some(10));
+    }
+
+    #[tokio::test]
+    async fn test_execute_delete_timer() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        let db_state = make_db_state(conn);
+
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+        let tc_create = ToolCall {
+            id: "tc-1".to_string(),
+            name: "create_timer".to_string(),
+            arguments: r#"{"description":"to delete","task_type":"single","trigger_mode":"after_minutes","after_minutes":5}"#.to_string(),
+        };
+        let _ = executor.execute("agent-1", vec![tc_create], &HashMap::new()).await.unwrap();
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        let task_id = tasks[0].id.clone();
+        drop(conn_guard);
+
+        let tc_delete = ToolCall {
+            id: "tc-2".to_string(),
+            name: "delete_timer".to_string(),
+            arguments: format!(r#"{{"task_id":"{}"}}"#, task_id),
+        };
+        let result = executor.execute("agent-1", vec![tc_delete], &HashMap::new()).await;
+        assert!(result.is_ok());
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        assert_eq!(tasks.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_delete_timer_not_owned_fails() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        create_test_agent(&conn, "agent-2", "Bob");
+        let db_state = make_db_state(conn);
+
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+        let tc_create = ToolCall {
+            id: "tc-1".to_string(),
+            name: "create_timer".to_string(),
+            arguments: r#"{"description":"secret","task_type":"single","trigger_mode":"after_minutes","after_minutes":5}"#.to_string(),
+        };
+        let _ = executor.execute("agent-1", vec![tc_create], &HashMap::new()).await.unwrap();
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let tasks = crate::db::scheduled_task::list_by_agent(&*conn_guard, "agent-1").unwrap();
+        let task_id = tasks[0].id.clone();
+        drop(conn_guard);
+
+        let tc_delete = ToolCall {
+            id: "tc-2".to_string(),
+            name: "delete_timer".to_string(),
+            arguments: format!(r#"{{"task_id":"{}"}}"#, task_id),
+        };
+        let result = executor.execute("agent-2", vec![tc_delete], &HashMap::new()).await;
+        assert!(matches!(result, Err(ToolError::InvalidArguments(_))));
     }
 }
