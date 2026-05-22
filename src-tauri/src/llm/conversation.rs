@@ -126,3 +126,79 @@ impl<P: LlmProvider> LlmConversation<P> {
         Ok(ConversationResult { final_content, executed_tool_calls, messages: all_messages, total_rounds })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+    use std::sync::Arc;
+    use tokio::sync::Mutex as TokioMutex;
+    use rusqlite::Connection;
+    use crate::db::connection::DbState;
+    use crate::db::schema::*;
+    use std::collections::HashMap;
+
+    struct MockProvider { responses: Mutex<Vec<LlmResponse>> }
+    #[async_trait]
+    impl LlmProvider for MockProvider {
+        async fn chat(&self, _s: &str, _m: Vec<serde_json::Value>, _t: Vec<serde_json::Value>) -> Result<LlmResponse, String> { unimplemented!() }
+        async fn chat_raw(&self, _m: Vec<serde_json::Value>, _t: Vec<serde_json::Value>) -> Result<LlmResponse, String> {
+            Ok(self.responses.lock().unwrap().remove(0))
+        }
+    }
+    fn mock_provider(responses: Vec<LlmResponse>) -> MockProvider { MockProvider { responses: Mutex::new(responses) } }
+    fn make_response(content: Option<&str>, tool_calls: Vec<ToolCall>) -> LlmResponse {
+        LlmResponse { content: content.map(|s| s.to_string()), tool_calls, usage: None }
+    }
+    fn make_tool_call(id: &str, name: &str, args: &str) -> ToolCall {
+        ToolCall { id: id.to_string(), name: name.to_string(), arguments: args.to_string() }
+    }
+    fn init_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        conn.execute_batch(MIGRATION_V5).unwrap();
+        conn.execute_batch(MIGRATION_V7).unwrap();
+        conn.execute_batch(MIGRATION_V11).unwrap();
+        conn.execute_batch(MIGRATION_V12).unwrap();
+        conn.execute_batch(MIGRATION_V13).unwrap();
+        conn.execute_batch(MIGRATION_V15).unwrap();
+        conn
+    }
+    fn make_db_state(conn: Connection) -> DbState { DbState(Arc::new(TokioMutex::new(conn))) }
+
+    #[tokio::test]
+    async fn test_zero_round_no_tools() {
+        let db = make_db_state(init_test_db());
+        let scheduler = crate::scheduler::Scheduler::new(db.clone());
+        let provider = mock_provider(vec![make_response(Some("Done"), vec![])]);
+        let conv = LlmConversation::new(provider, db, scheduler);
+        let result = conv.run("sys", "usr", vec![], 5, "agent1", &HashMap::new()).await.unwrap();
+        assert_eq!(result.total_rounds, 1);
+        assert!(result.final_content.is_some());
+        assert_eq!(result.executed_tool_calls.len(), 0);
+        assert_eq!(result.messages.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_reaches_max_rounds() {
+        let db = make_db_state(init_test_db());
+        let scheduler = crate::scheduler::Scheduler::new(db.clone());
+        let provider = mock_provider(vec![
+            make_response(None, vec![make_tool_call("tc1","delete_timer",r#"{"task_id":"x"}"#)]),
+            make_response(None, vec![make_tool_call("tc2","delete_timer",r#"{"task_id":"x"}"#)]),
+            make_response(None, vec![make_tool_call("tc3","delete_timer",r#"{"task_id":"x"}"#)]),
+            make_response(None, vec![make_tool_call("tc4","delete_timer",r#"{"task_id":"x"}"#)]),
+            make_response(None, vec![make_tool_call("tc5","delete_timer",r#"{"task_id":"x"}"#)]),
+        ]);
+        let conv = LlmConversation::new(provider, db, scheduler);
+        let result = conv.run("sys", "usr", vec![], 5, "agent1", &HashMap::new()).await.unwrap();
+        assert_eq!(result.total_rounds, 5);
+        assert!(result.final_content.is_none());
+        assert_eq!(result.executed_tool_calls.len(), 5);
+    }
+}
