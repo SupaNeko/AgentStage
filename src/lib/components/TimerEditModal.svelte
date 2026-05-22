@@ -94,6 +94,7 @@
             if (task) {
                 const nextTrigger = editNextTriggerAt ? parseDatetimeLocal(editNextTriggerAt) : undefined;
                 await invoke('update_timer_command', {
+                    agent_id: agentId,
                     req: {
                         id: task.id,
                         description: description.trim(),

@@ -27,6 +27,7 @@ pub async fn create_timer_command(
         let trigger_mode = req.trigger_mode.as_deref().ok_or("missing trigger_mode")?;
         if trigger_mode == "after_minutes" {
             let minutes = req.after_minutes.ok_or("missing after_minutes")? as i64;
+            if minutes <= 0 { return Err("after_minutes must be > 0".to_string()); }
             now + minutes * 60 * 1000
         } else if trigger_mode == "datetime" {
             let year = req.year.ok_or("missing year")?;
@@ -36,28 +37,37 @@ pub async fn create_timer_command(
             let minute = req.minute.ok_or("missing minute")? as u32;
             let dt = chrono::Local.with_ymd_and_hms(year, month, day, hour, minute, 0)
                 .single().ok_or("invalid datetime")?;
-            dt.timestamp_millis()
+            let ts = dt.timestamp_millis();
+            if ts <= now { return Err("datetime must be in the future".to_string()); }
+            ts
         } else {
             return Err("invalid trigger_mode".to_string());
         }
     } else if req.task_type == "recurring" {
         let interval = req.interval_minutes.ok_or("missing interval_minutes")? as i64;
+        if interval <= 0 { return Err("interval_minutes must be > 0".to_string()); }
         now + interval * 60 * 1000
     } else {
         return Err("invalid task_type".to_string());
     };
     
-    let id = scheduled_task_repo::insert_task(&conn, &req, &agent_id).map_err(|e| e.to_string())?;
-    scheduled_task_repo::update_next_trigger(&conn, &id, next_trigger_at).map_err(|e| e.to_string())?;
+    let mut req_with_next = req;
+    req_with_next.next_trigger_at = Some(next_trigger_at);
+    let id = scheduled_task_repo::insert_task(&conn, &req_with_next, &agent_id).map_err(|e| e.to_string())?;
     Ok(id)
 }
 
 #[tauri::command]
 pub async fn update_timer_command(
     db_state: State<'_, DbState>,
+    agent_id: String,
     req: UpdateTimerRequest,
 ) -> Result<(), String> {
     let conn = db_state.0.lock().await;
+    let tasks = scheduled_task_repo::list_by_agent(&conn, &agent_id).map_err(|e| e.to_string())?;
+    if !tasks.iter().any(|t| t.id == req.id) {
+        return Err("任务不存在或不属于该角色".to_string());
+    }
     scheduled_task_repo::update_task(&conn, &req.id, req.description.as_deref(), req.next_trigger_at, req.target_session_id.as_deref())
         .map_err(|e| e.to_string())
 }
@@ -65,19 +75,29 @@ pub async fn update_timer_command(
 #[tauri::command]
 pub async fn delete_timer_command(
     db_state: State<'_, DbState>,
+    agent_id: String,
     task_id: String,
 ) -> Result<(), String> {
     let conn = db_state.0.lock().await;
+    let tasks = scheduled_task_repo::list_by_agent(&conn, &agent_id).map_err(|e| e.to_string())?;
+    if !tasks.iter().any(|t| t.id == task_id) {
+        return Err("任务不存在或不属于该角色".to_string());
+    }
     scheduled_task_repo::delete_task(&conn, &task_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn toggle_timer(
     db_state: State<'_, DbState>,
+    agent_id: String,
     task_id: String,
     is_active: i32,
 ) -> Result<(), String> {
     let conn = db_state.0.lock().await;
+    let tasks = scheduled_task_repo::list_by_agent(&conn, &agent_id).map_err(|e| e.to_string())?;
+    if !tasks.iter().any(|t| t.id == task_id) {
+        return Err("任务不存在或不属于该角色".to_string());
+    }
     scheduled_task_repo::toggle_task(&conn, &task_id, is_active).map_err(|e| e.to_string())
 }
 

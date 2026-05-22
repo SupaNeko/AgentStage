@@ -1055,6 +1055,43 @@ impl Scheduler {
         agent_id: &str,
         context: SpecialTriggerContext,
     ) -> Result<(), String> {
+        // 0. Check if already triggering (with stale timeout)
+        {
+            let conn = self.db_state.0.lock().await;
+            let is_triggering: bool = conn
+                .query_row(
+                    "SELECT is_triggering FROM trigger_states WHERE agent_id = ?1",
+                    [agent_id],
+                    |row| Ok(row.get::<_, i32>(0)? != 0),
+                )
+                .unwrap_or(false);
+            if is_triggering {
+                let updated_at: i64 = conn
+                    .query_row(
+                        "SELECT updated_at FROM trigger_states WHERE agent_id = ?1",
+                        [agent_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                let now = chrono::Utc::now().timestamp_millis();
+                if now - updated_at > 5 * 60 * 1000 {
+                    crate::logger::backend("WARN", &format!(
+                        "[trigger_special] agent_id={}, is_triggering=true but stale ({} min), resetting",
+                        agent_id, (now - updated_at) / 60000
+                    ));
+                    conn.execute(
+                        "UPDATE trigger_states SET is_triggering = 0, updated_at = ?1 WHERE agent_id = ?2",
+                        (now, agent_id),
+                    ).unwrap_or_default();
+                } else {
+                    crate::logger::backend("DEBUG", &format!(
+                        "[trigger_special] agent_id={}, is_triggering=true, skip", agent_id
+                    ));
+                    return Ok(());
+                }
+            }
+        }
+
         // 1. Set is_triggering (same pattern as trigger_agent)
         {
             let conn = self.db_state.0.lock().await;
@@ -1118,21 +1155,26 @@ impl Scheduler {
 
         let full_prompt = format!("{}\n\n{}", base_prompt, special_layer);
 
-        // 5. Call LLM
-        let messages = vec![];
-        let response = Self::call_llm(&provider, &full_prompt, messages).await?;
+        // 5. Call LLM and execute tools (wrapped for finally-style cleanup)
+        let inner_result: Result<(), String> = async {
+            let messages = vec![];
+            let response = Self::call_llm(&provider, &full_prompt, messages).await?;
 
-        // 6. Execute tool calls
-        let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
-        let session_pages = HashMap::new();
-        if let Err(e) = executor.execute(agent_id, response.tool_calls, &session_pages).await {
-            crate::logger::backend("ERROR", &format!("[trigger_special] tool execution failed: {}", e));
+            // 6. Execute tool calls
+            let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
+            let session_pages = HashMap::new();
+            if let Err(e) = executor.execute(agent_id, response.tool_calls, &session_pages).await {
+                crate::logger::backend("ERROR", &format!("[trigger_special] tool execution failed: {}", e));
+            }
+            Ok(())
+        }.await;
+
+        // 7. Clear is_triggering (always, even if inner failed)
+        if let Err(e) = self.clear_triggering_flag(agent_id).await {
+            crate::logger::backend("ERROR", &format!("[trigger_special] failed to clear is_triggering: {}", e));
         }
 
-        // 7. Clear is_triggering
-        self.clear_triggering_flag(agent_id).await?;
-
-        Ok(())
+        inner_result
     }
 
     pub async fn start_timer_scan(self) {
@@ -1157,6 +1199,12 @@ impl Scheduler {
         drop(conn);
 
         for task in tasks {
+            // 安静时段检查：如果在安静时段内，跳过本次触发（不更新状态，下次扫描继续检查）
+            if self.is_in_quiet_hours().await {
+                crate::logger::backend("DEBUG", &format!("[TimerScan] task_id={} skipped due to quiet hours", task.id));
+                continue;
+            }
+
             {
                 let conn = self.db_state.0.lock().await;
                 if task.task_type == "single" {
@@ -1165,7 +1213,12 @@ impl Scheduler {
                     }
                 } else {
                     let interval_ms = (task.interval_minutes.unwrap_or(60) as i64) * 60 * 1000;
-                    let new_next = task.next_trigger_at + interval_ms;
+                    // 修复级联触发：如果已经错过多个周期，从 now 开始计算下一次
+                    let new_next = if now > task.next_trigger_at + interval_ms {
+                        now + interval_ms
+                    } else {
+                        task.next_trigger_at + interval_ms
+                    };
                     if let Err(e) = scheduled_task_repo::update_next_trigger(&conn, &task.id, new_next) {
                         crate::logger::backend("ERROR", &format!("[TimerScan] update next trigger failed: {}", e));
                     }
