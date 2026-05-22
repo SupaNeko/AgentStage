@@ -16,7 +16,7 @@
     async function loadTasks() {
         loading = true;
         try {
-            const result = await invoke<ScheduledTask[]>('list_agent_timers', { agent_id: agentId });
+            const result = await invoke<ScheduledTask[]>('list_agent_timers', { agentId });
             tasks = result;
         } catch (err) {
             logger.error('Failed to load timers:', err);
@@ -29,7 +29,7 @@
     async function handleDelete(task: ScheduledTask) {
         if (!confirm(`确定要删除定时任务 "${task.description}" 吗？`)) return;
         try {
-            await invoke('delete_timer_command', { agent_id: agentId, task_id: task.id });
+            await invoke('delete_timer_command', { agentId, taskId: task.id });
             toastStore.show('定时任务已删除', 'success');
             loadTasks();
         } catch (err) {
@@ -41,7 +41,7 @@
     async function handleToggle(task: ScheduledTask) {
         const newActive = task.is_active ? 0 : 1;
         try {
-            await invoke('toggle_timer', { agent_id: agentId, task_id: task.id, is_active: newActive });
+            await invoke('toggle_timer', { agentId, taskId: task.id, isActive: newActive });
             toastStore.show(newActive ? '定时任务已激活' : '定时任务已暂停', 'success');
             loadTasks();
         } catch (err) {

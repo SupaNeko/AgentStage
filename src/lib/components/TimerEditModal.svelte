@@ -94,26 +94,26 @@
             if (task) {
                 const nextTrigger = editNextTriggerAt ? parseDatetimeLocal(editNextTriggerAt) : undefined;
                 await invoke('update_timer_command', {
-                    agent_id: agentId,
+                    agentId,
                     req: {
                         id: task.id,
                         description: description.trim(),
-                        next_trigger_at: nextTrigger,
-                        target_session_id: targetSessionId || null,
+                        nextTriggerAt: nextTrigger,
+                        targetSessionId: targetSessionId || null,
                     }
                 });
                 toastStore.show('定时任务已更新', 'success');
             } else {
                 const req: Record<string, unknown> = {
                     description: description.trim(),
-                    task_type: taskType,
-                    target_session_id: targetSessionId || null,
+                    taskType,
+                    targetSessionId: targetSessionId || null,
                 };
 
                 if (taskType === 'single') {
-                    req.trigger_mode = triggerMode;
+                    req.triggerMode = triggerMode;
                     if (triggerMode === 'after_minutes') {
-                        req.after_minutes = afterMinutes;
+                        req.afterMinutes = afterMinutes;
                     } else {
                         const d = new Date(datetimeValue);
                         req.year = d.getFullYear();
@@ -123,10 +123,10 @@
                         req.minute = d.getMinutes();
                     }
                 } else {
-                    req.interval_minutes = intervalMinutes;
+                    req.intervalMinutes = intervalMinutes;
                 }
 
-                await invoke('create_timer_command', { agent_id: agentId, req });
+                await invoke('create_timer_command', { agentId, req });
                 toastStore.show('定时任务已创建', 'success');
             }
             onSave();
