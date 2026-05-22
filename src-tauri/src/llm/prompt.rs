@@ -2,6 +2,7 @@ use chrono::{Local, LocalResult, TimeZone};
 use rusqlite::Connection;
 
 use crate::llm::prompt_templates;
+use crate::llm::conversation::PromptParts;
 use crate::models::message::Message;
 use crate::db::user_persona;
 use crate::constants::{DEFAULT_USER_NAME, DEFAULT_USER_PERSONA};
@@ -16,21 +17,22 @@ impl PromptAssembler {
         trigger_page_index: Option<i32>,
         _pending_messages: &[Message],
         pending_ids: &std::collections::HashSet<String>,
-    ) -> Result<String, String> {
+    ) -> Result<PromptParts, String> {
         crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
 
-        let mut layers: Vec<String> = Vec::new();
+        let mut system_layers: Vec<String> = Vec::new();
+        let mut user_layers: Vec<String> = Vec::new();
 
         // Layer 1: System Prompt
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        layers.push(format!("{}\n{}",
+        system_layers.push(format!("{}\n{}",
             prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now),
             prompt_templates::TIMER_CAPABILITY
         ));
 
         // Layer 2: Self Persona
         let agent = Self::get_agent(conn, agent_id)?;
-        layers.push(format!("{}\n{}", prompt_templates::LAYER_PERSONA_TITLE, agent.detailed_persona));
+        system_layers.push(format!("{}\n{}", prompt_templates::LAYER_PERSONA_TITLE, agent.detailed_persona));
 
         // Layer 2.8: Pending Timers
         let pending_timers = Self::get_pending_timers(conn, agent_id)?;
@@ -44,14 +46,14 @@ impl PromptAssembler {
                 };
                 layer.push_str(&format!("{}: {}（下次触发：{}）\n", task_id, description, time_str));
             }
-            layers.push(layer);
+            user_layers.push(layer);
         }
 
         // Layer 2.5: Long-term Memory
         if agent.memory_enabled {
             if let Some(ref mem) = agent.long_term_memory {
                 if !mem.is_empty() {
-                    layers.push(format!("{}\n{}", prompt_templates::LAYER_MEMORY_TITLE, mem));
+                    user_layers.push(format!("{}\n{}", prompt_templates::LAYER_MEMORY_TITLE, mem));
                 }
             }
         }
@@ -73,7 +75,7 @@ impl PromptAssembler {
                     layer.push_str(&format!("  [记忆]：{}\n", item.memory_text));
                 }
             }
-            layers.push(layer);
+            user_layers.push(layer);
         }
 
         // Layer 4: Chat History — per session with individual history limits
@@ -191,26 +193,34 @@ impl PromptAssembler {
                 layer.push_str(&format!("[{}]{} {}: {}\n", time, new_mark, sender, msg.content));
             }
             layer.push('\n');
-            layers.push(layer);
+            user_layers.push(layer);
         }
 
         // Layer 6: Instruction（工具使用说明 + 当前上下文 ID）
         let instruction = Self::build_instruction(conn, agent_id, &agent.name)?;
-        layers.push(instruction);
+        user_layers.push(instruction);
 
         let (user_name, _user_persona) = Self::get_user_persona(conn);
-        let prompt = layers.join("\n\n");
-        let prompt_with_vars = Self::apply_variables(&prompt, &agent.name, &user_name);
+        let system = system_layers.join("\n\n");
+        let user = user_layers.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
+        let system_with_vars = Self::apply_variables(&system, &agent.name, &user_name);
+        let user_with_vars = Self::apply_variables(&user, &agent.name, &user_name);
 
-        crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, total_chars={}", agent_id, prompt_with_vars.len()));
-        
-        // 记录完整 prompt 内容到日志（新增需求）
-        crate::logger::backend("INFO", &format!(
-            "[PromptAssembler] Full prompt for agent {} | trigger_session={:?} | trigger_page={:?} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
-            agent_id, trigger_session_id, trigger_page_index, prompt_with_vars.len(), prompt_with_vars
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG prompt::assemble] agent_id={}, system_chars={}, user_chars={}",
+            agent_id, system_with_vars.len(), user_with_vars.len()
         ));
         
-        Ok(prompt_with_vars)
+        // 记录完整 prompt 内容到日志
+        crate::logger::backend("INFO", &format!(
+            "[PromptAssembler] Full prompt for agent {} | trigger_session={:?} | trigger_page={:?} | system_length={} | user_length={}\n---SYSTEM START---\n{}\n---SYSTEM END---\n---USER START---\n{}\n---USER END---",
+            agent_id, trigger_session_id, trigger_page_index, system_with_vars.len(), user_with_vars.len(), system_with_vars, user_with_vars
+        ));
+        
+        Ok(PromptParts {
+            system: system_with_vars,
+            user: user_with_vars,
+        })
     }
 
     /// 构建工具使用说明层，注入当前所有可见会话的 session_id
@@ -626,8 +636,13 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(!prompt.contains("【最新消息"), "Prompt should not contain Layer 5 header, but got:\n{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(!parts.system.contains("【最新消息"), "Prompt system should not contain Layer 5 header");
+        assert!(!parts.user.contains("【最新消息"), "Prompt user should not contain Layer 5 header, but got:\n{}", parts.user);
+        assert!(parts.system.contains("【你的角色设定】"), "Prompt system should contain persona title");
+        assert!(parts.user.contains("【历史聊天记录】"), "Prompt user should contain history title");
+        assert!(parts.system.contains("你是一个正在参与即时通讯聊天的 AI 角色"), "Prompt system should contain SYSTEM_PROMPT");
+        assert!(!parts.system.contains("send_message —"), "Detailed tool instructions should not be in system prompt");
     }
 
     #[test]
@@ -655,8 +670,8 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains(super::prompt_templates::LAYER_FOOTER_NOTE), "Prompt should contain footer note, but got:\n{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains(super::prompt_templates::LAYER_FOOTER_NOTE), "Prompt user should contain footer note, but got:\n{}", parts.user);
     }
 
     #[test]
@@ -700,10 +715,10 @@ mod tests {
         insert_message(&conn, &msg1);
         insert_message(&conn, &msg2);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        let pos1 = prompt.find("First message").expect("First message not found");
-        let pos2 = prompt.find("Second message").expect("Second message not found");
-        assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        let pos1 = parts.user.find("First message").expect("First message not found");
+        let pos2 = parts.user.find("Second message").expect("Second message not found");
+        assert!(pos1 < pos2, "Messages should be in chronological order (oldest first), but got:\n{}", parts.user);
     }
 
     #[test]
@@ -739,14 +754,14 @@ mod tests {
         insert_message(&conn, &msg1);
         
         // Trigger from page 0: prompt should contain "Page0 message" but NOT "Page1 message"
-        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("Page0 message"), "Prompt should contain page 0 message");
-        assert!(!prompt.contains("Page1 message"), "Prompt should NOT contain page 1 message when triggered from page 0");
+        let parts = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(0), &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("Page0 message"), "Prompt should contain page 0 message");
+        assert!(!parts.user.contains("Page1 message"), "Prompt should NOT contain page 1 message when triggered from page 0");
 
         // Trigger from page 1: prompt should contain "Page1 message" but NOT "Page0 message"
-        let prompt = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("Page1 message"), "Prompt should contain page 1 message");
-        assert!(!prompt.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
+        let parts = PromptAssembler::assemble(&conn, "agent1", Some("sess1"), Some(1), &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("Page1 message"), "Prompt should contain page 1 message");
+        assert!(!parts.user.contains("Page0 message"), "Prompt should NOT contain page 0 message when triggered from page 1");
     }
 
     #[test]
@@ -800,9 +815,9 @@ mod tests {
         };
         insert_message(&conn, &deleted_msg);
         
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("Active session message"), "Prompt should contain active session message");
-        assert!(!prompt.contains("Deleted group message"), "Prompt should NOT contain deleted session message, but got:\n{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("Active session message"), "Prompt should contain active session message");
+        assert!(!parts.user.contains("Deleted group message"), "Prompt should NOT contain deleted session message, but got:\n{}", parts.user);
     }
 
     #[test]
@@ -823,9 +838,9 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("和用户的私聊"), "Private session name should be '和用户的私聊' from agent perspective, got:\n{}", prompt);
-        assert!(!prompt.contains("远坂凛"), "Prompt should NOT contain agent name as session name");
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("和用户的私聊"), "Private session name should be '和用户的私聊' from agent perspective, got:\n{}", parts.user);
+        assert!(!parts.user.contains("远坂凛"), "Prompt should NOT contain agent name as session name");
     }
 
     #[test]
@@ -854,9 +869,9 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("和伊莉雅的私聊"), "Private session name should use persona name");
-        assert!(prompt.contains("- 伊莉雅（用户）："), "Participant list should use persona");
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("和伊莉雅的私聊"), "Private session name should use persona name");
+        assert!(parts.user.contains("- 伊莉雅（用户）："), "Participant list should use persona");
     }
 
     #[test]
@@ -877,8 +892,8 @@ mod tests {
         };
         insert_message(&conn, &msg);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        let user_count = prompt.matches("用户（用户）").count();
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        let user_count = parts.user.matches("用户（用户）").count();
         assert_eq!(user_count, 1, "User entry should appear exactly once in participants, got {} occurrences", user_count);
     }
 
@@ -891,15 +906,15 @@ mod tests {
         insert_session_settings(&conn, "sess_empty", 50);
         // No messages inserted for sess_empty
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        println!("{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        println!("system:\n{}\nuser:\n{}", parts.system, parts.user);
         assert!(
-            prompt.contains("sess_empty"),
-            "Empty session should appear in context_list. Prompt:\n{}", prompt
+            parts.user.contains("sess_empty"),
+            "Empty session should appear in context_list. User prompt:\n{}", parts.user
         );
         assert!(
-            prompt.contains("该会话还没有聊天消息"),
-            "Empty session should be labeled in context_list. Prompt:\n{}", prompt
+            parts.user.contains("该会话还没有聊天消息"),
+            "Empty session should be labeled in context_list. User prompt:\n{}", parts.user
         );
     }
 
@@ -914,9 +929,9 @@ mod tests {
         insert_private_session(&conn, "sess1", "agent1", 0);
         insert_session_settings(&conn, "sess1", 50);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(prompt.contains("【关于你的记忆】"), "Prompt should contain memory section");
-        assert!(prompt.contains("喜欢吃甜食"), "Prompt should contain long-term memory content");
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(parts.user.contains("【关于你的记忆】"), "Prompt should contain memory section");
+        assert!(parts.user.contains("喜欢吃甜食"), "Prompt should contain long-term memory content");
     }
 
     #[test]
@@ -930,9 +945,9 @@ mod tests {
         insert_private_session(&conn, "sess1", "agent1", 0);
         insert_session_settings(&conn, "sess1", 50);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        assert!(!prompt.contains("【关于你的记忆】"), "Prompt should NOT contain memory section when disabled");
-        assert!(!prompt.contains("喜欢吃甜食"), "Prompt should NOT contain memory content when disabled");
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        assert!(!parts.user.contains("【关于你的记忆】"), "Prompt should NOT contain memory section when disabled");
+        assert!(!parts.user.contains("喜欢吃甜食"), "Prompt should NOT contain memory content when disabled");
     }
 
     #[test]
@@ -960,10 +975,10 @@ mod tests {
         insert_private_session(&conn, "sess1", "agent1", 0);
         insert_session_settings(&conn, "sess1", 50);
 
-        let prompt = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
-        println!("{}", prompt);
-        assert!(prompt.contains("- Bob（好友）：Bob 的简介"), "Participant line should include name, label, and simplified persona. Got:\n{}", prompt);
-        assert!(prompt.contains("[印象]：好朋友"), "Should contain [印象] line. Got:\n{}", prompt);
-        assert!(prompt.contains("[记忆]：他喜欢吃苹果"), "Should contain [记忆] line. Got:\n{}", prompt);
+        let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
+        println!("system:\n{}\nuser:\n{}", parts.system, parts.user);
+        assert!(parts.user.contains("- Bob（好友）：Bob 的简介"), "Participant line should include name, label, and simplified persona. Got:\n{}", parts.user);
+        assert!(parts.user.contains("[印象]：好朋友"), "Should contain [印象] line. Got:\n{}", parts.user);
+        assert!(parts.user.contains("[记忆]：他喜欢吃苹果"), "Should contain [记忆] line. Got:\n{}", parts.user);
     }
 }

@@ -760,7 +760,7 @@ impl Scheduler {
                 .collect();
 
             let trigger_msg = pending.first();
-            let prompt =
+            let parts =
                 PromptAssembler::assemble(
                     &conn,
                     agent_id,
@@ -772,11 +772,11 @@ impl Scheduler {
                 .map_err(|e| e.to_string())?;
 
             crate::logger::backend("DEBUG", &format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, prompt_len={}, model={:?}, base_url={:?}",
-                agent_id, prompt.len(), agent.model_name, agent.base_url
+                "[DEBUG trigger_agent_inner] agent_id={}, system_len={}, user_len={}, model={:?}, base_url={:?}",
+                agent_id, parts.system.len(), parts.user.len(), agent.model_name, agent.base_url
             ));
 
-            (agent, prompt)
+            (agent, parts)
         };
 
         // === 阶段 4：LLM 调用（无锁）===
@@ -805,7 +805,11 @@ impl Scheduler {
         );
 
         // === 阶段 4：调用 LLM（最多重试 3 次）===
-        let response = match Self::call_llm_with_retry(&provider, &prompt, vec![]).await {
+        let response = match Self::call_llm_with_retry(
+            &provider,
+            &prompt.system,
+            vec![serde_json::json!({"role": "user", "content": prompt.user})],
+        ).await {
             Ok(resp) => {
                 crate::logger::backend("DEBUG", &format!(
                     "[DEBUG trigger_agent_inner] agent_id={}, llm_ok, tool_calls_count={}, content_present={}",
@@ -1132,7 +1136,7 @@ impl Scheduler {
         );
 
         // 3. Build base prompt using PromptAssembler
-        let base_prompt = {
+        let parts = {
             let conn = self.db_state.0.lock().await;
             PromptAssembler::assemble(
                 &conn, agent_id, None, None, &[], &std::collections::HashSet::new()
@@ -1153,24 +1157,26 @@ impl Scheduler {
             }
         };
 
-        let full_prompt = format!("{}\n\n{}", base_prompt, special_layer);
+        let full_user_prompt = format!("{}\n\n{}", parts.user, special_layer);
 
         // Log full prompt (including special layer)
         crate::logger::backend("INFO", &format!(
-            "[trigger_special] Full prompt for agent {} | context={:?} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
+            "[trigger_special] Full prompt for agent {} | context={:?} | system_length={} | user_length={}\n---SYSTEM START---\n{}\n---SYSTEM END---\n---USER START---\n{}\n---USER END---",
             agent_id,
             match &context {
                 SpecialTriggerContext::Timer { description, .. } => format!("Timer: {}", description),
                 SpecialTriggerContext::Proactive => "Proactive".to_string(),
             },
-            full_prompt.len(),
-            full_prompt
+            parts.system.len(),
+            full_user_prompt.len(),
+            parts.system,
+            full_user_prompt
         ));
 
         // 5. Call LLM and execute tools (wrapped for finally-style cleanup)
         let inner_result: Result<(), String> = async {
-            let messages = vec![];
-            let response = Self::call_llm(&provider, &full_prompt, messages).await?;
+            let messages = vec![serde_json::json!({"role": "user", "content": full_user_prompt})];
+            let response = Self::call_llm(&provider, &parts.system, messages).await?;
 
             // Log LLM response
             crate::logger::backend("INFO", &format!(

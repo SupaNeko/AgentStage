@@ -824,9 +824,9 @@ mod tests {
         
         let prompt = crate::llm::prompt::PromptAssembler::assemble(&conn, "agent1", None, None, &pending, &std::collections::HashSet::new());
         assert!(prompt.is_ok(), "PromptAssembler failed: {:?}", prompt.err());
-        let prompt_text = prompt.unwrap();
-        assert!(prompt_text.contains("Hello!"));
-        assert!(prompt_text.contains("Test Agent"));
+        let parts = prompt.unwrap();
+        assert!(parts.user.contains("Hello!"));
+        assert!(parts.system.contains("Test Agent") || parts.user.contains("Test Agent"));
     }
 
     #[test]
