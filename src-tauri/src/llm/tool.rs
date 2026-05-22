@@ -256,72 +256,34 @@ impl ToolExecutor {
         Self { db_state, scheduler }
     }
 
+    pub async fn execute_single(
+        &self,
+        agent_id: &str,
+        tool_call: &ToolCall,
+        session_pages: &HashMap<String, i32>,
+    ) -> Result<Vec<Message>, ToolError> {
+        match tool_call.name.as_str() {
+            "send_message" => self.execute_send_message(agent_id, &tool_call.arguments, session_pages).await,
+            "start_private_chat" => self.execute_start_private_chat(agent_id, &tool_call.arguments, session_pages).await,
+            "update_relationship" => { self.execute_update_relationship(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
+            "update_memory" => { self.execute_update_memory(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
+            "create_timer" => { self.execute_create_timer(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
+            "delete_timer" => { self.execute_delete_timer(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
+            _ => Err(ToolError::InvalidArguments(format!("未知工具: {}", tool_call.name))),
+        }
+    }
+
     pub async fn execute(
         &self,
         agent_id: &str,
         tool_calls: Vec<ToolCall>,
         session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
-        crate::logger::backend("DEBUG", &format!(
-            "[DEBUG ToolExecutor::execute] START agent_id={}, tool_calls_count={}",
-            agent_id, tool_calls.len()
-        ));
-
         let mut results = Vec::new();
-
-        for (i, tc) in tool_calls.iter().enumerate() {
-            crate::logger::backend("DEBUG", &format!(
-                "[DEBUG ToolExecutor::execute] processing tool_call[{}]: name={}, args={}",
-                i, tc.name, tc.arguments
-            ));
-            match tc.name.as_str() {
-                "send_message" => {
-                    let msgs = self.execute_send_message(agent_id, &tc.arguments, session_pages).await?;
-                    for msg in &msgs {
-                        crate::logger::backend("DEBUG", &format!(
-                            "[DEBUG ToolExecutor::execute] tool_call[{}] returned message_id={}",
-                            i, msg.id
-                        ));
-                    }
-                    results.extend(msgs);
-                }
-                "start_private_chat" => {
-                    let msgs = self.execute_start_private_chat(agent_id, &tc.arguments, session_pages).await?;
-                    for msg in &msgs {
-                        crate::logger::backend("DEBUG", &format!(
-                            "[DEBUG ToolExecutor::execute] tool_call[{}] returned message_id={}",
-                            i, msg.id
-                        ));
-                    }
-                    results.extend(msgs);
-                }
-                "update_relationship" => {
-                    let _msgs = self.execute_update_relationship(agent_id, &tc.arguments).await?;
-                    // update_relationship 不返回消息，仅修改数据库
-                }
-                "update_memory" => {
-                    let _msgs = self.execute_update_memory(agent_id, &tc.arguments).await?;
-                    // update_memory 不返回消息，仅修改数据库
-                }
-                "create_timer" => {
-                    let _msgs = self.execute_create_timer(agent_id, &tc.arguments).await?;
-                    // create_timer 不返回消息，仅修改数据库
-                }
-                "delete_timer" => {
-                    let _msgs = self.execute_delete_timer(agent_id, &tc.arguments).await?;
-                    // delete_timer 不返回消息，仅修改数据库
-                }
-                _ => {
-                    crate::logger::backend("WARN", &format!("[DEBUG ToolExecutor::execute] Unknown tool call: {}", tc.name));
-                }
-            }
+        for tc in tool_calls {
+            let msgs = self.execute_single(agent_id, &tc, session_pages).await?;
+            results.extend(msgs);
         }
-
-        crate::logger::backend("DEBUG", &format!(
-            "[DEBUG ToolExecutor::execute] END agent_id={}, results_count={}",
-            agent_id, results.len()
-        ));
-
         Ok(results)
     }
 
