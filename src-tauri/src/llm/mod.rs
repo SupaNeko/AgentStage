@@ -1,3 +1,4 @@
+pub mod conversation;
 pub mod openai;
 pub mod persona_generation;
 pub mod provider;
