@@ -1837,6 +1837,15 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
                 let idx = self.call_count.fetch_add(1, Ordering::SeqCst);
                 self.responses.get(idx).cloned().unwrap_or(Err("exhausted".to_string()))
             }
+
+            async fn chat_raw(
+                &self,
+                _messages: Vec<serde_json::Value>,
+                _tools: Vec<serde_json::Value>,
+            ) -> Result<LlmResponse, String> {
+                let idx = self.call_count.fetch_add(1, Ordering::SeqCst);
+                self.responses.get(idx).cloned().unwrap_or(Err("exhausted".to_string()))
+            }
         }
 
     fn init_test_db() -> Connection {

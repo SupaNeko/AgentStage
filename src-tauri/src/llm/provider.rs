@@ -9,4 +9,10 @@ pub trait LlmProvider: Send + Sync {
         messages: Vec<serde_json::Value>,
         tools: Vec<serde_json::Value>,
     ) -> Result<LlmResponse, String>;
+
+    async fn chat_raw(
+        &self,
+        messages: Vec<serde_json::Value>,
+        tools: Vec<serde_json::Value>,
+    ) -> Result<LlmResponse, String>;
 }

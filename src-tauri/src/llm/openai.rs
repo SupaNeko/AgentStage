@@ -46,32 +46,35 @@ impl LlmProvider for OpenAiCompatibleProvider {
         messages: Vec<serde_json::Value>,
         tools: Vec<serde_json::Value>,
     ) -> Result<LlmResponse, String> {
+        let mut full_messages = vec![serde_json::json!({
+            "role": "system",
+            "content": system_prompt,
+        })];
+        full_messages.extend(messages);
+        self.chat_raw(full_messages, tools).await
+    }
+
+    async fn chat_raw(
+        &self,
+        messages: Vec<serde_json::Value>,
+        tools: Vec<serde_json::Value>,
+    ) -> Result<LlmResponse, String> {
         let mut request_body = serde_json::json!({
             "model": self.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                }
-            ],
+            "messages": messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         });
 
-        // Append user messages
-        if let Some(arr) = request_body["messages"].as_array_mut() {
-            arr.extend(messages);
-        }
-
         // Some providers (e.g. Minimax) require at least one user message.
-        // If there are no user messages, duplicate the system prompt as a user message.
+        // If there are no user messages, append a dummy user message.
         if let Some(arr) = request_body["messages"].as_array() {
             let has_user = arr.iter().any(|m| m.get("role") == Some(&serde_json::json!("user")));
-            if !has_user && !system_prompt.is_empty() {
+            if !has_user {
                 if let Some(arr_mut) = request_body["messages"].as_array_mut() {
                     arr_mut.push(serde_json::json!({
                         "role": "user",
-                        "content": system_prompt,
+                        "content": ".",
                     }));
                 }
             }
@@ -85,7 +88,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let messages_count = request_body["messages"].as_array().map(|a| a.len()).unwrap_or(0);
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat] url={}, model={}, messages_count={}, tools_empty={}", url, self.model, messages_count, request_body.get("tools").is_none()));
+        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] url={}, model={}, messages_count={}, tools_empty={}", url, self.model, messages_count, request_body.get("tools").is_none()));
 
         let response = self
             .client
@@ -98,7 +101,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
         let status = response.status();
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat] http_status={}", status));
+        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] http_status={}", status));
         if !status.is_success() {
             let text = response
                 .text()
@@ -142,7 +145,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
             }
         }
 
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat] content_exists={}, tool_calls_count={}", content.is_some(), tool_calls.len()));
+        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] content_exists={}, tool_calls_count={}", content.is_some(), tool_calls.len()));
 
         let usage = message.get("usage").cloned().or_else(|| json.get("usage").cloned());
 
