@@ -98,22 +98,22 @@
                     req: {
                         id: task.id,
                         description: description.trim(),
-                        nextTriggerAt: nextTrigger,
-                        targetSessionId: targetSessionId || null,
+                        next_trigger_at: nextTrigger,
+                        target_session_id: targetSessionId || null,
                     }
                 });
                 toastStore.show('定时任务已更新', 'success');
             } else {
                 const req: Record<string, unknown> = {
                     description: description.trim(),
-                    taskType,
-                    targetSessionId: targetSessionId || null,
+                    task_type: taskType,
+                    target_session_id: targetSessionId || null,
                 };
 
                 if (taskType === 'single') {
-                    req.triggerMode = triggerMode;
+                    req.trigger_mode = triggerMode;
                     if (triggerMode === 'after_minutes') {
-                        req.afterMinutes = afterMinutes;
+                        req.after_minutes = afterMinutes;
                     } else {
                         const d = new Date(datetimeValue);
                         req.year = d.getFullYear();
@@ -123,7 +123,7 @@
                         req.minute = d.getMinutes();
                     }
                 } else {
-                    req.intervalMinutes = intervalMinutes;
+                    req.interval_minutes = intervalMinutes;
                 }
 
                 await invoke('create_timer_command', { agentId, req });
