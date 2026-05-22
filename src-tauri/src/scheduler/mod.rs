@@ -1155,10 +1155,31 @@ impl Scheduler {
 
         let full_prompt = format!("{}\n\n{}", base_prompt, special_layer);
 
+        // Log full prompt (including special layer)
+        crate::logger::backend("INFO", &format!(
+            "[trigger_special] Full prompt for agent {} | context={:?} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
+            agent_id,
+            match &context {
+                SpecialTriggerContext::Timer { description, .. } => format!("Timer: {}", description),
+                SpecialTriggerContext::Proactive => "Proactive".to_string(),
+            },
+            full_prompt.len(),
+            full_prompt
+        ));
+
         // 5. Call LLM and execute tools (wrapped for finally-style cleanup)
         let inner_result: Result<(), String> = async {
             let messages = vec![];
             let response = Self::call_llm(&provider, &full_prompt, messages).await?;
+
+            // Log LLM response
+            crate::logger::backend("INFO", &format!(
+                "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | content={:?}",
+                agent_id,
+                response.content.as_ref().map(|c| c.len()).unwrap_or(0),
+                response.tool_calls.len(),
+                response.content
+            ));
 
             // 6. Execute tool calls
             let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
