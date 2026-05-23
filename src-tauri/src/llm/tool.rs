@@ -296,7 +296,7 @@ impl ToolExecutor {
         arguments: &str,
         session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] START agent_id={}, args_raw={}",
             agent_id, arguments
         ));
@@ -307,13 +307,13 @@ impl ToolExecutor {
         let raw_target_id = args["target_id"].as_str().unwrap_or("");
         let content = args["content"].as_str().unwrap_or("");
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] parsed raw_target_id={}, content_len={}",
             raw_target_id, content.len()
         ));
 
         if content.is_empty() {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG ToolExecutor::execute_send_message] Empty content, aborting"
             ));
             return Err(ToolError::EmptyContent);
@@ -321,13 +321,13 @@ impl ToolExecutor {
 
         // 自动映射 target_id
         let target_id = self.resolve_target_id(agent_id, raw_target_id).await?;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] resolved target_id={}", target_id
         ));
 
         // 使用触发时绑定的 page_index，避免 reset 后的页面漂移
         let bound_page = session_pages.get(&target_id).copied();
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] bound_page={:?} for target_id={}",
             bound_page, target_id
         ));
@@ -362,7 +362,7 @@ impl ToolExecutor {
             }
         }
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] wrote {} messages target_id={}, page_index={:?}",
             messages.len(), target_id, bound_page
         ));
@@ -376,7 +376,7 @@ impl ToolExecutor {
         arguments: &str,
         session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_start_private_chat] START agent_id={}, args_raw={}",
             agent_id, arguments
         ));
@@ -387,13 +387,13 @@ impl ToolExecutor {
         let target_name = args["target_name"].as_str().unwrap_or("");
         let content = args["content"].as_str().unwrap_or("");
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_start_private_chat] parsed target_name={}, content_len={}",
             target_name, content.len()
         ));
 
         if content.is_empty() {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG ToolExecutor::execute_start_private_chat] Empty content, aborting"
             ));
             return Err(ToolError::EmptyContent);
@@ -443,7 +443,7 @@ impl ToolExecutor {
             messages.push(msg);
         }
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_start_private_chat] wrote {} messages session_id={}, page_index={:?}",
             messages.len(), session_id, bound_page
         ));
@@ -456,7 +456,7 @@ impl ToolExecutor {
         agent_id: &str,
         arguments: &str,
     ) -> Result<Vec<Message>, ToolError> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_relationship] START agent_id={}, args_raw={}",
             agent_id, arguments
         ));
@@ -468,7 +468,7 @@ impl ToolExecutor {
         let old_text = args["old_text"].as_str().unwrap_or("");
         let new_text = args["new_text"].as_str().unwrap_or("");
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_relationship] parsed target_name='{}', old_text_len={}, new_text_len={}",
             target_name, old_text.len(), new_text.len()
         ));
@@ -479,7 +479,7 @@ impl ToolExecutor {
 
         // 校验长度
         if new_text.chars().count() > 200 {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG ToolExecutor::execute_update_relationship] Text too long: {} chars", new_text.chars().count()
             ));
             return Err(ToolError::InvalidArguments(format!(
@@ -491,7 +491,7 @@ impl ToolExecutor {
 
         // 根据名称查找目标
         let (target_id, target_type) = if let Ok(Some(agent)) = agent_repo::get_agent_by_name(&conn, target_name) {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG ToolExecutor::execute_update_relationship] resolved to agent id={}", agent.id
             ));
             (agent.id, "agent".to_string())
@@ -503,12 +503,12 @@ impl ToolExecutor {
             if let Some(pid) = active_id {
                 if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
                     if persona.name == target_name {
-                        crate::logger::backend("DEBUG", &format!(
+                        crate::logger::debug(&format!(
                             "[DEBUG ToolExecutor::execute_update_relationship] resolved to user_persona id={}", pid
                         ));
                         (pid, "user_persona".to_string())
                     } else {
-                        crate::logger::backend("WARN", &format!(
+                        crate::logger::warn(&format!(
                             "[DEBUG ToolExecutor::execute_update_relationship] active persona name '{}' does not match target_name '{}'", persona.name, target_name
                         ));
                         return Err(ToolError::InvalidArguments(format!(
@@ -531,13 +531,13 @@ impl ToolExecutor {
         let current = crate::db::agent_relationship::get_relationship(&conn, agent_id, &target_id, &target_type)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_relationship] compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
             current, current.len(), old_text, old_text.len(), current == old_text
         ));
 
         if current != old_text {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG ToolExecutor::execute_update_relationship] old_text mismatch"
             ));
             return Err(ToolError::InvalidArguments(format!(
@@ -549,7 +549,7 @@ impl ToolExecutor {
         crate::db::agent_relationship::upsert_relationship(&conn, agent_id, &target_id, &target_type, new_text)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_relationship] END updated agent_id={} -> target_id={}",
             agent_id, target_id
         ));
@@ -562,7 +562,7 @@ impl ToolExecutor {
         agent_id: &str,
         arguments: &str,
     ) -> Result<Vec<Message>, ToolError> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_memory] START agent_id={}, args_raw={}",
             agent_id, arguments
         ));
@@ -575,7 +575,7 @@ impl ToolExecutor {
         let old_text = args["old_text"].as_str().unwrap_or("");
         let new_text = args["new_text"].as_str().unwrap_or("");
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_memory] parsed memory_type='{}', target_name='{}', old_text_len={}, new_text_len={}",
             memory_type, target_name, old_text.len(), new_text.len()
         ));
@@ -583,7 +583,7 @@ impl ToolExecutor {
         match memory_type {
             "self" => {
                 if new_text.chars().count() > 3000 {
-                    crate::logger::backend("WARN", &format!(
+                    crate::logger::warn(&format!(
                         "[DEBUG ToolExecutor::execute_update_memory] Self memory too long: {} chars", new_text.chars().count()
                     ));
                     return Err(ToolError::InvalidArguments(format!(
@@ -599,13 +599,13 @@ impl ToolExecutor {
                     |row| row.get(0),
                 ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG ToolExecutor::execute_update_memory] self compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
                     current, current.len(), old_text, old_text.len(), current == old_text
                 ));
 
                 if current != old_text {
-                    crate::logger::backend("WARN", &format!(
+                    crate::logger::warn(&format!(
                         "[DEBUG ToolExecutor::execute_update_memory] self old_text mismatch"
                     ));
                     return Err(ToolError::InvalidArguments(format!(
@@ -619,7 +619,7 @@ impl ToolExecutor {
                     rusqlite::params![new_text, agent_id],
                 ).map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG ToolExecutor::execute_update_memory] END updated self memory for agent_id={}",
                     agent_id
                 ));
@@ -628,7 +628,7 @@ impl ToolExecutor {
             }
             "other" => {
                 if new_text.chars().count() > 500 {
-                    crate::logger::backend("WARN", &format!(
+                    crate::logger::warn(&format!(
                         "[DEBUG ToolExecutor::execute_update_memory] Other memory too long: {} chars", new_text.chars().count()
                     ));
                     return Err(ToolError::InvalidArguments(format!(
@@ -644,7 +644,7 @@ impl ToolExecutor {
 
                 // 根据名称查找目标
                 let (target_id, target_type) = if let Ok(Some(agent)) = agent_repo::get_agent_by_name(&conn, target_name) {
-                    crate::logger::backend("DEBUG", &format!(
+                    crate::logger::debug(&format!(
                         "[DEBUG ToolExecutor::execute_update_memory] resolved to agent id={}", agent.id
                     ));
                     (agent.id, "agent".to_string())
@@ -656,12 +656,12 @@ impl ToolExecutor {
                     if let Some(pid) = active_id {
                         if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
                             if persona.name == target_name {
-                                crate::logger::backend("DEBUG", &format!(
+                                crate::logger::debug(&format!(
                                     "[DEBUG ToolExecutor::execute_update_memory] resolved to user_persona id={}", pid
                                 ));
                                 (pid, "user_persona".to_string())
                             } else {
-                                crate::logger::backend("WARN", &format!(
+                                crate::logger::warn(&format!(
                                     "[DEBUG ToolExecutor::execute_update_memory] active persona name '{}' does not match target_name '{}'", persona.name, target_name
                                 ));
                                 return Err(ToolError::InvalidArguments(format!(
@@ -687,13 +687,13 @@ impl ToolExecutor {
                     |row| row.get(0),
                 ).unwrap_or_default();
 
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG ToolExecutor::execute_update_memory] other compare current='{}' (len={}) vs old_text='{}' (len={}) equal={}",
                     current, current.len(), old_text, old_text.len(), current == old_text
                 ));
 
                 if current != old_text {
-                    crate::logger::backend("WARN", &format!(
+                    crate::logger::warn(&format!(
                         "[DEBUG ToolExecutor::execute_update_memory] other old_text mismatch"
                     ));
                     return Err(ToolError::InvalidArguments(format!(
@@ -705,7 +705,7 @@ impl ToolExecutor {
                 crate::db::agent_relationship::upsert_memory(&conn, agent_id, &target_id, &target_type, new_text)
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG ToolExecutor::execute_update_memory] END updated memory agent_id={} -> target_id={}",
                     agent_id, target_id
                 ));
@@ -778,7 +778,7 @@ impl ToolExecutor {
         let task_id = crate::db::scheduled_task::insert_task(&conn, &req, agent_id)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        crate::logger::backend("INFO", &format!("[create_timer] agent_id={} created task_id={}", agent_id, task_id));
+        crate::logger::info(&format!("[create_timer] agent_id={} created task_id={}", agent_id, task_id));
         Ok(Vec::new())
     }
 
@@ -801,7 +801,7 @@ impl ToolExecutor {
         crate::db::scheduled_task::delete_task(&conn, task_id)
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-        crate::logger::backend("INFO", &format!("[delete_timer] agent_id={} deleted task_id={}", agent_id, task_id));
+        crate::logger::info(&format!("[delete_timer] agent_id={} deleted task_id={}", agent_id, task_id));
         Ok(Vec::new())
     }
 
@@ -814,7 +814,7 @@ impl ToolExecutor {
 
         // 1. 如果 raw 本身就是合法的 session_id，直接返回
         if let Ok(Some(_)) = session_repo::get_session_by_id(&conn, raw) {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG resolve_target_id] raw='{}' is valid session_id", raw
             ));
             return Ok(raw.to_string());
@@ -822,7 +822,7 @@ impl ToolExecutor {
 
         // 2. 如果 raw 是 agent_id，优先查找与 sender 的 agent-agent 私聊 session
         if let Ok(Some(session)) = session_repo::get_private_session_between_agents(&conn, agent_id, raw) {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG resolve_target_id] raw='{}' resolved to agent-agent session_id={}", raw, session.id
             ));
             return Ok(session.id);
@@ -830,7 +830,7 @@ impl ToolExecutor {
 
         // 3. 查找 raw 对应的 user-agent 私聊 session
         if let Ok(Some(session)) = session_repo::get_private_session_by_agent_id(&conn, raw) {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG resolve_target_id] raw='{}' resolved to user-agent session_id={}", raw, session.id
             ));
             return Ok(session.id);
@@ -838,14 +838,14 @@ impl ToolExecutor {
 
         // 4. 默认：使用该 agent 自己的 user-agent 私聊 session
         if let Ok(Some(session)) = session_repo::get_private_session_by_agent_id(&conn, agent_id) {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG resolve_target_id] raw='{}' not found, fallback to agent's default session {}",
                 raw, session.id
             ));
             return Ok(session.id);
         }
 
-        crate::logger::backend("ERROR", &format!(
+        crate::logger::error(&format!(
             "[DEBUG resolve_target_id] raw='{}' not found for agent_id={}", raw, agent_id
         ));
         Err(ToolError::TargetNotFound(raw.to_string()))

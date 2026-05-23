@@ -63,7 +63,7 @@ impl<P: LlmProvider> LlmConversation<P> {
 
         for round in 0..max_rounds {
             let round_start = chrono::Utc::now().timestamp_millis();
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[LlmConversation] round={}/{} START messages_count={}",
                 round + 1, max_rounds, messages.len()
             ));
@@ -74,7 +74,7 @@ impl<P: LlmProvider> LlmConversation<P> {
                 match self.provider.chat_raw(messages.clone(), tools.clone()).await {
                     Ok(resp) => { response = Some(resp); break; }
                     Err(e) => {
-                        crate::logger::backend("ERROR", &format!(
+                        crate::logger::error(&format!(
                             "[LlmConversation] round={} attempt={}/3 failed: {}", round + 1, attempt + 1, e
                         ));
                         if attempt == 2 { return Err(format!("LLM call failed after 3 retries: {}", e)); }
@@ -83,7 +83,7 @@ impl<P: LlmProvider> LlmConversation<P> {
             }
             let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
             let response = response.unwrap();
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[LlmConversation] round={} LLM responded tool_calls={} content_len={} llm_elapsed_ms={}",
                 round + 1, response.tool_calls.len(),
                 response.content.as_ref().map(|c| c.len()).unwrap_or(0),
@@ -104,7 +104,7 @@ impl<P: LlmProvider> LlmConversation<P> {
             if response.tool_calls.is_empty() {
                 final_content = response.content;
                 let round_elapsed = chrono::Utc::now().timestamp_millis() - round_start;
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[LlmConversation] round={}/{} END (no tools) total_elapsed_ms={}",
                     round + 1, max_rounds, round_elapsed
                 ));
@@ -144,13 +144,13 @@ impl<P: LlmProvider> LlmConversation<P> {
 
             let tool_elapsed = chrono::Utc::now().timestamp_millis() - tool_start;
             let round_elapsed = chrono::Utc::now().timestamp_millis() - round_start;
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[LlmConversation] round={}/{} END tools={} tool_elapsed_ms={} total_elapsed_ms={}",
                 round + 1, max_rounds, response.tool_calls.len(), tool_elapsed, round_elapsed
             ));
 
             if round == max_rounds - 1 {
-                crate::logger::backend("WARN", &format!("[LlmConversation] 达到最大轮次上限 {}，强制结束", max_rounds));
+                crate::logger::warn(&format!("[LlmConversation] 达到最大轮次上限 {}，强制结束", max_rounds));
                 break;
             }
         }

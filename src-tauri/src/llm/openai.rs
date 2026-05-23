@@ -88,7 +88,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
         let url = format!("{}/chat/completions", self.base_url);
         let messages_count = request_body["messages"].as_array().map(|a| a.len()).unwrap_or(0);
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] url={}, model={}, messages_count={}, tools_empty={}", url, self.model, messages_count, request_body.get("tools").is_none()));
+        crate::logger::debug(&format!("[DEBUG openai::chat_raw] url={}, model={}, messages_count={}, tools_empty={}", url, self.model, messages_count, request_body.get("tools").is_none()));
 
         // Log each message content for multi-turn debugging (full content, no truncation)
         if let Some(arr) = request_body["messages"].as_array() {
@@ -102,7 +102,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 } else { String::new() };
                 let tool_call_id = msg["tool_call_id"].as_str().unwrap_or("");
                 let tool_id_info = if !tool_call_id.is_empty() { format!(" [tool_call_id: {}]", tool_call_id) } else { String::new() };
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG openai::chat_raw] msg[{}] role={} content={}{}{}",
                     i, role, content, tool_calls_info, tool_id_info
                 ));
@@ -110,7 +110,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
 
         let send_start = chrono::Utc::now().timestamp_millis();
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] sending request..."));
+        crate::logger::debug(&format!("[DEBUG openai::chat_raw] sending request..."));
 
         let response = self
             .client
@@ -124,7 +124,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
         let send_elapsed = chrono::Utc::now().timestamp_millis() - send_start;
         let status = response.status();
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG openai::chat_raw] http_status={}, send_elapsed_ms={}",
             status, send_elapsed
         ));
@@ -142,7 +142,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .await
             .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
         let parse_elapsed = chrono::Utc::now().timestamp_millis() - parse_start;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG openai::chat_raw] json_parse_elapsed_ms={}", parse_elapsed
         ));
 
@@ -177,7 +177,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
 
         let tool_calls_json = serde_json::to_string(&tool_calls).unwrap_or_default();
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG openai::chat_raw] response content={:?} tool_calls={}",
             content, tool_calls_json
         ));

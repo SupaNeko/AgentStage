@@ -18,7 +18,7 @@ impl PromptAssembler {
         _pending_messages: &[Message],
         pending_ids: &std::collections::HashSet<String>,
     ) -> Result<PromptParts, String> {
-        crate::logger::backend("DEBUG", &format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
+        crate::logger::debug(&format!("[DEBUG prompt::assemble] agent_id={}, pending_messages={}", agent_id, _pending_messages.len()));
 
         let mut system_layers: Vec<String> = Vec::new();
         let mut user_layers: Vec<String> = Vec::new();
@@ -204,13 +204,13 @@ impl PromptAssembler {
         let system_with_vars = Self::apply_variables(&system, &agent.name, &user_name);
         let user_with_vars = Self::apply_variables(&user, &agent.name, &user_name);
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG prompt::assemble] agent_id={}, system_chars={}, user_chars={}",
             agent_id, system_with_vars.len(), user_with_vars.len()
         ));
         
         // 记录完整 prompt 内容到日志
-        crate::logger::backend("INFO", &format!(
+        crate::logger::info(&format!(
             "[PromptAssembler] Full prompt for agent {} | trigger_session={:?} | trigger_page={:?} | system_length={} | user_length={}\n---SYSTEM START---\n{}\n---SYSTEM END---\n---USER START---\n{}\n---USER END---",
             agent_id, trigger_session_id, trigger_page_index, system_with_vars.len(), user_with_vars.len(), system_with_vars, user_with_vars
         ));

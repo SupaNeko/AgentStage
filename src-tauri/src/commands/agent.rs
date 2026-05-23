@@ -7,7 +7,7 @@ use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest
 
 #[tauri::command]
 pub async fn create_agent(state: State<'_, DbState>, req: CreateAgentRequest) -> Result<AgentResponse, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG create_agent] name={}", req.name));
+    crate::logger::debug(&format!("[DEBUG create_agent] name={}", req.name));
 
     let conn = get_db(&state).await?;
     if let Ok(Some(_)) = agent_repo::get_agent_by_name(&conn, &req.name) {
@@ -22,12 +22,12 @@ pub async fn create_agent(state: State<'_, DbState>, req: CreateAgentRequest) ->
 
 #[tauri::command]
 pub async fn get_agent(state: State<'_, DbState>, id: String) -> Result<Option<AgentResponse>, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG get_agent] id={}", id));
+    crate::logger::debug(&format!("[DEBUG get_agent] id={}", id));
 
     let conn = get_db(&state).await?;
     let agent = agent_repo::get_by_id(&conn, &id).map_err(|e| e.to_string())?;
     if let Some(ref a) = agent {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG get_agent] id={}, proactive_enabled={}, min={}, max={}",
             a.id, a.proactive_enabled, a.proactive_min_minutes, a.proactive_max_minutes
         ));
@@ -40,13 +40,13 @@ pub async fn list_agents(state: State<'_, DbState>) -> Result<Vec<AgentResponse>
     let conn = get_db(&state).await?;
     let agents = agent_repo::list_all(&conn).map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG list_agents] returned {} agents", agents.len()));
+    crate::logger::debug(&format!("[DEBUG list_agents] returned {} agents", agents.len()));
     Ok(agents.into_iter().map(AgentResponse::from).collect())
 }
 
 #[tauri::command]
 pub async fn update_agent(state: State<'_, DbState>, req: UpdateAgentRequest) -> Result<AgentResponse, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG update_agent] id={}", req.id));
+    crate::logger::debug(&format!("[DEBUG update_agent] id={}", req.id));
 
     let conn = get_db(&state).await?;
     if let Some(ref name) = req.name {
@@ -65,7 +65,7 @@ pub async fn update_agent(state: State<'_, DbState>, req: UpdateAgentRequest) ->
 
 #[tauri::command]
 pub async fn delete_agent(state: State<'_, DbState>, req: DeleteAgentRequest) -> Result<bool, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG delete_agent] id={}", req.id));
+    crate::logger::debug(&format!("[DEBUG delete_agent] id={}", req.id));
 
     let conn = get_db(&state).await?;
     agent_repo::soft_delete(&conn, &req.id).map_err(|e| e.to_string())
@@ -76,7 +76,7 @@ pub async fn reset_agent_memory(
     state: State<'_, DbState>,
     agent_id: String,
 ) -> Result<(), String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG reset_agent_memory] agent_id={}", agent_id));
+    crate::logger::debug(&format!("[DEBUG reset_agent_memory] agent_id={}", agent_id));
 
     let conn = get_db(&state).await?;
     
@@ -86,13 +86,13 @@ pub async fn reset_agent_memory(
     agent_relationship::clear_memories_by_observer(&conn, &agent_id)
         .map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG reset_agent_memory] success agent_id={}", agent_id));
+    crate::logger::debug(&format!("[DEBUG reset_agent_memory] success agent_id={}", agent_id));
     Ok(())
 }
 
 #[tauri::command]
 pub async fn test_api_connection(req: TestApiConnectionRequest) -> Result<TestApiConnectionResponse, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG test_api_connection] provider={} model={}", req.model_provider, req.model_name));
+    crate::logger::debug(&format!("[DEBUG test_api_connection] provider={} model={}", req.model_provider, req.model_name));
 
     let start = std::time::Instant::now();
 
@@ -131,7 +131,7 @@ pub async fn test_api_connection(req: TestApiConnectionRequest) -> Result<TestAp
     let status = response.status();
 
     if status.is_success() {
-        crate::logger::backend("DEBUG", &format!("[DEBUG test_api_connection] success latency={}ms", latency_ms));
+        crate::logger::debug(&format!("[DEBUG test_api_connection] success latency={}ms", latency_ms));
         Ok(TestApiConnectionResponse {
             success: true,
             latency_ms,
@@ -148,7 +148,7 @@ pub async fn test_api_connection(req: TestApiConnectionRequest) -> Result<TestAp
         } else {
             format!("HTTP {}: {}", status, text)
         };
-        crate::logger::backend("DEBUG", &format!("[DEBUG test_api_connection] failed status={} msg={}", status, err_msg));
+        crate::logger::debug(&format!("[DEBUG test_api_connection] failed status={} msg={}", status, err_msg));
         Ok(TestApiConnectionResponse {
             success: false,
             latency_ms,

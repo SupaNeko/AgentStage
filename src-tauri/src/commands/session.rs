@@ -13,13 +13,13 @@ pub async fn create_private_session(
     state: State<'_, DbState>,
     req: CreatePrivateSessionRequest,
 ) -> Result<SessionResponse, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG create_private_session] agent_id={}", req.agent_id));
+    crate::logger::debug(&format!("[DEBUG create_private_session] agent_id={}", req.agent_id));
 
     let conn = get_db(&state).await?;
     let session = session_repo::create_private_session(&conn, &req.agent_id)
         .map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG create_private_session] returned session_id={}", session.id));
+    crate::logger::debug(&format!("[DEBUG create_private_session] returned session_id={}", session.id));
     Ok(session)
 }
 
@@ -28,7 +28,7 @@ pub async fn list_sessions(state: State<'_, DbState>) -> Result<Vec<SessionRespo
     let conn = get_db(&state).await?;
     let sessions = session_repo::list_sessions(&conn).map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG list_sessions] returned {} sessions", sessions.len()));
+    crate::logger::debug(&format!("[DEBUG list_sessions] returned {} sessions", sessions.len()));
     Ok(sessions)
 }
 
@@ -37,23 +37,23 @@ pub async fn get_session(
     state: State<'_, DbState>,
     id: String,
 ) -> Result<Option<SessionResponse>, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG get_session] id={}", id));
+    crate::logger::debug(&format!("[DEBUG get_session] id={}", id));
 
     let conn = get_db(&state).await?;
     let result = session_repo::get_session_by_id(&conn, &id).map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG get_session] id={}, found={}", id, result.is_some()));
+    crate::logger::debug(&format!("[DEBUG get_session] id={}, found={}", id, result.is_some()));
     Ok(result)
 }
 
 #[tauri::command]
 pub async fn delete_session(state: State<'_, DbState>, id: String) -> Result<bool, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG delete_session] id={}", id));
+    crate::logger::debug(&format!("[DEBUG delete_session] id={}", id));
 
     let conn = get_db(&state).await?;
     let rows_affected = session_repo::soft_delete_session(&conn, &id).map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG delete_session] id={}, rows_affected={}", id, rows_affected));
+    crate::logger::debug(&format!("[DEBUG delete_session] id={}, rows_affected={}", id, rows_affected));
     Ok(rows_affected)
 }
 
@@ -62,7 +62,7 @@ pub async fn create_group_session(
     state: State<'_, DbState>,
     req: CreateGroupSessionRequest,
 ) -> Result<SessionResponse, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG create_group_session] name={}, agents={:?}", req.name, req.agent_ids));
+    crate::logger::debug(&format!("[DEBUG create_group_session] name={}, agents={:?}", req.name, req.agent_ids));
     let conn = get_db(&state).await?;
     let session = session_repo::create_group_session(&conn, &req.name, &req.agent_ids)
         .map_err(|e| e.to_string())?;
@@ -168,7 +168,7 @@ pub async fn clear_session_history(
     scheduler: State<'_, Scheduler>,
     req: ClearSessionHistoryRequest,
 ) -> Result<bool, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG clear_session_history] session_id={}", req.session_id));
+    crate::logger::debug(&format!("[DEBUG clear_session_history] session_id={}", req.session_id));
 
     let conn = get_db(&state).await?;
     let result = session_repo::clear_session_history(&conn, &req.session_id)
@@ -201,7 +201,7 @@ pub async fn remove_group_member(
 pub async fn list_history_sessions(state: State<'_, DbState>) -> Result<Vec<SessionResponse>, String> {
     let conn = get_db(&state).await?;
     let sessions = session_repo::list_history_sessions(&conn).map_err(|e| e.to_string())?;
-    crate::logger::backend("DEBUG", &format!("[DEBUG list_history_sessions] returned {} sessions", sessions.len()));
+    crate::logger::debug(&format!("[DEBUG list_history_sessions] returned {} sessions", sessions.len()));
     Ok(sessions)
 }
 
@@ -210,7 +210,7 @@ pub async fn list_chat_pages(
     state: State<'_, DbState>,
     req: ListChatPagesRequest,
 ) -> Result<Vec<ChatPage>, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG list_chat_pages] session_id={}", req.session_id));
+    crate::logger::debug(&format!("[DEBUG list_chat_pages] session_id={}", req.session_id));
     let conn = get_db(&state).await?;
     let pages = chat_page_repo::list_chat_pages(&conn, &req.session_id)
         .map_err(|e| e.to_string())?;

@@ -12,7 +12,7 @@ pub async fn send_user_message(
     scheduler: State<'_, Scheduler>,
     req: SendMessageRequest,
 ) -> Result<Message, String> {
-    crate::logger::backend("DEBUG", &format!("[DEBUG send_user_message] START session_id={}, content_len={}", req.session_id, req.content.len()));
+    crate::logger::debug(&format!("[DEBUG send_user_message] START session_id={}, content_len={}", req.session_id, req.content.len()));
 
     let conn = get_db(&state).await?;
 
@@ -50,7 +50,7 @@ pub async fn send_user_message(
         Some(page_index),
     ).map_err(|e| e.to_string())?;
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG send_user_message] insert_message succeeded, message_id={}, page_index={}", message.id, message.page_index));
+    crate::logger::debug(&format!("[DEBUG send_user_message] insert_message succeeded, message_id={}, page_index={}", message.id, message.page_index));
 
     // 更新会话最后消息预览（按字符截断，防止 UTF-8 切片 panic）
     let preview = crate::scheduler::truncate_preview(&req.content, 100);
@@ -59,11 +59,11 @@ pub async fn send_user_message(
     drop(conn);
 
     // 触发调度器（错误不传播到前端，调度器在后台处理）
-    crate::logger::backend("DEBUG", &format!("[DEBUG send_user_message] calling scheduler.on_new_message for session_id={}", req.session_id));
+    crate::logger::debug(&format!("[DEBUG send_user_message] calling scheduler.on_new_message for session_id={}", req.session_id));
     let scheduler_result = scheduler.on_new_message(&req.session_id, &message).await;
     match &scheduler_result {
-        Ok(_) => crate::logger::backend("DEBUG", "[DEBUG send_user_message] scheduler.on_new_message completed OK"),
-        Err(e) => crate::logger::backend("WARN", &format!(
+        Ok(_) => crate::logger::debug("[DEBUG send_user_message] scheduler.on_new_message completed OK"),
+        Err(e) => crate::logger::warn(&format!(
             "[DEBUG send_user_message] scheduler error (non-fatal): {}", e
         )),
     }
@@ -71,7 +71,7 @@ pub async fn send_user_message(
     // Check overflow summary
     scheduler.spawn_overflow_summary(req.session_id.clone());
 
-    crate::logger::backend("DEBUG", &format!("[DEBUG send_user_message] END session_id={}, message_id={}", req.session_id, message.id));
+    crate::logger::debug(&format!("[DEBUG send_user_message] END session_id={}, message_id={}", req.session_id, message.id));
 
     Ok(message)
 }
@@ -143,7 +143,7 @@ pub async fn send_history_message(
     state: State<'_, DbState>,
     req: SendHistoryMessageRequest,
 ) -> Result<Vec<Message>, String> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG send_history_message] START session_id={}, page_index={}, content_len={}",
         req.session_id, req.page_index, req.content.len()
     ));
@@ -182,7 +182,7 @@ pub async fn send_history_message(
         ) {
             Ok(p) => p,
             Err(e) => {
-                crate::logger::backend("ERROR", &format!(
+                crate::logger::error(&format!(
                     "[DEBUG send_history_message] Failed to assemble prompt for agent {}: {}", agent_id, e
                 ));
                 continue;
@@ -193,13 +193,13 @@ pub async fn send_history_message(
         let agent = match crate::db::agent::get_by_id(&conn, &agent_id) {
             Ok(Some(a)) => a,
             Ok(None) => {
-                crate::logger::backend("WARN", &format!(
+                crate::logger::warn(&format!(
                     "[DEBUG send_history_message] Agent {} not found", agent_id
                 ));
                 continue;
             }
             Err(e) => {
-                crate::logger::backend("ERROR", &format!(
+                crate::logger::error(&format!(
                     "[DEBUG send_history_message] DB error for agent {}: {}", agent_id, e
                 ));
                 continue;
@@ -210,14 +210,14 @@ pub async fn send_history_message(
             Some(enc) => match crate::crypto::decrypt(&enc) {
                 Ok(k) => k,
                 Err(e) => {
-                    crate::logger::backend("ERROR", &format!(
+                    crate::logger::error(&format!(
                         "[DEBUG send_history_message] Failed to decrypt API key for agent {}: {}", agent_id, e
                     ));
                     continue;
                 }
             },
             None => {
-                crate::logger::backend("WARN", &format!(
+                crate::logger::warn(&format!(
                     "[DEBUG send_history_message] Agent {} has no API key", agent_id
                 ));
                 continue;
@@ -259,7 +259,7 @@ pub async fn send_history_message(
                                 break; // 只处理第一个有效的 send_message
                             }
                         } else {
-                            crate::logger::backend("WARN", &format!(
+                            crate::logger::warn(&format!(
                                 "[DEBUG send_history_message] Failed to parse tool call arguments for agent {}: {}", agent_id, tc.arguments
                             ));
                         }
@@ -282,14 +282,14 @@ pub async fn send_history_message(
                 }
             }
             Err(e) => {
-                crate::logger::backend("ERROR", &format!(
+                crate::logger::error(&format!(
                     "[DEBUG send_history_message] LLM call failed for agent {}: {}", agent_id, e
                 ));
             }
         }
     }
 
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG send_history_message] END session_id={}, returned {} messages",
         req.session_id, all_messages.len()
     ));

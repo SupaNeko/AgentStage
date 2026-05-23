@@ -60,7 +60,7 @@ pub async fn update_agent_memory(
     target_type: String,
     memory_text: String,
 ) -> Result<(), String> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG update_agent_memory] observer_id={}, target_id={}, target_type={}, text_len={}",
         observer_id, target_id, target_type, memory_text.len()
     ));

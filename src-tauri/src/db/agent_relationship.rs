@@ -7,7 +7,7 @@ pub fn get_relationship(
     target_id: &str,
     target_type: &str,
 ) -> Result<String> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::get_relationship] observer_id={}, target_id={}, target_type={}",
         observer_id, target_id, target_type
     ));
@@ -18,17 +18,17 @@ pub fn get_relationship(
     );
     match text {
         Ok(t) => {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG agent_relationship::get_relationship] found text='{}'", t
             ));
             Ok(t)
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            crate::logger::backend("DEBUG", "[DEBUG agent_relationship::get_relationship] no rows, returning empty");
+            crate::logger::debug("[DEBUG agent_relationship::get_relationship] no rows, returning empty");
             Ok(String::new())
         }
         Err(e) => {
-            crate::logger::backend("ERROR", &format!(
+            crate::logger::error(&format!(
                 "[DEBUG agent_relationship::get_relationship] error: {}", e
             ));
             Err(e)
@@ -43,7 +43,7 @@ pub fn upsert_relationship(
     target_type: &str,
     relationship_text: &str,
 ) -> Result<()> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::upsert_relationship] observer_id={}, target_id={}, target_type={}, text='{}'",
         observer_id, target_id, target_type, relationship_text
     ));
@@ -56,7 +56,7 @@ pub fn upsert_relationship(
              updated_at = excluded.updated_at",
         (observer_id, target_id, target_type, relationship_text, now),
     )?;
-    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::upsert_relationship] success");
+    crate::logger::debug("[DEBUG agent_relationship::upsert_relationship] success");
     Ok(())
 }
 
@@ -64,7 +64,7 @@ pub fn list_relationships_by_observer(
     conn: &Connection,
     observer_id: &str,
 ) -> Result<Vec<RelationshipItem>> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::list_relationships_by_observer] observer_id={}", observer_id
     ));
     let mut stmt = conn.prepare(
@@ -157,10 +157,10 @@ pub fn list_relationships_by_observer(
 
     let result: Result<Vec<RelationshipItem>> = rows.collect();
     match &result {
-        Ok(items) => crate::logger::backend("DEBUG", &format!(
+        Ok(items) => crate::logger::debug(&format!(
             "[DEBUG agent_relationship::list_relationships_by_observer] returned {} items", items.len()
         )),
-        Err(e) => crate::logger::backend("ERROR", &format!(
+        Err(e) => crate::logger::error(&format!(
             "[DEBUG agent_relationship::list_relationships_by_observer] error: {}", e
         )),
     }
@@ -180,7 +180,7 @@ pub fn delete_relationships_by_target(
 }
 
 pub fn add_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) -> Result<()> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::add_friendship] agent_id_1={}, agent_id_2={}",
         agent_id_1, agent_id_2
     ));
@@ -195,12 +195,12 @@ pub fn add_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) -> 
          VALUES (?1, ?2, ?3, 'agent', ?4, NULL)",
         rusqlite::params![uuid::Uuid::new_v4().to_string(), agent_id_2, agent_id_1, now],
     )?;
-    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::add_friendship] success");
+    crate::logger::debug("[DEBUG agent_relationship::add_friendship] success");
     Ok(())
 }
 
 pub fn remove_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) -> Result<()> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::remove_friendship] agent_id_1={}, agent_id_2={}",
         agent_id_1, agent_id_2
     ));
@@ -212,7 +212,7 @@ pub fn remove_friendship(conn: &Connection, agent_id_1: &str, agent_id_2: &str) 
         "DELETE FROM friendships WHERE agent_id_1 = ?1 AND agent_id_2 = ?2 AND participant_type_2 = 'agent'",
         (agent_id_2, agent_id_1),
     )?;
-    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::remove_friendship] success");
+    crate::logger::debug("[DEBUG agent_relationship::remove_friendship] success");
     Ok(())
 }
 
@@ -223,7 +223,7 @@ pub fn upsert_memory(
     target_type: &str,
     memory_text: &str,
 ) -> Result<()> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::upsert_memory] observer_id={}, target_id={}, target_type={}, text_len={}",
         observer_id, target_id, target_type, memory_text.len()
     ));
@@ -236,19 +236,19 @@ pub fn upsert_memory(
              updated_at = excluded.updated_at",
         (observer_id, target_id, target_type, memory_text, now),
     )?;
-    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::upsert_memory] success");
+    crate::logger::debug("[DEBUG agent_relationship::upsert_memory] success");
     Ok(())
 }
 
 pub fn clear_memories_by_observer(conn: &Connection, observer_id: &str) -> Result<()> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG agent_relationship::clear_memories_by_observer] observer_id={}", observer_id
     ));
     conn.execute(
         "UPDATE agent_relationships SET memory_text = '' WHERE observer_id = ?1",
         [observer_id],
     )?;
-    crate::logger::backend("DEBUG", "[DEBUG agent_relationship::clear_memories_by_observer] success");
+    crate::logger::debug("[DEBUG agent_relationship::clear_memories_by_observer] success");
     Ok(())
 }
 

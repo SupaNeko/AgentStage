@@ -89,15 +89,15 @@ impl Scheduler {
         if let Some(handle) = self.app_handle.lock().unwrap().as_ref() {
             let result = handle.emit(event, payload.clone());
             match &result {
-                Ok(_) => crate::logger::backend("DEBUG", &format!(
+                Ok(_) => crate::logger::debug(&format!(
                     "[DEBUG emit] event='{}' sent OK", event
                 )),
-                Err(e) => crate::logger::backend("ERROR", &format!(
+                Err(e) => crate::logger::error(&format!(
                     "[DEBUG emit] event='{}' failed: {}", event, e
                 )),
             }
         } else {
-            crate::logger::backend("WARN", &format!(
+            crate::logger::warn(&format!(
                 "[DEBUG emit] event='{}' dropped (no app_handle)", event
             ));
         }
@@ -113,7 +113,7 @@ impl Scheduler {
             Ok(result) => result,
             Err(join_error) => {
                 let msg = format!("[Scheduler] async task panicked: {}", join_error);
-                crate::logger::backend("ERROR", &msg);
+                crate::logger::error(&msg);
                 Err(msg)
             }
         }
@@ -200,11 +200,11 @@ impl Scheduler {
             ) {
                 Ok(deleted) => {
                     if deleted > 0 {
-                        crate::logger::backend("INFO", &format!("[recover_from_db] cleaned up {} expired single tasks", deleted));
+                        crate::logger::info(&format!("[recover_from_db] cleaned up {} expired single tasks", deleted));
                     }
                 }
                 Err(e) => {
-                    crate::logger::backend("ERROR", &format!("[recover_from_db] cleanup expired single tasks failed: {}", e));
+                    crate::logger::error(&format!("[recover_from_db] cleanup expired single tasks failed: {}", e));
                 }
             }
         }
@@ -223,7 +223,7 @@ impl Scheduler {
             )
             .map_err(|e| e.to_string())?;
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG get_target_agents] session_id={}, sender_id={}, session_type={}",
             session_id, sender_id, session_type
         ));
@@ -262,7 +262,7 @@ impl Scheduler {
             ids
         };
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG get_target_agents] session_id={}, target_agents={:?}",
             session_id, target_agent_ids
         ));
@@ -271,7 +271,7 @@ impl Scheduler {
     }
 
     pub async fn distribute_message(&self, session_id: &str, message: &Message, sender_id: &str) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG distribute_message] START session_id={}, message_id={}, sender_id={}",
             session_id, message.id, sender_id
         ));
@@ -280,7 +280,7 @@ impl Scheduler {
         // Freezing only pauses automatic triggers (handled in trigger_agent), not message enqueue.
         let target_agents = self.get_target_agents(session_id, sender_id).await?;
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG distribute_message] target_agents_count={}, agents={:?}",
             target_agents.len(), target_agents
         ));
@@ -308,13 +308,13 @@ impl Scheduler {
 
             // 3. 写入数据库
             let insert_result = agent_unread_repo::insert_unread(&conn, session_id, agent_id, &message.id, message.created_at);
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG distribute_message] agent_id={}, db_insert={}",
                 agent_id, if insert_result.is_ok() { "OK" } else { "ERR" }
             ));
         }
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG distribute_message] END session_id={}, distributed_to={} agents",
             session_id, target_agents.len()
         ));
@@ -412,7 +412,7 @@ impl Scheduler {
         // 3. 清除 frozen 状态
         self.frozen_sessions.lock().await.remove(session_id);
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG cancel_session] session_id={} cleaned", session_id
         ));
     }
@@ -421,7 +421,7 @@ impl Scheduler {
         let scheduler = self.clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = scheduler.run_session_summary(&session_id, page_index).await {
-                crate::logger::backend("ERROR", &format!("[SessionSummary] failed for session={} page={}: {}", session_id, page_index, e));
+                crate::logger::error(&format!("[SessionSummary] failed for session={} page={}: {}", session_id, page_index, e));
             }
         });
     }
@@ -430,7 +430,7 @@ impl Scheduler {
         let scheduler = self.clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = scheduler.run_overflow_summary(&session_id).await {
-                crate::logger::backend("ERROR", &format!("[OverflowSummary] failed for session={}: {}", session_id, e));
+                crate::logger::error(&format!("[OverflowSummary] failed for session={}: {}", session_id, e));
             }
         });
     }
@@ -441,7 +441,7 @@ impl Scheduler {
         session_id: &str,
         message: &Message,
     ) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG on_new_message] START session_id={}, message_id={}, sender_type={}, sender_id={}",
             session_id, message.id, message.sender_type, message.sender_id
         ));
@@ -455,7 +455,7 @@ impl Scheduler {
             conn.execute("UPDATE group_sessions SET agent_message_count = 0, last_reset_at = ?1 WHERE session_id = ?2", (now, session_id)).unwrap_or_default();
             let _ = frozen_state_repo::remove_frozen(&conn, session_id);
             self.frozen_sessions.lock().await.remove(session_id);
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG on_new_message] user message resets counters and unfreezes session_id={}", session_id
             ));
         }
@@ -467,18 +467,18 @@ impl Scheduler {
 
         // 触发目标 agents
         let target_agents = self.get_target_agents(session_id, &message.sender_id).await?;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG on_new_message] will try_trigger {} agents: {:?}",
             target_agents.len(), target_agents
         ));
         for agent_id in target_agents {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG on_new_message] calling try_trigger_agent agent_id={}", agent_id
             ));
             let _ = self.try_trigger_agent(&agent_id).await;
         }
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG on_new_message] END session_id={}, message_id={}", session_id, message.id
         ));
 
@@ -486,7 +486,7 @@ impl Scheduler {
     }
 
     pub async fn try_trigger_agent(&self, agent_id: &str) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG try_trigger_agent] START agent_id={}", agent_id
         ));
 
@@ -512,7 +512,7 @@ impl Scheduler {
                 .unwrap_or(0);
             let now = chrono::Utc::now().timestamp_millis();
             if now - updated_at > 5 * 60 * 1000 {
-                crate::logger::backend("WARN", &format!(
+                crate::logger::warn(&format!(
                     "[DEBUG try_trigger_agent] agent_id={}, is_triggering=true but stale ({} min), resetting",
                     agent_id, (now - updated_at) / 60000
                 ));
@@ -522,7 +522,7 @@ impl Scheduler {
                 ).unwrap_or_default();
                 // 继续触发，不 return
             } else {
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG try_trigger_agent] agent_id={}, is_triggering=true, skip",
                     agent_id
                 ));
@@ -541,7 +541,7 @@ impl Scheduler {
         let interval_ms = settings.global_min_trigger_interval as i64 * 1000;
         let decision = if now - last_trigger >= interval_ms { "trigger now" } else { "wait" };
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG try_trigger_agent] agent_id={}, last_trigger={}, interval_ms={}, decision={}",
             agent_id, last_trigger, interval_ms, decision
         ));
@@ -549,16 +549,16 @@ impl Scheduler {
         if now - last_trigger >= interval_ms {
             let result = self.trigger_agent(agent_id).await;
             match &result {
-                Ok(_) => crate::logger::backend("DEBUG", &format!(
+                Ok(_) => crate::logger::debug(&format!(
                     "[DEBUG try_trigger_agent] END agent_id={}, trigger_agent OK", agent_id
                 )),
-                Err(e) => crate::logger::backend("ERROR", &format!(
+                Err(e) => crate::logger::error(&format!(
                     "[DEBUG try_trigger_agent] END agent_id={}, trigger_agent FAILED: {}", agent_id, e
                 )),
             }
             result
         } else {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG try_trigger_agent] END agent_id={}, skipped (interval not met)", agent_id
             ));
             Ok(())
@@ -566,7 +566,7 @@ impl Scheduler {
     }
 
     pub async fn trigger_agent(&self, agent_id: &str) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent] START agent_id={}", agent_id
         ));
 
@@ -576,13 +576,13 @@ impl Scheduler {
             notifications.remove(agent_id).unwrap_or_default()
         };
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent] agent_id={}, notification_sessions={:?}, count={}",
             agent_id, session_ids, session_ids.len()
         ));
 
         if session_ids.is_empty() {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] END agent_id={}, no sessions in notifications", agent_id
             ));
             return Ok(());
@@ -636,14 +636,14 @@ impl Scheduler {
             for sid in frozen_sessions_to_requeue {
                 entry.insert(sid);
             }
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] agent_id={}, requeued_frozen_sessions_count={}",
                 agent_id, requeue_count
             ));
         }
 
         if pending.is_empty() {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] END agent_id={}, pending is empty after filtering", agent_id
             ));
             return Ok(());
@@ -652,7 +652,7 @@ impl Scheduler {
         // 按 created_at 排序
         pending.sort_by_key(|m| m.created_at);
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent] agent_id={}, pending_messages={}",
             agent_id, pending.len()
         ));
@@ -671,7 +671,7 @@ impl Scheduler {
             for msg in &pending {
                 map.entry(msg.session_id.clone()).or_insert(msg.page_index);
             }
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] agent_id={}, session_pages={:?}",
                 agent_id, map
             ));
@@ -718,17 +718,17 @@ impl Scheduler {
             scheduler.trigger_agent_inner(&agent_id_owned, pending, session_pages, snapshot_pages).await
         }).await;
         match &inner_result {
-            Ok(_) => crate::logger::backend("DEBUG", &format!(
+            Ok(_) => crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner OK", agent_id
             )),
-            Err(e) => crate::logger::backend("ERROR", &format!(
+            Err(e) => crate::logger::error(&format!(
                 "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner FAILED: {}", agent_id, e
             )),
         }
 
         // 防御性清除：即使 inner_result 是 Err，也要清除标志
         if let Err(e) = self.clear_triggering_flag(agent_id).await {
-            crate::logger::backend("ERROR", &format!(
+            crate::logger::error(&format!(
                 "[DEBUG trigger_agent] failed to clear is_triggering for agent_id={}: {}",
                 agent_id, e
             ));
@@ -739,7 +739,7 @@ impl Scheduler {
 
     async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, _snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
         let inner_start = chrono::Utc::now().timestamp_millis();
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
             agent_id, pending.len(), session_pages
         ));
@@ -765,7 +765,7 @@ impl Scheduler {
             .filter(|p| !muted_sessions.contains(&p.session_id))
             .collect();
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, after_mute_filter pending_count={}",
             agent_id, pending.len()
         ));
@@ -820,7 +820,7 @@ impl Scheduler {
                 )
                 .map_err(|e| e.to_string())?;
 
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, system_len={}, user_len={}, model={:?}, base_url={:?}",
                 agent_id, parts.system.len(), parts.user.len(), agent.model_name, agent.base_url
             ));
@@ -828,7 +828,7 @@ impl Scheduler {
             (agent, parts)
         };
         let prompt_elapsed = chrono::Utc::now().timestamp_millis() - prompt_start;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, prompt_build_elapsed_ms={}",
             agent_id, prompt_elapsed
         ));
@@ -838,7 +838,7 @@ impl Scheduler {
             crate::crypto::decrypt(&encrypted)
                 .map_err(|e| format!("Failed to decrypt API key: {}", e))?
         } else {
-            crate::logger::backend("ERROR", &format!(
+            crate::logger::error(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, no API key configured", agent_id
             ));
             self.restore_pending(agent_id, pending).await;
@@ -875,7 +875,7 @@ impl Scheduler {
             Ok(r) => r,
             Err(e) => {
                 let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
-                crate::logger::backend("ERROR", &format!(
+                crate::logger::error(&format!(
                     "[trigger_agent_inner] LLM conversation failed after {}ms: {}", llm_elapsed, e
                 ));
                 self.restore_pending(agent_id, pending).await;
@@ -884,19 +884,19 @@ impl Scheduler {
             }
         };
         let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, LLM total_elapsed_ms={} rounds={} tool_calls={}",
             agent_id, llm_elapsed, result.total_rounds, result.executed_tool_calls.len()
         ));
 
         let agent_messages = result.messages;
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, agent_messages_count={}",
             agent_id, agent_messages.len()
         ));
         for (i, msg) in agent_messages.iter().enumerate() {
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, agent_message[{}]: session_id={}, content_preview={}",
                 agent_id, i, msg.session_id, crate::scheduler::truncate_preview(&msg.content, 80)
             ));
@@ -938,7 +938,7 @@ impl Scheduler {
         }
 
         let update_elapsed = chrono::Utc::now().timestamp_millis() - update_start;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, message_update_elapsed_ms={}",
             agent_id, update_elapsed
         ));
@@ -951,7 +951,7 @@ impl Scheduler {
         }
 
         // === 阶段 7：触发链 ===
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, entering stage7 (emit+distribute), agent_messages={}",
             agent_id, agent_messages.len()
         ));
@@ -964,12 +964,12 @@ impl Scheduler {
                     |row| Ok(row.get::<_, i32>(0)? > 0),
                 ).unwrap_or(false)
             };
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={}, session_exists={}",
                 agent_id, msg.session_id, msg.page_index, session_exists
             ));
             if !session_exists {
-                crate::logger::backend("DEBUG", &format!(
+                crate::logger::debug(&format!(
                     "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (session deleted)",
                     agent_id, msg.session_id
                 ));
@@ -977,7 +977,7 @@ impl Scheduler {
             }
             // snapshot_pages 检查已移除：后端只负责推送消息，前端负责决定是否渲染
 
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, emitting new_message message_id={}",
                 agent_id, msg.session_id, msg.id
             ));
@@ -989,7 +989,7 @@ impl Scheduler {
         //（避免 async fn 递归调用问题）
 
         let inner_elapsed = chrono::Utc::now().timestamp_millis() - inner_start;
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] END agent_id={}, total_elapsed_ms={}", agent_id, inner_elapsed
         ));
         self.emit(
@@ -1020,7 +1020,7 @@ impl Scheduler {
                     .insert(session_id);
             }
 
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[DEBUG trigger_agent] restored {} pending messages for agent_id={}",
                 count, agent_id
             ));
@@ -1042,7 +1042,7 @@ impl Scheduler {
         system_prompt: &str,
         messages: Vec<serde_json::Value>,
     ) -> Result<LlmResponse, String> {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG call_llm] system_prompt_len={}, messages_count={}",
             system_prompt.len(), messages.len()
         ));
@@ -1053,8 +1053,8 @@ impl Scheduler {
             .await;
 
         match &result {
-            Ok(_) => crate::logger::backend("DEBUG", "[DEBUG call_llm] llm_call succeeded"),
-            Err(e) => crate::logger::backend("ERROR", &format!("[DEBUG call_llm] llm_call failed: {}", e)),
+            Ok(_) => crate::logger::debug("[DEBUG call_llm] llm_call succeeded"),
+            Err(e) => crate::logger::error(&format!("[DEBUG call_llm] llm_call failed: {}", e)),
         }
 
         result.map_err(|e| format!("LLM call failed: {}", e))
@@ -1071,7 +1071,7 @@ impl Scheduler {
             match Self::call_llm(provider, system_prompt, messages.clone()).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) => {
-                    crate::logger::backend("ERROR", &format!(
+                    crate::logger::error(&format!(
                         "[DEBUG call_llm_with_retry] attempt {}/3 failed: {}", attempt + 1, e
                     ));
                     if attempt < 2 {
@@ -1126,7 +1126,7 @@ impl Scheduler {
                     .unwrap_or(0);
                 let now = chrono::Utc::now().timestamp_millis();
                 if now - updated_at > 5 * 60 * 1000 {
-                    crate::logger::backend("WARN", &format!(
+                    crate::logger::warn(&format!(
                         "[trigger_special] agent_id={}, is_triggering=true but stale ({} min), resetting",
                         agent_id, (now - updated_at) / 60000
                     ));
@@ -1135,7 +1135,7 @@ impl Scheduler {
                         (now, agent_id),
                     ).unwrap_or_default();
                 } else {
-                    crate::logger::backend("DEBUG", &format!(
+                    crate::logger::debug(&format!(
                         "[trigger_special] agent_id={}, is_triggering=true, skip", agent_id
                     ));
                     return Ok(());
@@ -1167,7 +1167,7 @@ impl Scheduler {
             crate::crypto::decrypt(&encrypted)
                 .map_err(|e| format!("Failed to decrypt API key: {}", e))?
         } else {
-            crate::logger::backend("ERROR", &format!(
+            crate::logger::error(&format!(
                 "[trigger_special] agent_id={}, no API key configured", agent_id
             ));
             self.clear_triggering_flag(agent_id).await?;
@@ -1207,7 +1207,7 @@ impl Scheduler {
         let full_user_prompt = format!("{}\n\n{}", parts.user, special_layer);
 
         // Log full prompt (including special layer)
-        crate::logger::backend("INFO", &format!(
+        crate::logger::info(&format!(
             "[trigger_special] Full prompt for agent {} | context={:?} | system_length={} | user_length={}\n---SYSTEM START---\n{}\n---SYSTEM END---\n---USER START---\n{}\n---USER END---",
             agent_id,
             match &context {
@@ -1242,7 +1242,7 @@ impl Scheduler {
             ).await?;
 
             // Log result
-            crate::logger::backend("INFO", &format!(
+            crate::logger::info(&format!(
                 "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | total_rounds={} | content={:?}",
                 agent_id_owned,
                 result.final_content.as_ref().map(|c| c.len()).unwrap_or(0),
@@ -1255,7 +1255,7 @@ impl Scheduler {
 
         // 7. Clear is_triggering (always, even if inner failed)
         if let Err(e) = self.clear_triggering_flag(agent_id).await {
-            crate::logger::backend("ERROR", &format!("[trigger_special] failed to clear is_triggering: {}", e));
+            crate::logger::error(&format!("[trigger_special] failed to clear is_triggering: {}", e));
         }
 
         inner_result
@@ -1276,7 +1276,7 @@ impl Scheduler {
         let tasks = match scheduled_task_repo::get_due_tasks(&conn, now) {
             Ok(t) => t,
             Err(e) => {
-                crate::logger::backend("ERROR", &format!("[TimerScan] query failed: {}", e));
+                crate::logger::error(&format!("[TimerScan] query failed: {}", e));
                 return;
             }
         };
@@ -1285,7 +1285,7 @@ impl Scheduler {
         for task in tasks {
             // 安静时段检查：如果在安静时段内，跳过本次触发（不更新状态，下次扫描继续检查）
             if self.is_in_quiet_hours().await {
-                crate::logger::backend("DEBUG", &format!("[TimerScan] task_id={} skipped due to quiet hours", task.id));
+                crate::logger::debug(&format!("[TimerScan] task_id={} skipped due to quiet hours", task.id));
                 continue;
             }
 
@@ -1294,7 +1294,7 @@ impl Scheduler {
                 if task.task_type == "single" {
                     // 单次任务触发后直接删除，不显示为暂停
                     if let Err(e) = scheduled_task_repo::delete_task(&conn, &task.id) {
-                        crate::logger::backend("ERROR", &format!("[TimerScan] delete single task failed: {}", e));
+                        crate::logger::error(&format!("[TimerScan] delete single task failed: {}", e));
                     }
                 } else {
                     let interval_ms = (task.interval_minutes.unwrap_or(60) as i64) * 60 * 1000;
@@ -1305,7 +1305,7 @@ impl Scheduler {
                         task.next_trigger_at + interval_ms
                     };
                     if let Err(e) = scheduled_task_repo::update_next_trigger(&conn, &task.id, new_next) {
-                        crate::logger::backend("ERROR", &format!("[TimerScan] update next trigger failed: {}", e));
+                        crate::logger::error(&format!("[TimerScan] update next trigger failed: {}", e));
                     }
                 }
             }
@@ -1320,7 +1320,7 @@ impl Scheduler {
                         target_session_id: task_clone.target_session_id,
                     }
                 ).await {
-                    crate::logger::backend("ERROR", &format!("[TimerTrigger] failed: {}", e));
+                    crate::logger::error(&format!("[TimerTrigger] failed: {}", e));
                 }
             });
         }
@@ -1330,7 +1330,7 @@ impl Scheduler {
         let now = chrono::Utc::now().timestamp_millis();
         let timers = self.proactive_timers.lock().await.clone();
 
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[Proactive] scan start | timers_count={} | now={}",
             timers.len(),
             chrono::DateTime::from_timestamp_millis(now).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default()
@@ -1338,7 +1338,7 @@ impl Scheduler {
 
         for (agent_id, next_at) in &timers {
             let remaining = next_at.saturating_sub(now);
-            crate::logger::backend("DEBUG", &format!(
+            crate::logger::debug(&format!(
                 "[Proactive] timer check | agent={} | next_at={} | remaining_ms={} | due={}",
                 agent_id,
                 chrono::DateTime::from_timestamp_millis(*next_at).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
@@ -1353,12 +1353,12 @@ impl Scheduler {
             }
 
             if self.is_in_quiet_hours().await {
-                crate::logger::backend("INFO", &format!("[Proactive] agent={} due but in quiet hours, rescheduling", agent_id));
+                crate::logger::info(&format!("[Proactive] agent={} due but in quiet hours, rescheduling", agent_id));
                 self.reset_proactive_timer(&agent_id).await;
                 continue;
             }
 
-            crate::logger::backend("INFO", &format!("[Proactive] agent={} timer DUE, triggering proactive session", agent_id));
+            crate::logger::info(&format!("[Proactive] agent={} timer DUE, triggering proactive session", agent_id));
 
             let scheduler = self.clone();
             let agent_id_clone = agent_id.clone();
@@ -1367,7 +1367,7 @@ impl Scheduler {
                     &agent_id_clone,
                     SpecialTriggerContext::Proactive
                 ).await {
-                    crate::logger::backend("ERROR", &format!("[ProactiveTrigger] failed: {}", e));
+                    crate::logger::error(&format!("[ProactiveTrigger] failed: {}", e));
                 }
             });
 
@@ -1411,7 +1411,7 @@ impl Scheduler {
 
         if !agent.proactive_enabled {
             self.proactive_timers.lock().await.remove(agent_id);
-            crate::logger::backend("INFO", &format!("[Proactive] agent={} proactive disabled, timer removed", agent_id));
+            crate::logger::info(&format!("[Proactive] agent={} proactive disabled, timer removed", agent_id));
             return;
         }
 
@@ -1420,7 +1420,7 @@ impl Scheduler {
         let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
         let next = chrono::Utc::now().timestamp_millis() + random_ms;
         self.proactive_timers.lock().await.insert(agent_id.to_string(), next);
-        crate::logger::backend("INFO", &format!(
+        crate::logger::info(&format!(
             "[Proactive] agent={} timer reset | next_at={} (in {} min)",
             agent_id,
             chrono::DateTime::from_timestamp_millis(next).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
@@ -1445,18 +1445,18 @@ impl Scheduler {
             let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
             let next = now + random_ms;
             timers.insert(agent.id.clone(), next);
-            crate::logger::backend("INFO", &format!(
+            crate::logger::info(&format!(
                 "[Proactive] init timer for agent={} | next_at={} (in {} min)",
                 agent.id,
                 chrono::DateTime::from_timestamp_millis(next).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
                 random_ms / 60000
             ));
         }
-        crate::logger::backend("INFO", &format!("[Proactive] initialized {} proactive timers", timers.len()));
+        crate::logger::info(&format!("[Proactive] initialized {} proactive timers", timers.len()));
     }
 
     async fn run_session_summary(&self, session_id: &str, page_index: i32) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!("[SessionSummary] start session={} page={}", session_id, page_index));
+        crate::logger::debug(&format!("[SessionSummary] start session={} page={}", session_id, page_index));
 
         let conn = self.db_state.0.lock().await;
 
@@ -1491,7 +1491,7 @@ impl Scheduler {
         all_agents.sort();
         all_agents.dedup();
 
-        crate::logger::backend("DEBUG", &format!("[SessionSummary] found {} agents", all_agents.len()));
+        crate::logger::debug(&format!("[SessionSummary] found {} agents", all_agents.len()));
 
         // 2. For each agent, run summary if memory_enabled
         for agent_id in all_agents {
@@ -1502,13 +1502,13 @@ impl Scheduler {
             };
 
             if !agent.memory_enabled {
-                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} memory disabled, skipping", agent_id));
+                crate::logger::debug(&format!("[SessionSummary] agent={} memory disabled, skipping", agent_id));
                 continue;
             }
 
             // Check agent has valid LLM config
             if agent.model_provider.is_none() || agent.model_name.is_none() || agent.api_key_encrypted.is_none() {
-                crate::logger::backend("WARN", &format!("[SessionSummary] agent={} missing LLM config, skipping", agent_id));
+                crate::logger::warn(&format!("[SessionSummary] agent={} missing LLM config, skipping", agent_id));
                 continue;
             }
 
@@ -1581,7 +1581,7 @@ impl Scheduler {
             drop(conn);
 
             if messages.is_empty() {
-                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} no messages, skipping", agent_id));
+                crate::logger::debug(&format!("[SessionSummary] agent={} no messages, skipping", agent_id));
                 continue;
             }
 
@@ -1606,7 +1606,7 @@ impl Scheduler {
             let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
                 Ok(k) => k,
                 Err(e) => {
-                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} decrypt failed: {}", agent_id, e));
+                    crate::logger::error(&format!("[SessionSummary] agent={} decrypt failed: {}", agent_id, e));
                     continue;
                 }
             };
@@ -1629,12 +1629,12 @@ impl Scheduler {
                 "content": "请回顾本次对话，判断是否有值得保存到记忆中的信息。"
             })];
 
-            crate::logger::backend("DEBUG", &format!("[SessionSummary] calling LLM for agent={}", agent_id));
+            crate::logger::debug(&format!("[SessionSummary] calling LLM for agent={}", agent_id));
 
             let response = match provider.chat(&system_prompt, messages_json, tools).await {
                 Ok(resp) => resp,
                 Err(e) => {
-                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} LLM call failed: {}", agent_id, e));
+                    crate::logger::error(&format!("[SessionSummary] agent={} LLM call failed: {}", agent_id, e));
                     continue;
                 }
             };
@@ -1644,16 +1644,16 @@ impl Scheduler {
                 session_pages.insert(session_id.to_string(), page_index);
         let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
                 if let Err(e) = executor.execute(&agent_id, response.tool_calls, &session_pages).await {
-                    crate::logger::backend("ERROR", &format!("[SessionSummary] agent={} tool execution failed: {}", agent_id, e));
+                    crate::logger::error(&format!("[SessionSummary] agent={} tool execution failed: {}", agent_id, e));
                 } else {
-                    crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} tools executed successfully", agent_id));
+                    crate::logger::debug(&format!("[SessionSummary] agent={} tools executed successfully", agent_id));
                 }
             } else {
-                crate::logger::backend("DEBUG", &format!("[SessionSummary] agent={} no tools called", agent_id));
+                crate::logger::debug(&format!("[SessionSummary] agent={} no tools called", agent_id));
             }
         }
 
-        crate::logger::backend("DEBUG", &format!("[SessionSummary] complete session={} page={}", session_id, page_index));
+        crate::logger::debug(&format!("[SessionSummary] complete session={} page={}", session_id, page_index));
         Ok(())
     }
 
@@ -1662,7 +1662,7 @@ impl Scheduler {
         {
             let mut running = self.running_summaries.lock().await;
             if running.contains(session_id) {
-                crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} already running, skipping", session_id));
+                crate::logger::debug(&format!("[OverflowSummary] session={} already running, skipping", session_id));
                 return Ok(());
             }
             running.insert(session_id.to_string());
@@ -1679,7 +1679,7 @@ impl Scheduler {
     }
 
     async fn do_run_overflow_summary(&self, session_id: &str) -> Result<(), String> {
-        crate::logger::backend("DEBUG", &format!("[OverflowSummary] start session={}", session_id));
+        crate::logger::debug(&format!("[OverflowSummary] start session={}", session_id));
 
         let conn = self.db_state.0.lock().await;
 
@@ -1703,7 +1703,7 @@ impl Scheduler {
         ).unwrap_or((50, 0));
 
         if threshold <= 0 {
-            crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} threshold=0, skipping", session_id));
+            crate::logger::debug(&format!("[OverflowSummary] session={} threshold=0, skipping", session_id));
             return Ok(());
         }
 
@@ -1715,7 +1715,7 @@ impl Scheduler {
         ).unwrap_or(0);
 
         if total_messages - last_index < threshold {
-            crate::logger::backend("DEBUG", &format!("[OverflowSummary] session={} total={} last={} threshold={} not met", session_id, total_messages, last_index, threshold));
+            crate::logger::debug(&format!("[OverflowSummary] session={} total={} last={} threshold={} not met", session_id, total_messages, last_index, threshold));
             return Ok(());
         }
 
@@ -1868,7 +1868,7 @@ impl Scheduler {
         );
         drop(conn);
 
-        crate::logger::backend("DEBUG", &format!("[OverflowSummary] complete session={}", session_id));
+        crate::logger::debug(&format!("[OverflowSummary] complete session={}", session_id));
         Ok(())
     }
 

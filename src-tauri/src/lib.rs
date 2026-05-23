@@ -131,7 +131,7 @@ pub fn run() {
             let scheduler_for_timers = scheduler_for_recover.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = scheduler_for_recover.recover_from_db().await {
-                    crate::logger::backend("ERROR", &format!("Failed to recover scheduler from db: {}", e));
+                    crate::logger::error(&format!("Failed to recover scheduler from db: {}", e));
                 }
                 scheduler_for_timers.init_proactive_timers().await;
                 let scheduler_clone = scheduler_for_timers.clone();

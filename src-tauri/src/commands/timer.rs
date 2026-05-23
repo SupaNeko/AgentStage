@@ -108,7 +108,7 @@ pub async fn update_agent_proactive(
     proactive_min_minutes: i32,
     proactive_max_minutes: i32,
 ) -> Result<(), String> {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[update_agent_proactive] agent_id={}, enabled={}, min={}, max={}",
         agent_id, proactive_enabled, proactive_min_minutes, proactive_max_minutes
     ));
@@ -117,7 +117,7 @@ pub async fn update_agent_proactive(
         "UPDATE agents SET proactive_enabled = ?1, proactive_min_minutes = ?2, proactive_max_minutes = ?3, updated_at = ?4 WHERE id = ?5",
         rusqlite::params![proactive_enabled, proactive_min_minutes, proactive_max_minutes, chrono::Utc::now().timestamp_millis(), agent_id],
     ).map_err(|e| e.to_string())?;
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[update_agent_proactive] rows affected={}", rows
     ));
     Ok(())

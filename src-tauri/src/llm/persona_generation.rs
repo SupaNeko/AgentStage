@@ -113,14 +113,14 @@ fn build_step2_user_message(
 
 fn log_llm_call(step: &str, attempt: usize, system: &str, messages: &[serde_json::Value]) {
     let messages_json = serde_json::to_string(messages).unwrap_or_else(|_| "[序列化失败]".to_string());
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG persona_generation] {} attempt={} SYSTEM_PROMPT={} MESSAGES={}",
         step, attempt, system, messages_json
     ));
 }
 
 fn log_llm_response(step: &str, attempt: usize, content: &str, tool_calls_count: usize) {
-    crate::logger::backend("DEBUG", &format!(
+    crate::logger::debug(&format!(
         "[DEBUG persona_generation] {} attempt={} content_len={} tool_calls={} CONTENT={}",
         step, attempt, content.len(), tool_calls_count, content
     ));
@@ -266,7 +266,7 @@ pub async fn generate(
     let content1 = response1.content.as_deref().unwrap_or("");
     log_llm_response("Step1", 1, content1, response1.tool_calls.len());
     for (i, tc) in response1.tool_calls.iter().enumerate() {
-        crate::logger::backend("DEBUG", &format!(
+        crate::logger::debug(&format!(
             "[DEBUG persona_generation] Step1 tool_call[{}]: name={} args={}",
             i, tc.name, tc.arguments
         ));
@@ -356,7 +356,7 @@ pub async fn generate(
                         step2_attempt, e
                     ));
                 }
-                crate::logger::backend("WARN", &format!(
+                crate::logger::warn(&format!(
                     "[DEBUG persona_generation] Step2 attempt={} failed: {}, will retry",
                     step2_attempt, e
                 ));
