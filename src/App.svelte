@@ -2,6 +2,7 @@
     import './styles.css';
     import { onMount } from 'svelte';
     import { listen } from '@tauri-apps/api/event';
+    import { invoke } from '@tauri-apps/api/core';
     import LeftNav from '$lib/components/LeftNav.svelte';
     import AgentList from '$lib/components/AgentList.svelte';
     import AgentDetail from '$lib/components/AgentDetail.svelte';
@@ -17,11 +18,30 @@
     import HistorySessionList from '$lib/components/HistorySessionList.svelte';
     import ProfileView from '$lib/components/ProfileView.svelte';
     import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-    import { UserAttentionType } from '@tauri-apps/api/window';
+    import { ProgressBarStatus } from '@tauri-apps/api/window';
+
+    let isWindowFocused = true;
+    let hasNotification = false;
 
     onMount(() => {
         settingsStore.load();
         const unlistenFns: (() => void)[] = [];
+        const win = getCurrentWebviewWindow();
+
+        // Track window focus state
+        win.isFocused().then(focused => {
+            isWindowFocused = focused;
+        });
+        
+        win.onFocusChanged(({ payload: focused }) => {
+            isWindowFocused = focused;
+            if (focused && hasNotification) {
+                // User activated the app: cancel notification state
+                win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
+                invoke('clear_flash').catch(() => {});
+                hasNotification = false;
+            }
+        }).then((fn) => unlistenFns.push(fn));
 
         listen('new_message', (event) => {
             const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string; page_index?: number };
@@ -51,8 +71,14 @@
 
             // 窗口未聚焦或不是当前查看的会话时，任务栏闪烁提醒
             const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
-            if (!document.hasFocus() || !isCurrentSession) {
-                getCurrentWebviewWindow().requestUserAttention(UserAttentionType.Informational).catch(() => {});
+            if (!isWindowFocused || !isCurrentSession) {
+                if (!hasNotification) {
+                    hasNotification = true;
+                    // Flash taskbar 3 times
+                    invoke('flash_taskbar', { count: 3 }).catch(() => {});
+                    // Keep taskbar button lit (indeterminate progress state)
+                    win.setProgressBar({ status: ProgressBarStatus.Indeterminate }).catch(() => {});
+                }
             }
 
             // 如果会话不存在（如 Agent-Agent 新建会话），刷新列表

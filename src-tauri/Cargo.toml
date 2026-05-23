@@ -37,6 +37,9 @@ base64 = "0.22"
 regex = "1.10"
 once_cell = "1.19"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
 
 
 

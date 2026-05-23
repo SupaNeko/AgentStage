@@ -22,6 +22,7 @@ use commands::user_persona::{list_user_personas, create_user_persona, update_use
 use commands::agent_relationship::{list_agent_relationships, update_agent_relationship, add_friendships, remove_friendship, update_agent_memory};
 use commands::generate_persona::generate_persona;
 use commands::timer::{list_agent_timers, create_timer_command, update_timer_command, delete_timer_command, toggle_timer, update_agent_proactive, update_quiet_hours, get_quiet_hours};
+use commands::window_flash::{flash_taskbar, clear_flash};
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -199,6 +200,8 @@ pub fn run() {
             update_agent_proactive,
             update_quiet_hours,
             get_quiet_hours,
+            flash_taskbar,
+            clear_flash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
