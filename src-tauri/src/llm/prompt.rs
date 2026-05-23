@@ -60,23 +60,21 @@ impl PromptAssembler {
 
         // Layer 3: Participants Introduction
         let participants = Self::get_participants(conn, agent_id)?;
-        if !participants.is_empty() {
-            let mut layer = String::from(prompt_templates::LAYER_PARTICIPANTS_TITLE);
-            layer.push('\n');
-            for item in participants {
-                layer.push_str(&format!(
-                    "- {}（{}）：{}\n",
-                    item.target_name, item.target_label, item.target_simplified_persona
-                ));
-                if !item.relationship_text.is_empty() {
-                    layer.push_str(&format!("  [印象]：{}\n", item.relationship_text));
-                }
-                if agent.memory_enabled && !item.memory_text.is_empty() {
-                    layer.push_str(&format!("  [记忆]：{}\n", item.memory_text));
-                }
+        let mut layer = String::from(prompt_templates::LAYER_PARTICIPANTS_TITLE);
+        layer.push('\n');
+        for item in participants {
+            layer.push_str(&format!(
+                "- {}（{}）：{}\n",
+                item.target_name, item.target_label, item.target_simplified_persona
+            ));
+            let impression = if item.relationship_text.is_empty() { "\"\"".to_string() } else { format!("\"{}\"", item.relationship_text) };
+            layer.push_str(&format!("  [印象]：{}\n", impression));
+            if agent.memory_enabled {
+                let memory = if item.memory_text.is_empty() { "\"\"".to_string() } else { format!("\"{}\"", item.memory_text) };
+                layer.push_str(&format!("  [记忆]：{}\n", memory));
             }
-            user_layers.push(layer);
         }
+        user_layers.push(layer);
 
         // Layer 4: Chat History — per session with individual history limits
         let mut session_order: Vec<String> = Vec::new();

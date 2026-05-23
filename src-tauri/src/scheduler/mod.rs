@@ -190,6 +190,25 @@ impl Scheduler {
                 .insert(session_id.clone());
         }
 
+        // 3. 启动时清理已过期的单次任务（应用关闭期间错过的）
+        {
+            let conn = self.db_state.0.lock().await;
+            let now = chrono::Utc::now().timestamp_millis();
+            match conn.execute(
+                "DELETE FROM scheduled_tasks WHERE task_type = 'single' AND next_trigger_at <= ?1",
+                [now],
+            ) {
+                Ok(deleted) => {
+                    if deleted > 0 {
+                        crate::logger::backend("INFO", &format!("[recover_from_db] cleaned up {} expired single tasks", deleted));
+                    }
+                }
+                Err(e) => {
+                    crate::logger::backend("ERROR", &format!("[recover_from_db] cleanup expired single tasks failed: {}", e));
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1273,8 +1292,9 @@ impl Scheduler {
             {
                 let conn = self.db_state.0.lock().await;
                 if task.task_type == "single" {
-                    if let Err(e) = scheduled_task_repo::deactivate_task(&conn, &task.id) {
-                        crate::logger::backend("ERROR", &format!("[TimerScan] deactivate failed: {}", e));
+                    // 单次任务触发后直接删除，不显示为暂停
+                    if let Err(e) = scheduled_task_repo::delete_task(&conn, &task.id) {
+                        crate::logger::backend("ERROR", &format!("[TimerScan] delete single task failed: {}", e));
                     }
                 } else {
                     let interval_ms = (task.interval_minutes.unwrap_or(60) as i64) * 60 * 1000;

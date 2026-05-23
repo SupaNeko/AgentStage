@@ -16,6 +16,8 @@
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import HistorySessionList from '$lib/components/HistorySessionList.svelte';
     import ProfileView from '$lib/components/ProfileView.svelte';
+    import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+    import { UserAttentionType } from '@tauri-apps/api/window';
 
     onMount(() => {
         settingsStore.load();
@@ -46,6 +48,13 @@
                     last_message_at: msg.created_at || Date.now(),
                 };
             });
+
+            // 窗口未聚焦或不是当前查看的会话时，任务栏闪烁提醒
+            const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
+            if (!document.hasFocus() || !isCurrentSession) {
+                getCurrentWebviewWindow().requestUserAttention(UserAttentionType.Informational).catch(() => {});
+            }
+
             // 如果会话不存在（如 Agent-Agent 新建会话），刷新列表
             const exists = sessionStore.sessions.some(s => s.id === msg.session_id);
             if (!exists) {
