@@ -65,6 +65,40 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             logger::init(&app_data_dir);
 
+            // 全局 panic hook：所有 panic 都写日志，禁止静默崩溃
+            {
+                let panic_log_dir = app_data_dir.join("logs");
+                let _ = std::fs::create_dir_all(&panic_log_dir);
+                let panic_log_path = panic_log_dir.join("panic.log");
+                let prev_hook = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |panic_info| {
+                    let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                    let location = panic_info.location()
+                        .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                        .unwrap_or_else(|| "unknown location".to_string());
+                    let payload = panic_info.payload();
+                    let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else if let Some(s) = payload.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "unknown panic payload".to_string()
+                    };
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&panic_log_path)
+                    {
+                        let _ = std::io::Write::write_fmt(
+                            &mut file,
+                            format_args!("[{}] [PANIC] {} at {}\n", timestamp, msg, location),
+                        );
+                    }
+                    eprintln!("[{}] [PANIC] {} at {}", timestamp, msg, location);
+                    prev_hook(panic_info);
+                }));
+            }
+
             let db_state = init_db(&app_data_dir)?;
             app.manage(db_state.clone());
 

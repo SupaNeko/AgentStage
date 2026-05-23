@@ -103,6 +103,22 @@ impl Scheduler {
         }
     }
 
+    /// 执行 async future，捕获 panic 并转为 Err，防止静默崩溃导致 is_triggering 永久卡死
+    async fn catch_async_panic<F, T>(future: F) -> Result<T, String>
+    where
+        F: std::future::Future<Output = Result<T, String>> + Send + 'static,
+        T: Send + 'static,
+    {
+        match tokio::spawn(future).await {
+            Ok(result) => result,
+            Err(join_error) => {
+                let msg = format!("[Scheduler] async task panicked: {}", join_error);
+                crate::logger::backend("ERROR", &msg);
+                Err(msg)
+            }
+        }
+    }
+
     pub async fn recover_from_db(&self) -> Result<(), String> {
         // 1. 加载 frozen sessions
         let frozen: Vec<String> = {
@@ -677,7 +693,11 @@ impl Scheduler {
         };
 
         // 使用 finally 模式：无论内部逻辑成功或失败，总是清除 is_triggering
-        let inner_result = self.trigger_agent_inner(agent_id, pending, session_pages, snapshot_pages).await;
+        let scheduler = self.clone();
+        let agent_id_owned = agent_id.to_string();
+        let inner_result = Self::catch_async_panic(async move {
+            scheduler.trigger_agent_inner(&agent_id_owned, pending, session_pages, snapshot_pages).await
+        }).await;
         match &inner_result {
             Ok(_) => crate::logger::backend("DEBUG", &format!(
                 "[DEBUG trigger_agent] agent_id={}, trigger_agent_inner OK", agent_id
@@ -1181,32 +1201,38 @@ impl Scheduler {
             full_user_prompt
         ));
 
-        // 5. Call LLM and execute tools (wrapped for finally-style cleanup)
-        let inner_result: Result<(), String> = async {
-            use crate::llm::conversation::LlmConversation;
-            use crate::llm::tool::get_all_tool_schemas;
+        // 5. Call LLM and execute tools (wrapped for finally-style cleanup, with panic catching)
+        let scheduler = self.clone();
+        let agent_id_owned = agent_id.to_string();
+        let system = parts.system.clone();
+        let user_prompt = full_user_prompt.clone();
+        let db_state = self.db_state.clone();
+        let tools = get_all_tool_schemas();
 
-            let conversation = LlmConversation::new(provider, self.db_state.clone(), self.clone());
+        let inner_result = Self::catch_async_panic(async move {
+            use crate::llm::conversation::LlmConversation;
+
+            let conversation = LlmConversation::new(provider, db_state, scheduler);
             let result = conversation.run(
-                &parts.system,
-                &full_user_prompt,
-                get_all_tool_schemas(),
+                &system,
+                &user_prompt,
+                tools,
                 5,
-                agent_id,
+                &agent_id_owned,
                 &HashMap::new(),
             ).await?;
 
             // Log result
             crate::logger::backend("INFO", &format!(
                 "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | total_rounds={} | content={:?}",
-                agent_id,
+                agent_id_owned,
                 result.final_content.as_ref().map(|c| c.len()).unwrap_or(0),
                 result.executed_tool_calls.len(),
                 result.total_rounds,
                 result.final_content
             ));
             Ok(())
-        }.await;
+        }).await;
 
         // 7. Clear is_triggering (always, even if inner failed)
         if let Err(e) = self.clear_triggering_flag(agent_id).await {
@@ -1766,10 +1792,17 @@ impl Scheduler {
             );
 
             let tools = vec![update_memory_tool_schema(), update_relationship_tool_schema()];
-            let conversation = LlmConversation::new(provider, self.db_state.clone(), self.clone());
-            let mut session_pages = HashMap::new();
-            session_pages.insert(session_id.to_string(), page_index);
-            let _ = conversation.run(&system, &user, tools, 5, &agent_id, &session_pages).await;
+            let sched = self.clone();
+            let agent_id_owned = agent_id.clone();
+            let db = self.db_state.clone();
+            let sid = session_id.to_string();
+
+            let _ = Self::catch_async_panic(async move {
+                let conversation = LlmConversation::new(provider, db, sched);
+                let mut sp = HashMap::new();
+                sp.insert(sid, page_index);
+                conversation.run(&system, &user, tools, 5, &agent_id_owned, &sp).await
+            }).await;
         }
 
         // Update last_overflow_summary_index

@@ -135,6 +135,13 @@ impl<P: LlmProvider> LlmConversation<P> {
 
                 executed_tool_calls.push(ExecutedToolCall { tool_call: tc.clone(), result });
             }
+
+            // 在 tool results 后添加提示，引导 AI 继续完成剩余任务
+            messages.push(json!({
+                "role": "user",
+                "content": "工具调用已执行完毕。请根据执行结果检查是否还有需要继续完成的操作（如发送消息、创建定时任务、修改记忆或人设等）。如果所有任务已完成，请直接回复用户或返回空内容，不要调用任何工具。"
+            }));
+
             let tool_elapsed = chrono::Utc::now().timestamp_millis() - tool_start;
             let round_elapsed = chrono::Utc::now().timestamp_millis() - round_start;
             crate::logger::backend("DEBUG", &format!(
