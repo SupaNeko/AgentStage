@@ -10,8 +10,10 @@ static DEBUG_ENABLED: AtomicBool = AtomicBool::new(false);
 pub fn init(app_data_dir: &std::path::Path) {
     let log_dir = app_data_dir.join("logs");
     let _ = create_dir_all(&log_dir);
-    let mut guard = LOG_DIR.lock().unwrap();
-    *guard = Some(log_dir);
+    {
+        let mut guard = LOG_DIR.lock().unwrap();
+        *guard = Some(log_dir);
+    } // guard dropped here to avoid deadlock when calling info() below
 
     // Priority: env var > debug_assertions
     let enabled = std::env::var("AGENTSTAGE_DEBUG_LOG").is_ok() || cfg!(debug_assertions);
