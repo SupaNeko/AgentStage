@@ -26,6 +26,12 @@ pub async fn get_agent(state: State<'_, DbState>, id: String) -> Result<Option<A
 
     let conn = get_db(&state).await?;
     let agent = agent_repo::get_by_id(&conn, &id).map_err(|e| e.to_string())?;
+    if let Some(ref a) = agent {
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG get_agent] id={}, proactive_enabled={}, min={}, max={}",
+            a.id, a.proactive_enabled, a.proactive_min_minutes, a.proactive_max_minutes
+        ));
+    }
     Ok(agent.map(AgentResponse::from))
 }
 

@@ -149,10 +149,10 @@
             const updated = await invoke<Agent>('update_agent', { req: updateReq });
             agent = updated;
             await invoke('update_agent_proactive', {
-                agent_id: agent.id,
-                proactive_enabled: proactiveEnabled ? 1 : 0,
-                proactive_min_minutes: proactiveMinMinutes,
-                proactive_max_minutes: proactiveMaxMinutes,
+                agentId: agent.id,
+                proactiveEnabled: proactiveEnabled ? 1 : 0,
+                proactiveMinMinutes: proactiveMinMinutes,
+                proactiveMaxMinutes: proactiveMaxMinutes,
             });
             logger.debug('[DEBUG AgentDetail.handleSave] success', { id: agent.id });
             toastStore.show('已保存', 'success', 2000);

@@ -2,7 +2,6 @@ use chrono::TimeZone;
 use tauri::State;
 use crate::db::connection::DbState;
 use crate::db::scheduled_task as scheduled_task_repo;
-use crate::db::agent as agent_repo;
 use crate::db::settings as settings_repo;
 use crate::models::scheduled_task::{ScheduledTask, CreateTimerRequest, UpdateTimerRequest};
 
@@ -109,9 +108,19 @@ pub async fn update_agent_proactive(
     proactive_min_minutes: i32,
     proactive_max_minutes: i32,
 ) -> Result<(), String> {
+    crate::logger::backend("DEBUG", &format!(
+        "[update_agent_proactive] agent_id={}, enabled={}, min={}, max={}",
+        agent_id, proactive_enabled, proactive_min_minutes, proactive_max_minutes
+    ));
     let conn = db_state.0.lock().await;
-    agent_repo::update_proactive_config(&conn, &agent_id, proactive_enabled, proactive_min_minutes, proactive_max_minutes)
-        .map_err(|e| e.to_string())
+    let rows = conn.execute(
+        "UPDATE agents SET proactive_enabled = ?1, proactive_min_minutes = ?2, proactive_max_minutes = ?3, updated_at = ?4 WHERE id = ?5",
+        rusqlite::params![proactive_enabled, proactive_min_minutes, proactive_max_minutes, chrono::Utc::now().timestamp_millis(), agent_id],
+    ).map_err(|e| e.to_string())?;
+    crate::logger::backend("DEBUG", &format!(
+        "[update_agent_proactive] rows affected={}", rows
+    ));
+    Ok(())
 }
 
 #[tauri::command]

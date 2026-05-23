@@ -1330,15 +1330,35 @@ impl Scheduler {
         let now = chrono::Utc::now().timestamp_millis();
         let timers = self.proactive_timers.lock().await.clone();
 
+        crate::logger::backend("DEBUG", &format!(
+            "[Proactive] scan start | timers_count={} | now={}",
+            timers.len(),
+            chrono::DateTime::from_timestamp_millis(now).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default()
+        ));
+
+        for (agent_id, next_at) in &timers {
+            let remaining = next_at.saturating_sub(now);
+            crate::logger::backend("DEBUG", &format!(
+                "[Proactive] timer check | agent={} | next_at={} | remaining_ms={} | due={}",
+                agent_id,
+                chrono::DateTime::from_timestamp_millis(*next_at).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
+                remaining,
+                remaining == 0
+            ));
+        }
+
         for (agent_id, next_at) in timers {
             if next_at > now {
                 continue;
             }
 
             if self.is_in_quiet_hours().await {
+                crate::logger::backend("INFO", &format!("[Proactive] agent={} due but in quiet hours, rescheduling", agent_id));
                 self.reset_proactive_timer(&agent_id).await;
                 continue;
             }
+
+            crate::logger::backend("INFO", &format!("[Proactive] agent={} timer DUE, triggering proactive session", agent_id));
 
             let scheduler = self.clone();
             let agent_id_clone = agent_id.clone();
@@ -1381,7 +1401,7 @@ impl Scheduler {
         self.proactive_timers.lock().await.insert(agent_id.to_string(), next_at);
     }
 
-    async fn reset_proactive_timer(&self, agent_id: &str) {
+    pub async fn reset_proactive_timer(&self, agent_id: &str) {
         let conn = self.db_state.0.lock().await;
         let agent = match agent_repo::get_by_id(&conn, agent_id) {
             Ok(Some(a)) => a,
@@ -1391,6 +1411,7 @@ impl Scheduler {
 
         if !agent.proactive_enabled {
             self.proactive_timers.lock().await.remove(agent_id);
+            crate::logger::backend("INFO", &format!("[Proactive] agent={} proactive disabled, timer removed", agent_id));
             return;
         }
 
@@ -1399,6 +1420,12 @@ impl Scheduler {
         let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
         let next = chrono::Utc::now().timestamp_millis() + random_ms;
         self.proactive_timers.lock().await.insert(agent_id.to_string(), next);
+        crate::logger::backend("INFO", &format!(
+            "[Proactive] agent={} timer reset | next_at={} (in {} min)",
+            agent_id,
+            chrono::DateTime::from_timestamp_millis(next).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
+            random_ms / 60000
+        ));
     }
 
     pub async fn init_proactive_timers(&self) {
@@ -1416,8 +1443,16 @@ impl Scheduler {
             let min_ms = agent.proactive_min_minutes as i64 * 60 * 1000;
             let max_ms = agent.proactive_max_minutes as i64 * 60 * 1000;
             let random_ms = rand::thread_rng().gen_range(min_ms..=max_ms);
-            timers.insert(agent.id, now + random_ms);
+            let next = now + random_ms;
+            timers.insert(agent.id.clone(), next);
+            crate::logger::backend("INFO", &format!(
+                "[Proactive] init timer for agent={} | next_at={} (in {} min)",
+                agent.id,
+                chrono::DateTime::from_timestamp_millis(next).map(|d| d.format("%H:%M:%S").to_string()).unwrap_or_default(),
+                random_ms / 60000
+            ));
         }
+        crate::logger::backend("INFO", &format!("[Proactive] initialized {} proactive timers", timers.len()));
     }
 
     async fn run_session_summary(&self, session_id: &str, page_index: i32) -> Result<(), String> {
