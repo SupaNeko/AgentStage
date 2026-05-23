@@ -142,7 +142,7 @@ const agents = await invoke<Agent[]>('list_agents');
 - **Path alias:** `$lib` maps to `src/lib` (configured in `vite.config.js` and `tsconfig.json`)
 - **Imports:** Use `@tauri-apps/api/core` for `invoke` (Tauri v2), not `@tauri-apps/api/tauri`
 - **CSS:** Tailwind v4 utility classes only. Custom colors are the `@theme` tokens (`bg-bg`, `bg-surface`, `text-primary`, etc.)
-- **Git:** Do not run `git commit` unless the user explicitly asks. Do not push to remote without confirmation.
+- **Git:** Do not run `git commit` unless the user explicitly asks. Do not push to remote without explicit user confirmation. Even after committing, always wait for the user to say "push" before running `git push`.
 
 ---
 
