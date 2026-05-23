@@ -2,7 +2,6 @@
     import './styles.css';
     import { onMount } from 'svelte';
     import { listen } from '@tauri-apps/api/event';
-    import { invoke } from '@tauri-apps/api/core';
     import LeftNav from '$lib/components/LeftNav.svelte';
     import AgentList from '$lib/components/AgentList.svelte';
     import AgentDetail from '$lib/components/AgentDetail.svelte';
@@ -18,21 +17,23 @@
     import HistorySessionList from '$lib/components/HistorySessionList.svelte';
     import ProfileView from '$lib/components/ProfileView.svelte';
     import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-    import { ProgressBarStatus } from '@tauri-apps/api/window';
-
-    let hasNotification = false;
+    import { UserAttentionType, ProgressBarStatus } from '@tauri-apps/api/window';
 
     onMount(() => {
         settingsStore.load();
         const unlistenFns: (() => void)[] = [];
         const win = getCurrentWebviewWindow();
+        let flashTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        // Cancel notification state whenever the app window gains focus
+        // 窗口获得焦点时取消提醒状态
         win.onFocusChanged(({ payload: focused }) => {
             if (focused) {
+                if (flashTimeout) {
+                    clearTimeout(flashTimeout);
+                    flashTimeout = null;
+                }
+                win.requestUserAttention(null).catch(() => {});
                 win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
-                invoke('clear_flash').catch(() => {});
-                hasNotification = false;
             }
         }).then((fn) => unlistenFns.push(fn));
 
@@ -62,7 +63,7 @@
                 };
             });
 
-            // 实时查询窗口焦点，不依赖可能不可靠的 onFocusChanged 状态缓存
+            // 实时查询窗口焦点，不依赖可能不可靠的状态缓存
             let focused: boolean;
             try {
                 focused = await win.isFocused();
@@ -74,13 +75,15 @@
             logger.debug('[DEBUG App taskbar check]', { focused, isCurrentSession, sessionId: msg.session_id, selectedId: sessionStore.selectedSessionId, view: appState.currentView });
 
             if (!focused || !isCurrentSession) {
-                hasNotification = true;
-                // Flash taskbar 3 times via Win32 FlashWindowEx
-                invoke('flash_taskbar', { count: 3 }).catch((e) => {
-                    logger.error('[flash_taskbar] invoke failed', e);
-                });
-                // Keep taskbar button lit (indeterminate progress state)
+                // 开始任务栏闪烁（Critical = 窗口+任务栏一起闪）
+                win.requestUserAttention(UserAttentionType.Critical).catch(() => {});
+                // 同时设置任务栏按钮绿色常亮（Indeterminate 进度条）
                 win.setProgressBar({ status: ProgressBarStatus.Indeterminate }).catch(() => {});
+                // 2秒后自动停止闪烁，保留常亮
+                if (flashTimeout) clearTimeout(flashTimeout);
+                flashTimeout = setTimeout(() => {
+                    win.requestUserAttention(null).catch(() => {});
+                }, 2000);
             }
 
             // 如果会话不存在（如 Agent-Agent 新建会话），刷新列表
@@ -109,6 +112,7 @@
         }).then((fn) => unlistenFns.push(fn));
 
         return () => {
+            if (flashTimeout) clearTimeout(flashTimeout);
             unlistenFns.forEach((fn) => fn());
         };
     });
