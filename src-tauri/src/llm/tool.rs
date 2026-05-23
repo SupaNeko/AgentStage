@@ -21,7 +21,8 @@ pub fn send_message_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "send_message",
-            "description": "向指定会话发送一条消息。你可以在 content 中使用 <br/> 标签进行分割，被分割的消息将被显示为多条消息。target_id 必须是系统提供的 session_id，不能使用会话名称或其他 ID。",
+            "description": "向指定会话发送一条消息。\n- 你可以在 content 中使用 <br/> 标签进行分割，被分割的消息将被显示为多条消息。\n- target_id 必须是系统提供的完整 session_id，绝对不能使用会话名称或其他 ID。\n- 只能回复 context_list 中列出的会话。\n- target_type 的取值为 \"private\"（私聊）或 \"group\"（群聊）。\n- 如果 target_id 无效，调用将会失败。",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -50,7 +51,7 @@ pub fn start_private_chat_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "start_private_chat",
-            "description": "向另一个角色发起私聊。你需要提供对方的精确名称（target_name）和第一条消息内容（content）。如果对方不存在或名称不匹配，会返回错误。",
+            "description": "当你需要和另一位角色进行一对一交流且不存在已有私聊会话时，向该角色发起私聊。\n- target_name 必须是对方的精确名称（exact match）。\n- 如果该角色不存在或名称不匹配，将返回错误。\n- 成功后你会获得一个新的私聊会话，之后可以通过 send_message 继续在该会话中发送消息。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -74,7 +75,8 @@ pub fn update_relationship_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "update_relationship",
-            "description": "更新你对某个参与者的主观关系描述。这用于记录你对对方的整体定位（如朋友/同事/竞争对手）和基本态度（如喜欢/讨厌/尊敬），不是记忆具体事件。请遵守以下规则：\n1. 只更新整体关系定位，不要记录日常琐事（如\"他今天吃了汉堡\"）\n2. 描述控制在 200 字以内\n3. 必须提供 old_text（当前关系描述的完整内容），系统会匹配替换\n4. 如果 old_text 不匹配（说明你记错了当前关系），系统会返回错误，请重新查询后再修改\n5. target_name 必须是参与者的精确名称（见【你认识的参与者】列表）",
+            "description": "更新你对某个参与者的主观关系描述。这用于记录你对对方的整体定位（如朋友/同事/竞争对手）和基本态度（如喜欢/讨厌/尊敬），不是记忆具体事件。\n规则：\n1. 只更新整体关系定位，不要记录日常琐事（如\"他今天吃了汉堡\"）\n2. 描述控制在 200 字以内\n3. 必须提供 old_text（当前关系描述的完整内容），系统会精确匹配并替换\n4. 如果 old_text 不匹配（说明你记错了当前关系），系统会返回错误，请重新查询后再修改\n5. target_name 必须是参与者列表中的精确名称\n示例：\n- old_text: \"普通朋友，偶尔聊几句\" → new_text: \"值得信赖的朋友\"\n- old_text: \"\" → new_text: \"初次见面，看起来是个温和的人\"",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -102,7 +104,8 @@ pub fn update_memory_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "update_memory",
-            "description": "更新你的记忆。update_memory 用于记录动态信息（事实、事件、偏好、行为模式等），而 update_relationship 用于记录静态的关系定位和态度。请严格遵守以下规则：\n1. memory_type=\"self\" 时，更新你对自己的长期记忆（上限 3000 字），target_name 可留空\n2. memory_type=\"other\" 时，更新你对某位参与者的记忆（上限 500 字），target_name 必须填写该参与者的精确名称\n3. 必须提供 old_text（当前记忆的完整内容），系统会精确匹配替换\n4. 如果 old_text 不匹配，系统会返回错误，请重新查询后再修改\n5. target_name 必须是【你认识的参与者】列表中的精确名称",
+            "description": "记录动态信息：事实、事件、偏好、行为模式等。\nupdate_relationship 是静态关系定位；update_memory 是动态内容，不要混淆。\n规则：\n1. memory_type=\"self\"：更新你对自己的长期记忆（上限 3000 字），target_name 可留空\n2. memory_type=\"other\"：更新你对某位参与者的记忆（上限 500 字），target_name 必须填写该参与者的精确名称\n3. 必须提供 old_text（当前记忆的完整内容），系统会精确匹配并替换\n4. 如果 old_text 不匹配，系统会返回错误，请重新查询后再修改\n5. target_name 必须是参与者列表中的精确名称\n示例：\n- memory_type: \"self\", old_text: \"\", new_text: \"我是一个喜欢在深夜写代码的程序员，养了一只叫豆豆的猫...\"\n- memory_type: \"other\", target_name: \"Alice\", old_text: \"\", new_text: \"她不喜欢吃辣，对芒果过敏，喜欢听爵士乐。\"",
+
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -163,7 +166,7 @@ pub fn create_timer_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "create_timer",
-            "description": "创建一个定时任务。你可以设定一个未来事件或循环事件，到时间后会收到一次特殊调用。支持两种方式：1. 多少分钟后触发（单次）；2. 指定具体日期时间触发（单次）；3. 按固定间隔循环触发。",
+            "description": "创建一个定时任务。你可以设定一个未来事件或循环事件，到时间后你会收到一次特殊触发。\n支持 3 种模式：\n1. N 分钟后触发（单次，trigger_mode=\"after_minutes\"）\n2. 指定具体日期时间触发（单次，trigger_mode=\"datetime\"）\n3. 按固定间隔循环触发（task_type=\"recurring\"，interval_minutes）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -189,7 +192,7 @@ pub fn delete_timer_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "delete_timer",
-            "description": "删除一个你创建的定时任务。你可以在'等待中的定时任务'中查看任务ID。",
+            "description": "删除一个你创建的定时任务。你可以在\"等待中的定时任务\"列表中查看任务ID。",
             "parameters": {
                 "type": "object",
                 "properties": {
