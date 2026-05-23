@@ -30,6 +30,7 @@ pub struct PendingMessage {
     pub content: String,
     pub created_at: i64,
     pub page_index: i32,
+    pub restored_from_failure: bool,
 }
 
 impl From<Message> for PendingMessage {
@@ -42,6 +43,7 @@ impl From<Message> for PendingMessage {
             content: msg.content,
             created_at: msg.created_at,
             page_index: msg.page_index,
+            restored_from_failure: false,
         }
     }
 }
@@ -156,6 +158,7 @@ impl Scheduler {
                 content,
                 created_at,
                 page_index,
+                restored_from_failure: false,
             };
 
             unread_messages
@@ -565,6 +568,11 @@ impl Scheduler {
 
                 if let Some(session_map) = unread.get_mut(session_id) {
                     if let Some(messages) = session_map.get_mut(agent_id) {
+                        // 如果该 session 的消息全部是由于调用失败恢复的，跳过本次触发
+                        let has_new = messages.iter().any(|m| !m.restored_from_failure);
+                        if !has_new {
+                            continue;
+                        }
                         pending.extend(messages.drain(..));
                         processed_sessions.push(session_id.clone());
                     }
@@ -935,7 +943,8 @@ impl Scheduler {
             let mut unread = self.unread_messages.lock().await;
             let mut notifications = self.agent_notifications.lock().await;
 
-            for msg in pending {
+            for mut msg in pending {
+                msg.restored_from_failure = true;
                 let session_id = msg.session_id.clone();
                 unread.entry(session_id.clone())
                     .or_insert_with(HashMap::new)
