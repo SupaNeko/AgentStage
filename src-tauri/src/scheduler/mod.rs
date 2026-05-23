@@ -804,56 +804,29 @@ impl Scheduler {
             serde_json::json!({"agent_id": agent_id}),
         );
 
-        // === 阶段 4：调用 LLM（最多重试 3 次）===
-        let response = match Self::call_llm_with_retry(
-            &provider,
+        // === 阶段 4：调用 LLM（多轮对话）===
+        use crate::llm::conversation::LlmConversation;
+        use crate::llm::tool::get_all_tool_schemas;
+
+        let conversation = LlmConversation::new(provider, self.db_state.clone(), self.clone());
+        let result = match conversation.run(
             &prompt.system,
-            vec![serde_json::json!({"role": "user", "content": prompt.user})],
+            &prompt.user,
+            get_all_tool_schemas(),
+            5,
+            agent_id,
+            &session_pages,
         ).await {
-            Ok(resp) => {
-                crate::logger::backend("DEBUG", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, llm_ok, tool_calls_count={}, content_present={}",
-                    agent_id, resp.tool_calls.len(), resp.content.is_some()
-                ));
-                for (i, tc) in resp.tool_calls.iter().enumerate() {
-                    crate::logger::backend("DEBUG", &format!(
-                        "[DEBUG trigger_agent_inner] agent_id={}, tool_call[{}]: name={}, args={}",
-                        agent_id, i, tc.name, tc.arguments
-                    ));
-                }
-                resp
-            }
+            Ok(r) => r,
             Err(e) => {
-                crate::logger::backend("ERROR", &format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, llm_call_failed after 3 retries: {}",
-                    agent_id, e
-                ));
+                crate::logger::backend("ERROR", &format!("[trigger_agent_inner] LLM conversation failed: {}", e));
                 self.restore_pending(agent_id, pending).await;
-                self.emit(
-                    "agent_error",
-                    serde_json::json!({"agent_id": agent_id, "error": e}),
-                );
+                self.emit("agent_error", serde_json::json!({"agent_id": agent_id, "error": e}));
                 return Ok(());
             }
         };
 
-        // === 阶段 5：执行 Tool Calls ===
-                let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
-        let agent_messages = match executor.execute(agent_id, response.tool_calls, &session_pages).await {
-            Ok(msgs) => msgs,
-            Err(e) => {
-                crate::logger::backend("ERROR", &format!(
-                    "[DEBUG trigger_agent] agent_id={}, tool_execution_failed={}",
-                    agent_id, e
-                ));
-                self.restore_pending(agent_id, pending).await;
-                self.emit(
-                    "agent_error",
-                    serde_json::json!({"agent_id": agent_id, "error": e.to_string()}),
-                );
-                return Ok(());
-            }
-        };
+        let agent_messages = result.messages;
 
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG trigger_agent_inner] agent_id={}, agent_messages_count={}",
@@ -1175,24 +1148,28 @@ impl Scheduler {
 
         // 5. Call LLM and execute tools (wrapped for finally-style cleanup)
         let inner_result: Result<(), String> = async {
-            let messages = vec![serde_json::json!({"role": "user", "content": full_user_prompt})];
-            let response = Self::call_llm(&provider, &parts.system, messages).await?;
+            use crate::llm::conversation::LlmConversation;
+            use crate::llm::tool::get_all_tool_schemas;
 
-            // Log LLM response
-            crate::logger::backend("INFO", &format!(
-                "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | content={:?}",
+            let conversation = LlmConversation::new(provider, self.db_state.clone(), self.clone());
+            let result = conversation.run(
+                &parts.system,
+                &full_user_prompt,
+                get_all_tool_schemas(),
+                5,
                 agent_id,
-                response.content.as_ref().map(|c| c.len()).unwrap_or(0),
-                response.tool_calls.len(),
-                response.content
-            ));
+                &HashMap::new(),
+            ).await?;
 
-            // 6. Execute tool calls
-            let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
-            let session_pages = HashMap::new();
-            if let Err(e) = executor.execute(agent_id, response.tool_calls, &session_pages).await {
-                crate::logger::backend("ERROR", &format!("[trigger_special] tool execution failed: {}", e));
-            }
+            // Log result
+            crate::logger::backend("INFO", &format!(
+                "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | total_rounds={} | content={:?}",
+                agent_id,
+                result.final_content.as_ref().map(|c| c.len()).unwrap_or(0),
+                result.executed_tool_calls.len(),
+                result.total_rounds,
+                result.final_content
+            ));
             Ok(())
         }.await;
 
@@ -1727,12 +1704,6 @@ impl Scheduler {
 
             let long_term_memory = agent.long_term_memory.as_deref().unwrap_or("");
             let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let system_prompt = prompt_templates::SUMMARY_SYSTEM_PROMPT
-                .replace("{current_time}", &now)
-                .replace("{detailed_persona}", &agent.detailed_persona)
-                .replace("{long_term_memory}", long_term_memory)
-                .replace("{participants}", &participants_text)
-                .replace("{session_messages}", &session_messages_text);
 
             let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
                 Ok(k) => k,
@@ -1747,22 +1718,23 @@ impl Scheduler {
                 agent.max_tokens,
             );
 
-            let tools = vec![update_memory_tool_schema(), update_relationship_tool_schema()];
-            let messages_json = vec![serde_json::json!({"role": "user", "content": "请回顾本次对话，判断是否有值得保存到记忆中的信息。"})];
+            use crate::llm::conversation::LlmConversation;
 
-            match provider.chat(&system_prompt, messages_json, tools).await {
-                Ok(response) => {
-                    if !response.tool_calls.is_empty() {
-                        let mut session_pages = HashMap::new();
-                        session_pages.insert(session_id.to_string(), page_index);
-                        let executor = ToolExecutor::new(self.db_state.clone(), self.clone());
-                        let _ = executor.execute(&agent_id, response.tool_calls, &session_pages).await;
-                    }
-                }
-                Err(e) => {
-                    crate::logger::backend("ERROR", &format!("[OverflowSummary] agent={} LLM failed: {}", agent_id, e));
-                }
-            }
+            let system = format!(
+                "你是一个记忆整理助手。你的任务是在一次聊天会话结束后，回顾对话内容，判断是否有值得长期保存的信息。\n\n当前时间：{}\n\n## 你的角色设定\n{}\n\n## 可用工具\n- update_memory：更新你的记忆\n- update_relationship：更新关系描述\n\n## 任务\n请仔细阅读本次对话记录，判断是否有值得保存的信息。如果有，请使用工具更新。如果没有，可以不调用任何工具。",
+                now, agent.detailed_persona
+            );
+
+            let user = format!(
+                "## 关于你的记忆\n{}\n\n## 你认识的参与者\n{}\n\n## 本次对话记录\n{}\n\n请回顾本次对话，判断是否有值得保存到记忆中的信息。",
+                long_term_memory, participants_text, session_messages_text
+            );
+
+            let tools = vec![update_memory_tool_schema(), update_relationship_tool_schema()];
+            let conversation = LlmConversation::new(provider, self.db_state.clone(), self.clone());
+            let mut session_pages = HashMap::new();
+            session_pages.insert(session_id.to_string(), page_index);
+            let _ = conversation.run(&system, &user, tools, 5, &agent_id, &session_pages).await;
         }
 
         // Update last_overflow_summary_index
