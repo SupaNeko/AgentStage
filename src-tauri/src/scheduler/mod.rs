@@ -699,6 +699,7 @@ impl Scheduler {
     }
 
     async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, _snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
+        let inner_start = chrono::Utc::now().timestamp_millis();
         crate::logger::backend("DEBUG", &format!(
             "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
             agent_id, pending.len(), session_pages
@@ -735,6 +736,7 @@ impl Scheduler {
         }
 
         // === 阶段 3：读取 agent 配置和 prompt ===
+        let prompt_start = chrono::Utc::now().timestamp_millis();
         let (agent, prompt) = {
             let conn = self.db_state.0.lock().await;
 
@@ -786,6 +788,11 @@ impl Scheduler {
 
             (agent, parts)
         };
+        let prompt_elapsed = chrono::Utc::now().timestamp_millis() - prompt_start;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] agent_id={}, prompt_build_elapsed_ms={}",
+            agent_id, prompt_elapsed
+        ));
 
         // === 阶段 4：LLM 调用（无锁）===
         let api_key = if let Some(encrypted) = agent.api_key_encrypted {
@@ -813,6 +820,7 @@ impl Scheduler {
         );
 
         // === 阶段 4：调用 LLM（多轮对话）===
+        let llm_start = chrono::Utc::now().timestamp_millis();
         use crate::llm::conversation::LlmConversation;
         use crate::llm::tool::get_all_tool_schemas;
 
@@ -827,12 +835,20 @@ impl Scheduler {
         ).await {
             Ok(r) => r,
             Err(e) => {
-                crate::logger::backend("ERROR", &format!("[trigger_agent_inner] LLM conversation failed: {}", e));
+                let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
+                crate::logger::backend("ERROR", &format!(
+                    "[trigger_agent_inner] LLM conversation failed after {}ms: {}", llm_elapsed, e
+                ));
                 self.restore_pending(agent_id, pending).await;
                 self.emit("agent_error", serde_json::json!({"agent_id": agent_id, "error": e}));
                 return Ok(());
             }
         };
+        let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] agent_id={}, LLM total_elapsed_ms={} rounds={} tool_calls={}",
+            agent_id, llm_elapsed, result.total_rounds, result.executed_tool_calls.len()
+        ));
 
         let agent_messages = result.messages;
 
@@ -848,6 +864,7 @@ impl Scheduler {
         }
 
         // === 阶段 6：更新计数器和会话预览 ===
+        let update_start = chrono::Utc::now().timestamp_millis();
         let sessions_to_check: Vec<String> = {
             let conn = self.db_state.0.lock().await;
 
@@ -880,6 +897,12 @@ impl Scheduler {
                 }));
             }
         }
+
+        let update_elapsed = chrono::Utc::now().timestamp_millis() - update_start;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG trigger_agent_inner] agent_id={}, message_update_elapsed_ms={}",
+            agent_id, update_elapsed
+        ));
 
         // 更新触发时间（同时清除 is_triggering，作为双重保险）
         {
@@ -926,8 +949,9 @@ impl Scheduler {
         // 消息已推入各角色的 unread，由后台扫描在下次 tick 时触发
         //（避免 async fn 递归调用问题）
 
+        let inner_elapsed = chrono::Utc::now().timestamp_millis() - inner_start;
         crate::logger::backend("DEBUG", &format!(
-            "[DEBUG trigger_agent_inner] END agent_id={}, emitting agent_completed", agent_id
+            "[DEBUG trigger_agent_inner] END agent_id={}, total_elapsed_ms={}", agent_id, inner_elapsed
         ));
         self.emit(
             "agent_completed",

@@ -110,6 +110,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
             }
         }
 
+        let send_start = chrono::Utc::now().timestamp_millis();
+        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] sending request..."));
+
         let response = self
             .client
             .post(&url)
@@ -120,8 +123,12 @@ impl LlmProvider for OpenAiCompatibleProvider {
             .await
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
+        let send_elapsed = chrono::Utc::now().timestamp_millis() - send_start;
         let status = response.status();
-        crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] http_status={}", status));
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG openai::chat_raw] http_status={}, send_elapsed_ms={}",
+            status, send_elapsed
+        ));
         if !status.is_success() {
             let text = response
                 .text()
@@ -130,10 +137,15 @@ impl LlmProvider for OpenAiCompatibleProvider {
             return Err(format!("HTTP {}: {}", status, text));
         }
 
+        let parse_start = chrono::Utc::now().timestamp_millis();
         let json: serde_json::Value = response
             .json()
             .await
             .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
+        let parse_elapsed = chrono::Utc::now().timestamp_millis() - parse_start;
+        crate::logger::backend("DEBUG", &format!(
+            "[DEBUG openai::chat_raw] json_parse_elapsed_ms={}", parse_elapsed
+        ));
 
         let choice = json["choices"]
             .get(0)
