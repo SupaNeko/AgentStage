@@ -20,7 +20,6 @@
     import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
     import { ProgressBarStatus } from '@tauri-apps/api/window';
 
-    let isWindowFocused = true;
     let hasNotification = false;
 
     onMount(() => {
@@ -28,22 +27,16 @@
         const unlistenFns: (() => void)[] = [];
         const win = getCurrentWebviewWindow();
 
-        // Track window focus state
-        win.isFocused().then(focused => {
-            isWindowFocused = focused;
-        });
-        
+        // Cancel notification state whenever the app window gains focus
         win.onFocusChanged(({ payload: focused }) => {
-            isWindowFocused = focused;
-            if (focused && hasNotification) {
-                // User activated the app: cancel notification state
+            if (focused) {
                 win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
                 invoke('clear_flash').catch(() => {});
                 hasNotification = false;
             }
         }).then((fn) => unlistenFns.push(fn));
 
-        listen('new_message', (event) => {
+        listen('new_message', async (event) => {
             const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string; page_index?: number };
             logger.debug('[DEBUG App.listen new_message]', { sessionId: msg.session_id, contentPreview: msg.content?.slice(0, 50), pageIndex: msg.page_index });
             // 更新会话列表（未读数、预览）
@@ -69,16 +62,25 @@
                 };
             });
 
-            // 窗口未聚焦或不是当前查看的会话时，任务栏闪烁提醒
+            // 实时查询窗口焦点，不依赖可能不可靠的 onFocusChanged 状态缓存
+            let focused: boolean;
+            try {
+                focused = await win.isFocused();
+            } catch {
+                focused = document.hasFocus();
+            }
+
             const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
-            if (!isWindowFocused || !isCurrentSession) {
-                if (!hasNotification) {
-                    hasNotification = true;
-                    // Flash taskbar 3 times
-                    invoke('flash_taskbar', { count: 3 }).catch(() => {});
-                    // Keep taskbar button lit (indeterminate progress state)
-                    win.setProgressBar({ status: ProgressBarStatus.Indeterminate }).catch(() => {});
-                }
+            logger.debug('[DEBUG App taskbar check]', { focused, isCurrentSession, sessionId: msg.session_id, selectedId: sessionStore.selectedSessionId, view: appState.currentView });
+
+            if (!focused || !isCurrentSession) {
+                hasNotification = true;
+                // Flash taskbar 3 times via Win32 FlashWindowEx
+                invoke('flash_taskbar', { count: 3 }).catch((e) => {
+                    logger.error('[flash_taskbar] invoke failed', e);
+                });
+                // Keep taskbar button lit (indeterminate progress state)
+                win.setProgressBar({ status: ProgressBarStatus.Indeterminate }).catch(() => {});
             }
 
             // 如果会话不存在（如 Agent-Agent 新建会话），刷新列表
