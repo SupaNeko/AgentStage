@@ -25,17 +25,21 @@
         const win = getCurrentWebviewWindow();
         let flashTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        // 窗口获得焦点时取消提醒状态
-        win.onFocusChanged(({ payload: focused }) => {
-            if (focused) {
-                if (flashTimeout) {
-                    clearTimeout(flashTimeout);
-                    flashTimeout = null;
-                }
-                win.requestUserAttention(null).catch(() => {});
-                win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
+        // Track window focus via window events (more reliable than isFocused() in WebView2)
+        let isWindowFocused = true;
+        const onBlur = () => { isWindowFocused = false; };
+        const onFocus = () => {
+            isWindowFocused = true;
+            // Cancel notification state when window gains focus
+            if (flashTimeout) {
+                clearTimeout(flashTimeout);
+                flashTimeout = null;
             }
-        }).then((fn) => unlistenFns.push(fn));
+            win.requestUserAttention(null).catch(() => {});
+            win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
+        };
+        window.addEventListener('blur', onBlur);
+        window.addEventListener('focus', onFocus);
 
         listen('new_message', async (event) => {
             const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string; page_index?: number };
@@ -63,18 +67,11 @@
                 };
             });
 
-            // 实时查询窗口焦点，不依赖可能不可靠的状态缓存
-            let focused: boolean;
-            try {
-                focused = await win.isFocused();
-            } catch {
-                focused = document.hasFocus();
-            }
-
+            // 判断是否需要任务栏提醒
             const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
-            logger.debug('[DEBUG App taskbar check]', { focused, isCurrentSession, sessionId: msg.session_id, selectedId: sessionStore.selectedSessionId, view: appState.currentView });
+            logger.debug('[DEBUG App taskbar check]', { isWindowFocused, isCurrentSession, sessionId: msg.session_id, selectedId: sessionStore.selectedSessionId, view: appState.currentView });
 
-            if (!focused || !isCurrentSession) {
+            if (!isWindowFocused || !isCurrentSession) {
                 // 开始任务栏闪烁（Critical = 窗口+任务栏一起闪）
                 win.requestUserAttention(UserAttentionType.Critical).catch(() => {});
                 // 同时设置任务栏按钮绿色常亮（Indeterminate 进度条）
@@ -112,6 +109,8 @@
         }).then((fn) => unlistenFns.push(fn));
 
         return () => {
+            window.removeEventListener('blur', onBlur);
+            window.removeEventListener('focus', onFocus);
             if (flashTimeout) clearTimeout(flashTimeout);
             unlistenFns.forEach((fn) => fn());
         };

@@ -1231,7 +1231,7 @@ impl Scheduler {
         let inner_result = Self::catch_async_panic(async move {
             use crate::llm::conversation::LlmConversation;
 
-            let conversation = LlmConversation::new(provider, db_state, scheduler);
+            let conversation = LlmConversation::new(provider, db_state, scheduler.clone());
             let result = conversation.run(
                 &system,
                 &user_prompt,
@@ -1241,14 +1241,20 @@ impl Scheduler {
                 &HashMap::new(),
             ).await?;
 
+            // Emit new_message for each message produced by tool execution (so frontend gets notified)
+            for msg in &result.messages {
+                scheduler.emit("new_message", msg.clone());
+            }
+
             // Log result
             crate::logger::info(&format!(
-                "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | total_rounds={} | content={:?}",
+                "[trigger_special] LLM response for agent {} | content_len={} | tool_calls_count={} | total_rounds={} | content={:?} | emitted_messages={}",
                 agent_id_owned,
                 result.final_content.as_ref().map(|c| c.len()).unwrap_or(0),
                 result.executed_tool_calls.len(),
                 result.total_rounds,
-                result.final_content
+                result.final_content,
+                result.messages.len()
             ));
             Ok(())
         }).await;
