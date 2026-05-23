@@ -90,6 +90,26 @@ impl LlmProvider for OpenAiCompatibleProvider {
         let messages_count = request_body["messages"].as_array().map(|a| a.len()).unwrap_or(0);
         crate::logger::backend("DEBUG", &format!("[DEBUG openai::chat_raw] url={}, model={}, messages_count={}, tools_empty={}", url, self.model, messages_count, request_body.get("tools").is_none()));
 
+        // Log each message content for multi-turn debugging
+        if let Some(arr) = request_body["messages"].as_array() {
+            for (i, msg) in arr.iter().enumerate() {
+                let role = msg["role"].as_str().unwrap_or("?");
+                let content = msg["content"].as_str().unwrap_or("(null)");
+                let preview = if content.len() > 200 { format!("{}... (total {} chars)", &content[..200], content.len()) } else { content.to_string() };
+                let tool_calls = msg["tool_calls"].as_array();
+                let tool_calls_info = if let Some(tcs) = tool_calls {
+                    let names: Vec<String> = tcs.iter().map(|tc| tc["function"]["name"].as_str().unwrap_or("?").to_string()).collect();
+                    format!(" [tool_calls: {}]", names.join(", "))
+                } else { String::new() };
+                let tool_call_id = msg["tool_call_id"].as_str().unwrap_or("");
+                let tool_id_info = if !tool_call_id.is_empty() { format!(" [tool_call_id: {}]", tool_call_id) } else { String::new() };
+                crate::logger::backend("DEBUG", &format!(
+                    "[DEBUG openai::chat_raw] msg[{}] role={} content={}{}{}",
+                    i, role, preview, tool_calls_info, tool_id_info
+                ));
+            }
+        }
+
         let response = self
             .client
             .post(&url)
