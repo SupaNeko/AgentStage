@@ -964,6 +964,7 @@ impl Scheduler {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn call_llm<P: LlmProvider>(
         provider: &P,
         system_prompt: &str,
@@ -988,6 +989,7 @@ impl Scheduler {
     }
 
     /// 调用 LLM 并自动重试，最多 3 次
+    #[allow(dead_code)]
     async fn call_llm_with_retry<P: LlmProvider>(
         provider: &P,
         system_prompt: &str,
