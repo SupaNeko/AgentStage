@@ -1,0 +1,204 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
+@theme {
+    --color-bg:             #e8d5b0;
+    --color-surface:        #faf3e3;
+    --color-border:         #a0845c;
+    --color-text:           #3e2723;
+    --color-text-secondary: #8b6b4a;
+    --color-primary:        #b8402e;
+    --color-primary-dark:   #972e2a;
+}
+
+html, body {
+    font-family: 'Noto Serif SC', Georgia, 'Times New Roman', serif;
+    background-color: #e8d5b0;
+}
+
+body {
+    background-image:
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 10px,
+            rgba(139, 107, 74, 0.06) 10px,
+            rgba(139, 107, 74, 0.06) 12px
+        ),
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 3px,
+            rgba(160, 132, 92, 0.04) 3px,
+            rgba(160, 132, 92, 0.04) 4px
+        );
+}
+
+.left-nav {
+    background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
+    border-right: 2px solid #a0845c;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+.nav-tab {
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: background-color 0.15s ease;
+}
+
+.nav-tab:hover {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.nav-tab.active {
+    background: var(--color-primary);
+    box-shadow: 0 2px 0 var(--color-primary-dark), 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.mid-panel {
+    background-color: var(--color-surface);
+    border-right: 2px solid var(--color-border);
+    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.05);
+}
+
+.list-item {
+    border-bottom: 1px solid rgba(160, 132, 92, 0.2);
+    transition: background-color 0.15s ease;
+}
+
+.list-item:hover {
+    background-color: rgba(184, 64, 46, 0.05);
+}
+
+.list-item.active {
+    background-color: rgba(184, 64, 46, 0.1);
+    border-left: 3px solid var(--color-primary);
+}
+
+.chat-view {
+    background-color: var(--color-bg);
+}
+
+.chat-header {
+    background: linear-gradient(180deg, #d4b896, #c9a878);
+    border-bottom: 2px solid var(--color-border);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    font-family: 'Noto Serif SC', Georgia, serif;
+    color: var(--color-text);
+}
+
+.chat-input-area {
+    background: linear-gradient(180deg, #d4b896, #c9a878);
+    border-top: 2px solid var(--color-border);
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.chat-input-area input,
+.chat-input-area textarea {
+    background: linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    border: 2px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+    font-family: 'Noto Serif SC', Georgia, serif;
+    color: var(--color-text);
+}
+
+.msg-bubble {
+    background: linear-gradient(180deg, #d4b896 0%, #c4a882 40%, #ba9e78 60%, #c4a882 100%);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12), 6px 6px 12px rgba(0, 0, 0, 0.08);
+    font-family: 'Noto Serif SC', Georgia, serif;
+    color: var(--color-text);
+    position: relative;
+    padding-top: 18px;
+}
+
+.msg-bubble::before {
+    content: '';
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-image: var(--sender-avatar);
+    background-color: var(--color-primary);
+    background-size: cover;
+    background-position: center;
+    border: 2px solid #8b6914;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    z-index: 1;
+}
+
+.msg-self {
+    margin-right: 8px;
+}
+
+.msg-other {
+    margin-left: 8px;
+}
+
+.btn-primary {
+    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
+    color: var(--color-surface);
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 0 #6b1810, 0 3px 6px rgba(0, 0, 0, 0.2);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    font-family: 'Noto Serif SC', Georgia, serif;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(180deg, #c85a48, #a84030);
+}
+
+.btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 #6b1810, 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.input-field {
+    background: linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    border: 2px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+    font-family: 'Noto Serif SC', Georgia, serif;
+    color: var(--color-text);
+}
+
+.input-field:focus {
+    border-color: var(--color-primary);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 0 0 2px rgba(184, 64, 46, 0.15);
+    outline: none;
+}
+
+.modal-overlay {
+    background-color: rgba(62, 39, 35, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.modal-card {
+    background-color: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1), 8px 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(160, 132, 92, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #8b7048;
+}
