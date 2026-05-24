@@ -10,38 +10,45 @@
     --color-primary-dark:   #972e2a;
 }
 
+/* ================================================================
+   Base
+   ================================================================ */
+
 html, body {
     font-family: 'Noto Serif SC', Georgia, 'Times New Roman', serif;
     background-color: var(--color-bg);
 }
 
 body {
-    background-image:
+    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
         repeating-linear-gradient(
             90deg,
             transparent,
-            transparent 10px,
-            rgba(139, 107, 74, 0.06) 10px,
-            rgba(139, 107, 74, 0.06) 12px
-        ),
-        repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 3px,
-            rgba(160, 132, 92, 0.04) 3px,
-            rgba(160, 132, 92, 0.04) 4px
+            transparent 199px,
+            rgba(0, 0, 0, 0.06) 199px,
+            rgba(0, 0, 0, 0.06) 201px
         );
 }
 
+/* ================================================================
+   Left Nav — dark wood frame with grain texture
+   ================================================================ */
+
 .left-nav {
-    background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
+    background:
+        linear-gradient(180deg, rgba(0,0,0,0.05), transparent 30%, transparent 70%, rgba(0,0,0,0.15)),
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22128%22%20height%3D%22128%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22darkwood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.008%200.10%22%20numOctaves%3D%225%22%20seed%3D%2219%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.15%200.04%200%20%20%200%20%20%200.22%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.10%200.04%200%20%20%200%20%20%200.14%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.06%200.02%200%20%20%200%20%20%200.08%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.40%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22128%22%20height%3D%22128%22%20filter%3D%22url%28%23darkwood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A");
     border-right: 2px solid #a0845c;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
+/* ================================================================
+   Nav Tabs — carved depressions
+   ================================================================ */
+
 .nav-tab {
-    background: rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.10);
     border-radius: 4px;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
     transition: background-color 0.15s ease;
@@ -49,19 +56,30 @@ body {
 }
 
 .nav-tab:hover {
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.18);
 }
 
 .nav-tab.active {
     background: var(--color-primary);
-    box-shadow: 0 2px 0 var(--color-primary-dark), 0 3px 6px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 0 var(--color-primary-dark), 0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
+/* ================================================================
+   Mid Panel — parchment sheet with paper texture
+   ================================================================ */
+
 .mid-panel {
-    background-color: var(--color-surface);
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #f0e0c8 0%, #e8d4b0 50%, #f0e0c8 100%);
+    background-blend-mode: multiply;
     border-right: 2px solid var(--color-border);
     box-shadow: 2px 0 6px rgba(0, 0, 0, 0.05);
 }
+
+/* ================================================================
+   List Items
+   ================================================================ */
 
 .bboard-item {
     border-bottom: 1px solid rgba(160, 132, 92, 0.2);
@@ -77,9 +95,27 @@ body {
     border-left: 3px solid var(--color-primary);
 }
 
+/* ================================================================
+   Chat View — wood plank wall with grain + plank seams
+   ================================================================ */
+
 .chat-view {
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, rgba(0,0,0,0.03) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.03) 100%),
+        repeating-linear-gradient(
+            90deg,
+            transparent 0px,
+            transparent 199px,
+            rgba(60, 30, 15, 0.08) 199px,
+            rgba(60, 30, 15, 0.08) 201px
+        );
     background-color: var(--color-bg);
 }
+
+/* ================================================================
+   Chat Header
+   ================================================================ */
 
 .chat-header {
     background: linear-gradient(180deg, #d4b896, #c9a878);
@@ -90,6 +126,10 @@ body {
     letter-spacing: 0.05em;
     color: var(--color-text);
 }
+
+/* ================================================================
+   Chat Input Area
+   ================================================================ */
 
 .chat-input-area {
     background: linear-gradient(180deg, #d4b896, #c9a878);
@@ -108,11 +148,20 @@ body {
     color: var(--color-text);
 }
 
+/* ================================================================
+   Message Bubble — parchment note with pinned-on depth
+   ================================================================ */
+
 .msg-bubble {
-    background: linear-gradient(180deg, #d4b896 0%, #c4a882 40%, #ba9e78 60%, #c4a882 100%);
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #f0e0c8 0%, #e8d4b0 50%, #f0e0c8 100%);
+    background-blend-mode: multiply;
     border: 1px solid var(--color-border);
     border-radius: 4px;
-    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12), 6px 6px 12px rgba(0, 0, 0, 0.08);
+    box-shadow:
+        2px 3px 0 rgba(0, 0, 0, 0.08),
+        4px 6px 10px rgba(0, 0, 0, 0.12);
     font-family: 'Noto Serif SC', Georgia, serif;
     color: var(--color-text);
 }
@@ -124,6 +173,10 @@ body {
 .msg-other {
     margin-left: 8px;
 }
+
+/* ================================================================
+   Primary Button — wax-seal stamp
+   ================================================================ */
 
 .btn-primary {
     background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
@@ -145,8 +198,15 @@ body {
     box-shadow: 0 1px 0 #6b1810, 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
+/* ================================================================
+   Input Fields — carved groove with paper texture
+   ================================================================ */
+
 .input-field {
-    background: linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    background-blend-mode: multiply;
     border: 2px solid var(--color-border);
     border-radius: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -159,6 +219,10 @@ body {
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 0 0 2px rgba(184, 64, 46, 0.15);
     outline: none;
 }
+
+/* ================================================================
+   Modals
+   ================================================================ */
 
 .modal-overlay {
     background-color: rgba(62, 39, 35, 0.5);
@@ -174,52 +238,49 @@ body {
 
 /* ================================================================
    Hardcoded Color Overrides
-   Maps Tailwind built-in white/gray to bulletin board wood/parchment.
-   Rules loaded AFTER Tailwind CSS, same specificity wins by cascade.
    ================================================================ */
 
-/* White backgrounds → parchment surface */
 .bg-white {
     background-color: var(--color-surface);
 }
 
-/* Gray backgrounds → wood tints */
 .bg-gray-50 {
     background-color: #f2e4cc;
 }
+
 .bg-gray-100 {
     background-color: rgba(160, 132, 92, 0.15);
 }
+
 .bg-gray-200 {
     background-color: rgba(160, 132, 92, 0.22);
 }
+
 .bg-gray-300 {
     background-color: rgba(160, 132, 92, 0.45);
 }
 
-/* Hover states → warm reddish tint */
 .hover\:bg-gray-50:hover {
     background-color: rgba(184, 64, 46, 0.06);
 }
+
 .hover\:bg-gray-100:hover {
     background-color: rgba(184, 64, 46, 0.10);
 }
 
-/* Gray text → warm brown */
 .text-gray-400,
 .text-gray-500 {
     color: var(--color-text-secondary);
 }
 
-/* Separator bar (toast progress track) */
 .bg-gray-200\/30 {
     background-color: rgba(160, 132, 92, 0.1);
 }
 
-/* Red/Green status backgrounds: tint toward warmer versions */
 .bg-red-50 {
     background-color: rgba(184, 64, 46, 0.1);
 }
+
 .hover\:bg-red-50:hover {
     background-color: rgba(184, 64, 46, 0.15);
 }
@@ -229,7 +290,7 @@ body {
 }
 
 /* ================================================================
-   Scrollbar (reprise — overrides above don't touch this)
+   Scrollbar
    ================================================================ */
 
 ::-webkit-scrollbar {
