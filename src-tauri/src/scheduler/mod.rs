@@ -1245,11 +1245,7 @@ impl Scheduler {
             ).await?;
 
             // Unified post-processing (emit, distribute, freeze check, counter)
-            if let Err(e) = scheduler.handle_agent_response(&agent_id_owned, &result.messages).await {
-                crate::logger::error(&format!(
-                    "[trigger_special] handle_agent_response failed for agent_id={}: {}", agent_id_owned, e
-                ));
-            }
+            scheduler.handle_agent_response(&agent_id_owned, &result.messages).await?;
 
             // Log result
             crate::logger::info(&format!(

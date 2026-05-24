@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at INTEGER NOT NULL,
 
     last_message_at INTEGER,
+    last_message_preview TEXT,
     unread_count INTEGER DEFAULT 0,
 
     is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
