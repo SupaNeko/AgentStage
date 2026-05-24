@@ -120,7 +120,7 @@ mod tests {
     fn test_update_settings_preserve_untouched_fields() {
         let conn = init_test_db();
         let before = get_or_create_settings(&conn).unwrap();
-        assert_eq!(before.theme, "system");
+        assert_eq!(before.theme, "default");
         assert_eq!(before.font_size, "medium");
 
         let req = UpdateAppSettingsRequest {
@@ -142,7 +142,7 @@ mod tests {
 
         let after = get_or_create_settings(&conn).unwrap();
         assert_eq!(after.global_min_trigger_interval, 60);
-        assert_eq!(after.theme, "system");
+        assert_eq!(after.theme, "default");
         assert_eq!(after.font_size, "medium");
     }
 

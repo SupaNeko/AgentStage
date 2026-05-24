@@ -83,6 +83,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "drop_last_message_preview",
         sql: super::schema::MIGRATION_V16,
     },
+    Migration {
+        version: 17,
+        name: "remove_theme_check_constraint",
+        sql: super::schema::MIGRATION_V17,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
