@@ -1,6 +1,6 @@
 [package]
 name = "agentstage"
-version = "0.0.2"
+version = "0.0.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -36,6 +36,7 @@ async-trait = "0.1"
 base64 = "0.22"
 regex = "1.10"
 once_cell = "1.19"
+
 
 
 
