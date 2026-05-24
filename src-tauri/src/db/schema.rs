@@ -513,8 +513,61 @@ CREATE TABLE app_settings_v17 (
     updated_at INTEGER NOT NULL
 );
 
-INSERT INTO app_settings_v17 SELECT * FROM app_settings;
+-- Explicit column mapping because ALTER TABLE ADD COLUMN appends columns
+-- after the original CREATE TABLE order, so updated_at is NOT the last
+-- column in the old table (active_persona_id, default_avatar_path,
+-- quiet_hours_start, quiet_hours_end were added after it by V11 and V15).
+INSERT INTO app_settings_v17 (
+    id, global_min_trigger_interval, private_message_limit_default,
+    group_message_limit_default, private_limit_enabled_default,
+    group_limit_enabled_default, theme, font_size, language,
+    enter_to_send, launch_on_startup, minimize_to_tray,
+    updated_at, active_persona_id, default_avatar_path,
+    quiet_hours_start, quiet_hours_end
+) SELECT
+    id, global_min_trigger_interval, private_message_limit_default,
+    group_message_limit_default, private_limit_enabled_default,
+    group_limit_enabled_default, theme, font_size, language,
+    enter_to_send, launch_on_startup, minimize_to_tray,
+    updated_at, active_persona_id, default_avatar_path,
+    quiet_hours_start, quiet_hours_end
+FROM app_settings;
+
 DROP TABLE app_settings;
 ALTER TABLE app_settings_v17 RENAME TO app_settings;
+"#;
+
+pub const MIGRATION_V18: &str = r#"
+-- V18: Fix app_settings potentially corrupted by buggy V17 column order.
+-- Drops and recreates the table with correct schema + default row.
+-- Only loses preferences (theme, font_size, etc.), not agents/sessions/messages.
+DROP TABLE IF EXISTS app_settings;
+
+CREATE TABLE app_settings (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+
+    global_min_trigger_interval INTEGER DEFAULT 30,
+    private_message_limit_default INTEGER DEFAULT 20,
+    group_message_limit_default INTEGER DEFAULT 30,
+    private_limit_enabled_default INTEGER DEFAULT 1,
+    group_limit_enabled_default INTEGER DEFAULT 1,
+
+    theme TEXT DEFAULT 'default',
+    font_size TEXT DEFAULT 'medium' CHECK(font_size IN ('small', 'medium', 'large')),
+    language TEXT DEFAULT 'zh-CN',
+
+    enter_to_send INTEGER DEFAULT 1 CHECK(enter_to_send IN (0, 1)),
+    launch_on_startup INTEGER DEFAULT 0,
+    minimize_to_tray INTEGER DEFAULT 1,
+
+    active_persona_id TEXT,
+    default_avatar_path TEXT,
+    quiet_hours_start INTEGER DEFAULT 0,
+    quiet_hours_end INTEGER DEFAULT 480,
+
+    updated_at INTEGER NOT NULL
+);
+
+INSERT INTO app_settings (id, updated_at) VALUES (1, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
 "#;
 

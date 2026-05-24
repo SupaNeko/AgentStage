@@ -88,6 +88,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "remove_theme_check_constraint",
         sql: super::schema::MIGRATION_V17,
     },
+    Migration {
+        version: 18,
+        name: "fix_app_settings_corruption",
+        sql: super::schema::MIGRATION_V18,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
