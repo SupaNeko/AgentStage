@@ -1000,6 +1000,83 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Unified post-LLM processing for all agent-produced messages.
+    /// Called by both trigger_agent_inner (user/chain-triggered) and
+    /// trigger_special (proactive/timer-triggered).
+    async fn handle_agent_response(
+        &self,
+        agent_id: &str,
+        agent_messages: &[Message],
+    ) -> Result<(), String> {
+        if agent_messages.is_empty() {
+            crate::logger::debug(&format!(
+                "[DEBUG handle_agent_response] agent_id={}, no messages, emitting agent_completed",
+                agent_id
+            ));
+            self.emit("agent_completed", serde_json::json!({"agent_id": agent_id}));
+            return Ok(());
+        }
+
+        // 1. Update agent_message_count for each session
+        let mut session_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let conn = self.db_state.0.lock().await;
+            for msg in agent_messages {
+                let rows = conn.execute(
+                    "UPDATE private_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
+                    [&msg.session_id],
+                ).unwrap_or(0);
+                if rows == 0 {
+                    let _ = conn.execute(
+                        "UPDATE group_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
+                        [&msg.session_id],
+                    );
+                }
+                session_ids.insert(msg.session_id.clone());
+            }
+        }
+
+        // 2. Check freeze for each session
+        for sid in &session_ids {
+            if let Some(session_name) = self.check_and_freeze_if_needed(sid).await {
+                self.emit("system_notice", serde_json::json!({
+                    "content": format!("{} 已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。", session_name)
+                }));
+            }
+        }
+
+        // 3. Emit new_message + distribute to other agents
+        for msg in agent_messages {
+            let session_exists: bool = {
+                let conn = self.db_state.0.lock().await;
+                conn.query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE id = ?1 AND is_deleted = 0",
+                    [&msg.session_id],
+                    |row| Ok(row.get::<_, i32>(0)? > 0),
+                ).unwrap_or(false)
+            };
+            if !session_exists {
+                continue;
+            }
+
+            crate::logger::debug(&format!(
+                "[DEBUG handle_agent_response] agent_id={}, session_id={}, msg_page={}, emitting new_message message_id={}",
+                agent_id, msg.session_id, msg.page_index, msg.id
+            ));
+            self.emit("new_message", msg);
+            self.distribute_message(&msg.session_id, msg, agent_id).await?;
+        }
+
+        // 4. Emit completion
+        crate::logger::debug(&format!(
+            "[DEBUG handle_agent_response] agent_id={}, all messages emitted, emitting agent_completed",
+            agent_id
+        ));
+        self.emit("agent_completed", serde_json::json!({"agent_id": agent_id}));
+
+        Ok(())
+    }
+
     async fn restore_pending(&self, agent_id: &str, pending: Vec<PendingMessage>) {
         if !pending.is_empty() {
             let count = pending.len();
