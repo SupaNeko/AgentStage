@@ -1,17 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Long+Cang&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap');
 
 :root {
-    --color-bg:             #e8d5b0;
-    --color-surface:        #f4e8d1;
+    --color-bg:             #d4b896;
+    --color-surface:        #ecdcb8;
     --color-border:         #a0845c;
     --color-text:           #3e2723;
     --color-text-secondary: #8b6b4a;
     --color-primary:        #b8402e;
-    --color-primary-dark:   #972e2a;
+    --color-primary-dark:   #8b2215;
 }
 
+/* ================================================================
+   Base
+   ================================================================ */
+
 html, body {
-    font-family: 'Noto Serif SC', Georgia, 'Times New Roman', serif;
+    font-family: 'Long Cang', 'Noto Serif SC', Georgia, serif;
+    font-size: 1.05em;
     background-color: var(--color-bg);
 }
 
@@ -33,35 +38,51 @@ body {
         );
 }
 
+/* ================================================================
+   Left Nav — dark wooden frame
+   ================================================================ */
+
 .left-nav {
-    background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
-    border-right: 2px solid #a0845c;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(180deg, #5c3a1e 0%, #4a2c14 20%, #5c3a1e 55%, #3e2210 100%);
+    border-right: 3px solid #2a1508;
+    box-shadow: 3px 0 12px rgba(0, 0, 0, 0.2);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
+/* ================================================================
+   Nav Tabs — carved depressions in wood
+   ================================================================ */
+
 .nav-tab {
-    background: rgba(0, 0, 0, 0.08);
-    border-radius: 4px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
     transition: background-color 0.15s ease;
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 .nav-tab:hover {
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.22);
 }
 
 .nav-tab.active {
     background: var(--color-primary);
-    box-shadow: 0 2px 0 var(--color-primary-dark), 0 3px 6px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 0 #6b1810, inset 0 1px 2px rgba(255, 255, 255, 0.15);
 }
 
+/* ================================================================
+   Mid Panel — parchment sheet pinned to board
+   ================================================================ */
+
 .mid-panel {
-    background-color: var(--color-surface);
+    background: linear-gradient(180deg, #f0e0c8 0%, #e8d4b0 50%, #ecdcb8 100%);
     border-right: 2px solid var(--color-border);
-    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.05);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
 }
+
+/* ================================================================
+   List Items — notices on parchment
+   ================================================================ */
 
 .bboard-item {
     border-bottom: 1px solid rgba(160, 132, 92, 0.2);
@@ -77,22 +98,71 @@ body {
     border-left: 3px solid var(--color-primary);
 }
 
+/* ================================================================
+   Chat View — wooden plank wall
+   Four layers: plank seams, fine grain, wide grain, color variation
+   ================================================================ */
+
 .chat-view {
-    background-color: var(--color-bg);
+    background-color: #c9a878;
+    background-image:
+        /* Plank seams — vertical dark lines every 200px */
+        repeating-linear-gradient(
+            90deg,
+            transparent 0px,
+            transparent 199px,
+            rgba(60, 30, 15, 0.08) 199px,
+            rgba(60, 30, 15, 0.08) 201px
+        ),
+        /* Fine wood grain — tight horizontal lines */
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(120, 80, 50, 0.025) 2px,
+            rgba(120, 80, 50, 0.025) 4px
+        ),
+        /* Wide grain bands — alternating light/dark streaks */
+        repeating-linear-gradient(
+            0deg,
+            transparent 0px,
+            transparent 7px,
+            rgba(100, 70, 40, 0.03) 7px,
+            rgba(100, 70, 40, 0.03) 11px,
+            rgba(160, 120, 80, 0.02) 11px,
+            rgba(160, 120, 80, 0.02) 15px
+        ),
+        /* Plank-to-plank shade variation */
+        repeating-linear-gradient(
+            90deg,
+            rgba(139, 107, 74, 0.04) 0px,
+            transparent 100px,
+            transparent 200px,
+            rgba(139, 107, 74, 0.04) 300px,
+            transparent 400px
+        );
 }
+
+/* ================================================================
+   Chat Header — carved nameplate
+   ================================================================ */
 
 .chat-header {
     background: linear-gradient(180deg, #d4b896, #c9a878);
     border-bottom: 2px solid var(--color-border);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
-    font-size: 1.1em;
-    letter-spacing: 0.05em;
+    font-size: 1.15em;
+    letter-spacing: 0.06em;
     color: var(--color-text);
 }
 
+/* ================================================================
+   Chat Input Area — plank at bottom
+   ================================================================ */
+
 .chat-input-area {
-    background: linear-gradient(180deg, #d4b896, #c9a878);
+    background: linear-gradient(180deg, #c9a878, #bf9e6e);
     border-top: 2px solid var(--color-border);
     box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
@@ -104,61 +174,152 @@ body {
     border: 2px solid var(--color-border);
     border-radius: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
-    font-family: 'Noto Serif SC', Georgia, serif;
+    font-family: 'Long Cang', 'Noto Serif SC', cursive;
     color: var(--color-text);
 }
 
+/* ================================================================
+   Message Bubble — wooden plaque pinned to the board
+   Depth via 4-layer shadow: edge highlight + bevel + contact + cast
+   ================================================================ */
+
 .msg-bubble {
-    background: linear-gradient(180deg, #d4b896 0%, #c4a882 40%, #ba9e78 60%, #c4a882 100%);
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12), 6px 6px 12px rgba(0, 0, 0, 0.08);
-    font-family: 'Noto Serif SC', Georgia, serif;
+    background: linear-gradient(180deg,
+        #dec8a8 0%,
+        #d4b896 20%,
+        #c4a878 55%,
+        #ba9e70 85%,
+        #c4a878 100%
+    );
+    border-top: 1px solid #e8d4b8;
+    border-left: 1px solid #dcc8a8;
+    border-right: 1px solid #a88860;
+    border-bottom: 2px solid #8a6a48;
+    border-radius: 3px;
+    box-shadow:
+        /* Top edge light catch — plaque catching overhead light */
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        /* Bevel shadow on bottom edge */
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+        /* Tight contact shadow — plaque touching the board */
+        2px 3px 0 rgba(0, 0, 0, 0.06),
+        /* Main cast shadow — depth off the board */
+        4px 6px 8px rgba(0, 0, 0, 0.12),
+        /* Far ambient shadow */
+        6px 8px 0 rgba(0, 0, 0, 0.04);
+    font-family: 'Long Cang', 'Noto Serif SC', cursive;
+    font-size: 1.08em;
+    letter-spacing: 0.03em;
     color: var(--color-text);
+    position: relative;
+}
+
+/* Small iron tack at top center — the "nail" holding the plaque */
+.msg-bubble::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%,
+        #d0d0d0 0%,
+        #909090 35%,
+        #505050 70%,
+        #303030 100%
+    );
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    z-index: 1;
 }
 
 .msg-self {
-    margin-right: 8px;
+    margin-right: 10px;
 }
 
 .msg-other {
-    margin-left: 8px;
+    margin-left: 10px;
 }
 
+/* ================================================================
+   Buttons — convex wooden toy button, pressable
+   Raised 3D look with bottom "side wall" and cast shadow.
+   On press: sinks in, gradient reverses, shadow collapses.
+   ================================================================ */
+
 .btn-primary {
-    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
-    color: var(--color-surface);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    box-shadow: 0 2px 0 #6b1810, 0 3px 6px rgba(0, 0, 0, 0.2);
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    background: linear-gradient(180deg,
+        rgba(255, 220, 200, 0.18) 0%,
+        #d05040 15%,
+        var(--color-primary) 45%,
+        var(--color-primary-dark) 90%,
+        rgba(0, 0, 0, 0.15) 100%
+    );
+    color: #faf0e0;
+    border: none;
+    border-top: 1px solid rgba(255, 200, 180, 0.25);
+    border-bottom: 3px solid #5c1810;
+    border-radius: 5px;
+    box-shadow:
+        0 4px 0 #5c1810,
+        0 6px 12px rgba(0, 0, 0, 0.25);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
 }
 
 .btn-primary:hover {
-    background: linear-gradient(180deg, #c85a48, #a84030);
+    background: linear-gradient(180deg,
+        rgba(255, 220, 200, 0.22) 0%,
+        #e06050 15%,
+        #c85040 45%,
+        #a03020 90%,
+        rgba(0, 0, 0, 0.15) 100%
+    );
 }
 
 .btn-primary:active {
-    transform: translateY(1px);
-    box-shadow: 0 1px 0 #6b1810, 0 1px 3px rgba(0, 0, 0, 0.2);
+    transform: translateY(3px);
+    box-shadow:
+        0 1px 0 #5c1810,
+        0 2px 4px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg,
+        rgba(0, 0, 0, 0.12) 0%,
+        var(--color-primary-dark) 20%,
+        var(--color-primary) 70%,
+        rgba(255, 220, 200, 0.1) 100%
+    );
 }
 
+/* ================================================================
+   Input Fields — inkwell / carved groove
+   ================================================================ */
+
 .input-field {
-    background: linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    background: linear-gradient(180deg, #f5ead5, #ebdcc0, #f5ead5);
     border: 2px solid var(--color-border);
     border-radius: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
-    font-family: 'Noto Serif SC', Georgia, serif;
+    font-family: 'Long Cang', 'Noto Serif SC', cursive;
     color: var(--color-text);
 }
 
 .input-field:focus {
     border-color: var(--color-primary);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 0 0 2px rgba(184, 64, 46, 0.15);
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.08),
+        0 0 0 2px rgba(184, 64, 46, 0.12);
     outline: none;
 }
+
+/* ================================================================
+   Modals — parchment pinned to board, with warm overlay
+   ================================================================ */
 
 .modal-overlay {
     background-color: rgba(62, 39, 35, 0.5);
@@ -168,8 +329,10 @@ body {
 .modal-card {
     background-color: var(--color-surface);
     border: 2px solid var(--color-border);
-    border-radius: 6px;
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1), 8px 8px 16px rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    box-shadow:
+        3px 4px 0 rgba(0, 0, 0, 0.08),
+        6px 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* ================================================================
@@ -178,48 +341,47 @@ body {
    Rules loaded AFTER Tailwind CSS, same specificity wins by cascade.
    ================================================================ */
 
-/* White backgrounds → parchment surface */
 .bg-white {
     background-color: var(--color-surface);
 }
 
-/* Gray backgrounds → wood tints */
 .bg-gray-50 {
-    background-color: #f2e4cc;
+    background-color: #ede0c8;
 }
+
 .bg-gray-100 {
     background-color: rgba(160, 132, 92, 0.15);
 }
+
 .bg-gray-200 {
     background-color: rgba(160, 132, 92, 0.22);
 }
+
 .bg-gray-300 {
     background-color: rgba(160, 132, 92, 0.45);
 }
 
-/* Hover states → warm reddish tint */
 .hover\:bg-gray-50:hover {
     background-color: rgba(184, 64, 46, 0.06);
 }
+
 .hover\:bg-gray-100:hover {
     background-color: rgba(184, 64, 46, 0.10);
 }
 
-/* Gray text → warm brown */
 .text-gray-400,
 .text-gray-500 {
     color: var(--color-text-secondary);
 }
 
-/* Separator bar (toast progress track) */
 .bg-gray-200\/30 {
     background-color: rgba(160, 132, 92, 0.1);
 }
 
-/* Red/Green status backgrounds: tint toward warmer versions */
 .bg-red-50 {
     background-color: rgba(184, 64, 46, 0.1);
 }
+
 .hover\:bg-red-50:hover {
     background-color: rgba(184, 64, 46, 0.15);
 }
@@ -229,7 +391,7 @@ body {
 }
 
 /* ================================================================
-   Scrollbar (reprise — overrides above don't touch this)
+   Scrollbar — carved wooden track
    ================================================================ */
 
 ::-webkit-scrollbar {
