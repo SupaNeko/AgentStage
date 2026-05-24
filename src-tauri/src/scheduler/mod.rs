@@ -1244,9 +1244,11 @@ impl Scheduler {
                 &HashMap::new(),
             ).await?;
 
-            // Emit new_message for each message produced by tool execution (so frontend gets notified)
-            for msg in &result.messages {
-                scheduler.emit("new_message", msg.clone());
+            // Unified post-processing (emit, distribute, freeze check, counter)
+            if let Err(e) = scheduler.handle_agent_response(&agent_id_owned, &result.messages).await {
+                crate::logger::error(&format!(
+                    "[trigger_special] handle_agent_response failed for agent_id={}: {}", agent_id_owned, e
+                ));
             }
 
             // Log result
