@@ -78,6 +78,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "timer_and_proactive_session",
         sql: super::schema::MIGRATION_V15,
     },
+    Migration {
+        version: 16,
+        name: "drop_last_message_preview",
+        sql: super::schema::MIGRATION_V16,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {

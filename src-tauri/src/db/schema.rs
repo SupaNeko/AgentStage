@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at INTEGER NOT NULL,
 
     last_message_at INTEGER,
-    last_message_preview TEXT,
     unread_count INTEGER DEFAULT 0,
 
     is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
@@ -477,5 +476,10 @@ ALTER TABLE agents ADD COLUMN proactive_max_minutes INTEGER DEFAULT 180;
 -- CHAT-42: Quiet hours in settings
 ALTER TABLE app_settings ADD COLUMN quiet_hours_start INTEGER DEFAULT 0;
 ALTER TABLE app_settings ADD COLUMN quiet_hours_end INTEGER DEFAULT 480;
+"#;
+
+pub const MIGRATION_V16: &str = r#"
+-- V16: Drop last_message_preview (frontend maintains preview state)
+ALTER TABLE sessions DROP COLUMN last_message_preview;
 "#;
 
