@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap');
 
 :root {
-    --color-bg:             #e8d5b0;
-    --color-surface:        #f4e8d1;
+    --color-bg:             #e2cfb0;
+    --color-surface:        #f2e2cc;
     --color-border:         #a0845c;
     --color-text:           #3e2723;
     --color-text-secondary: #8b6b4a;
@@ -12,7 +12,7 @@
 }
 
 /* ================================================================
-   Base
+   Base — light warm oak
    ================================================================ */
 
 html, body {
@@ -21,13 +21,13 @@ html, body {
 }
 
 /* ================================================================
-   Left Nav — simple gradient, thin plank
+   Left Nav — medium-dark wood frame
    ================================================================ */
 
 .left-nav {
     background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
     border-right: none;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 4px 0 14px rgba(0, 0, 0, 0.15);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
@@ -53,7 +53,7 @@ html, body {
 }
 
 /* ================================================================
-   Mid Panel — medium-thickness plank
+   Mid Panel — parchment, medium shadow for plank depth
    ================================================================ */
 
 .mid-panel {
@@ -86,39 +86,38 @@ html, body {
 }
 
 /* ================================================================
-   Chat View — thickest plank, tree bark texture (lighter)
+   Chat View — medium wood with bark grain overlay
    ================================================================ */
 
 .chat-view {
     background:
         url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22bark%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.10%200.012%22%20numOctaves%3D%227%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%20result%3D%22ridges%22%2F%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.18%200.05%22%20numOctaves%3D%224%22%20seed%3D%2241%22%20stitchTiles%3D%22stitch%22%20result%3D%22rough%22%2F%3E%0A%20%20%20%20%20%20%3CfeComposite%20in%3D%22ridges%22%20in2%3D%22rough%22%20operator%3D%22arithmetic%22%20k1%3D%220.6%22%20k2%3D%220%22%20k3%3D%220.4%22%20k4%3D%220%22%20result%3D%22combined%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.08%200.03%200%20%20%200%20%20%200.48%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.05%200.02%200%20%20%200%20%20%200.36%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.01%200%20%20%200%20%20%200.26%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200.75%22%0A%20%20%20%20%20%20%20%20in%3D%22combined%22%2F%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23bark%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
-        linear-gradient(180deg, rgba(0,0,0,0.04) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.04) 100%);
-    background-color: #6b5040;
+        linear-gradient(180deg, rgba(0,0,0,0.03) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.03) 100%);
+    background-color: #c8a880;
 }
 
 /* ================================================================
-   Chat Header
+   Chat Header — warm brown accent, forced light text
    ================================================================ */
 
 .chat-header {
-    background: linear-gradient(180deg, #8b6b4a, #7a5c3e) !important;
+    background: linear-gradient(180deg, #a08460, #8b7050) !important;
     border-bottom: 2px solid var(--color-border);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
     font-size: 1.1em;
     letter-spacing: 0.05em;
-    color: #f5ead5 !important;
 }
-.chat-header * {
-    color: inherit;
+.chat-header, .chat-header * {
+    color: #f5ead5 !important;
 }
 
 /* ================================================================
-   Chat Input Area
+   Chat Input Area — matches header
    ================================================================ */
 
 .chat-input-area {
-    background: linear-gradient(180deg, #8b6b4a, #7a5c3e) !important;
+    background: linear-gradient(180deg, #a08460, #8b7050) !important;
     border-top: 2px solid var(--color-border);
     box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.08);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
@@ -134,21 +133,20 @@ html, body {
     border-radius: 4px;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
     font-family: 'Noto Serif SC', Georgia, serif;
-    color: var(--color-text);
+    color: var(--color-text) !important;
 }
 
 /* ================================================================
-   Message Bubble — wooden patch with ring border
+   Message Bubble — wooden patch with ring + shadow
    ================================================================ */
 
 .msg-bubble {
     background:
         url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
-        linear-gradient(180deg, #c9a878 0%, #bfa070 50%, #c4a878 100%);
-    border: 1px solid #8b6b4a;
+        linear-gradient(180deg, #d4b896 0%, #c9a878 50%, #d4b896 100%);
+    border: 1.5px solid #8b6b4a;
     border-radius: 3px;
     box-shadow:
-        0 0 0 1.5px rgba(0, 0, 0, 0.10),
         2px 3px 0 rgba(0, 0, 0, 0.08),
         4px 6px 8px rgba(0, 0, 0, 0.12),
         6px 8px 0 rgba(0, 0, 0, 0.04);
@@ -165,8 +163,9 @@ html, body {
 }
 
 /* ================================================================
-   Avatar Discs — raised round piece with visible ring
-   Override overflow:hidden that clips box-shadow on group avatars.
+   Avatar Discs — thick ring + 3D raised effect
+   Uses border + inset-shadow + filter:drop-shadow to bypass
+   overflow:hidden clipping that affects regular box-shadow.
    ================================================================ */
 
 .w-8.rounded-full,
@@ -174,14 +173,15 @@ html, body {
 .w-10.rounded-full,
 .w-12.rounded-full,
 .w-16.rounded-full {
-    overflow: visible !important;
+    border: 2px solid rgba(0, 0, 0, 0.14) !important;
     box-shadow:
-        0 0 0 2px rgba(0, 0, 0, 0.12),
-        0 1px 3px rgba(0, 0, 0, 0.20),
-        0 4px 8px rgba(0, 0, 0, 0.12);
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.06) !important;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25))
+            drop-shadow(0 3px 5px rgba(0, 0, 0, 0.12));
 }
 
-/* Keep images circular when overflow is overridden */
+/* Ensure images clip to circle when overflow is overridden */
 .w-8.rounded-full img,
 .w-9.rounded-full img,
 .w-10.rounded-full img,
@@ -190,13 +190,8 @@ html, body {
     border-radius: 50%;
 }
 
-/* Inner half-avatar wrappers still need their own clipping */
-.w-10.rounded-full .w-1\/2.overflow-hidden {
-    overflow: hidden !important;
-}
-
 /* ================================================================
-   Primary Button — brown wood with grain
+   Primary Button — brown wood with grain, wax-seal press
    ================================================================ */
 
 .btn-primary {
@@ -227,7 +222,7 @@ html, body {
 }
 
 /* ================================================================
-   Input Fields
+   Input Fields — carved parchment groove
    ================================================================ */
 
 .input-field {
@@ -275,7 +270,7 @@ html, body {
 }
 
 .bg-gray-50 {
-    background-color: #f2e4cc;
+    background-color: #efe0cc;
 }
 
 .bg-gray-100 {
