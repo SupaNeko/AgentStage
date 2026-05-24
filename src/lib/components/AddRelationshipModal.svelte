@@ -55,8 +55,8 @@
 </script>
 
 {#if open}
-    <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={onClose} role="dialog" aria-modal="true">
-        <div class="bg-surface rounded-xl p-6 w-[28rem] max-w-full shadow-lg border border-border" onclick={(e) => e.stopPropagation()}>
+    <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 modal-overlay" onclick={onClose} role="dialog" aria-modal="true">
+        <div class="bg-surface rounded-xl p-6 w-[28rem] max-w-full shadow-lg border border-border modal-card" onclick={(e) => e.stopPropagation()}>
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-lg font-semibold">添加关系</h3>
                 <button onclick={onClose} class="p-1 hover:bg-bg rounded-lg"><X size={18} /></button>
@@ -88,7 +88,7 @@
                 <button
                     onclick={handleAdd}
                     disabled={selectedIds.length === 0 || loading}
-                    class="flex-1 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50"
+                    class="flex-1 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 btn-primary"
                 >
                     {loading ? '添加中...' : `添加 (${selectedIds.length})`}
                 </button>

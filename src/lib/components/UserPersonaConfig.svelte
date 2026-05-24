@@ -93,7 +93,7 @@
         <!-- Create Button -->
         <button
             onclick={() => createModalOpen = true}
-            class="w-full py-3 rounded-lg border border-dashed border-border flex items-center justify-center gap-2 text-text-secondary hover:text-primary hover:border-primary transition-colors"
+            class="w-full py-3 rounded-lg border border-dashed border-border flex items-center justify-center gap-2 text-text-secondary hover:text-primary hover:border-primary transition-colors btn-primary"
         >
             <Plus size={18} />
             <span class="text-sm">创建新人设</span>

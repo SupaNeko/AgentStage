@@ -477,7 +477,7 @@
     });
 </script>
 
-<div class="flex h-full bg-bg relative">
+<div class="flex h-full bg-bg relative chat-view">
     <SessionSettingsPanel
         open={settingsOpen}
         sessionId={selectedSession?.id ?? ''}
@@ -498,7 +498,7 @@
     />
     <div class="flex flex-col flex-1 min-w-0">
         <!-- Header -->
-        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0 relative">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-border bg-surface shrink-0 relative chat-header">
             {#if selectedSession}
                 {@const header = getHeaderDisplay(selectedSession!)}
                 <div class="flex items-center gap-3">
@@ -682,7 +682,7 @@
                     该角色已删除，无法发送消息
                 </div>
             {:else}
-                <div class="shrink-0 border-t border-border p-4 bg-surface">
+                <div class="shrink-0 border-t border-border p-4 bg-surface chat-input-area">
                     <div class="flex items-end gap-2">
                         <textarea
                             value={inputText}
@@ -698,12 +698,12 @@
                             onkeydown={handleKeydown}
                             placeholder="输入消息..."
                             rows={3}
-                            class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32"
+                            class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32 input-field"
                         ></textarea>
                         <button
                             onclick={handleSend}
                             disabled={sending || !inputText.trim()}
-                            class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0"
+                            class="p-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-50 shrink-0 btn-primary"
                         >
                             <Send size={18} />
                         </button>

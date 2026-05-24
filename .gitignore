@@ -24,8 +24,10 @@ npm-debug.log*
 .env.*
 !.env.example
 
-# Runtime data (database, logs, webview cache)
-/data/
+# Runtime data (database, logs, webview cache) — ignore everything in data except themes
+/data/*
+!/data/themes/
+!/data/themes/**
 
 # Testing (development only, not project files)
 /playwright-report/
@@ -43,3 +45,4 @@ npm-debug.log*
 # docs
 docs/reference.md
 docs/superpowers/uncertainties/
+.superpowers/

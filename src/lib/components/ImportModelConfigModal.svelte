@@ -43,8 +43,8 @@
 </script>
 
 {#if open}
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => open = false} role="dialog" aria-modal="true">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[70vh] flex flex-col" onclick={(e) => e.stopPropagation()}>
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay" onclick={() => open = false} role="dialog" aria-modal="true">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[70vh] flex flex-col modal-card" onclick={(e) => e.stopPropagation()}>
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold flex items-center gap-2">
                 <Import size={18} />

@@ -58,8 +58,8 @@
     let { onclose }: { onclose?: () => void } = $props();
 </script>
 
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col modal-card">
         <div class="flex items-center justify-between p-4 border-b border-border shrink-0">
             <h3 class="text-lg font-semibold flex items-center gap-2">
                 <Users size={20} /> 新建群聊
@@ -70,7 +70,7 @@
             <div>
                 <label class="block text-sm font-medium mb-1">群聊名称</label>
                 <input bind:value={groupName} placeholder="输入群聊名称..."
-                    class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field" />
             </div>
             <div>
                 <label class="block text-sm font-medium mb-2">
@@ -102,7 +102,7 @@
             <button onclick={onclose} class="px-4 py-2 text-sm rounded-lg hover:bg-bg border border-border">取消</button>
             <button onclick={handleCreate}
                 disabled={creating || selectedAgentIds.size < 2 || !groupName.trim()}
-                class="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
+                class="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary">
                 {creating ? '创建中...' : '创建'}
             </button>
         </div>

@@ -104,7 +104,7 @@
         <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wide">定时任务</h3>
         <button
             onclick={openCreate}
-            class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors btn-primary"
         >
             <Plus size={16} />
             新建定时任务

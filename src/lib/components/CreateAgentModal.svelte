@@ -171,8 +171,8 @@
 </script>
 
 {#if open}
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => open = false} role="dialog" aria-modal="true">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onclick={(e) => e.stopPropagation()}>
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay" onclick={() => open = false} role="dialog" aria-modal="true">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto modal-card" onclick={(e) => e.stopPropagation()}>
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold">新建角色</h3>
             <button onclick={() => open = false} class="p-1 hover:bg-gray-100 rounded" aria-label="关闭">
@@ -196,7 +196,7 @@
             <div>
                 <label class="block text-sm font-medium mb-1" for="ca-name">角色名称 <span class="text-red-500">*</span></label>
                 <input id="ca-name" type="text" bind:value={form.name} required maxlength={20}
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field" />
             </div>
 
             <div class="border-t border-border pt-3">
@@ -213,20 +213,20 @@
                         <div>
                             <label class="block text-sm font-medium mb-1" for="ca-ref">参考角色</label>
                             <input id="ca-ref" type="text" bind:value={referenceCharacter}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                                 placeholder="例如：远坂凛" />
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-1" for="ca-additional">补充信息</label>
                             <textarea id="ca-additional" bind:value={additionalInfo} rows={3}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none input-field"
                                 placeholder="输入额外的人设补充信息..."></textarea>
                         </div>
                         <button
                             type="button"
                             onclick={handleGeneratePersona}
                             disabled={generating || (!referenceCharacter.trim() && !additionalInfo.trim())}
-                            class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition-colors disabled:opacity-50"
+                            class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary"
                         >
                             {#if generating}
                                 <Loader2 size={16} class="animate-spin" />
@@ -243,14 +243,14 @@
             <div>
                 <label class="block text-sm font-medium mb-1" for="ca-detailed">详细人设 <span class="text-red-500">*</span></label>
                 <textarea id="ca-detailed" bind:value={form.detailed_persona} required rows={4}
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none input-field"
                     placeholder="你是 Fate/stay night 中的角色卫宫士郎，性格坚韧不拔，内心温柔但执拗，拥有强烈的正义感，口头禅是'人被杀就会死'。你是冬木市穗群原学园的学生，同时也是拥有投影魔术的见习魔术师..."></textarea>
             </div>
 
             <div>
                 <label class="block text-sm font-medium mb-1" for="ca-simplified">简易人设 <span class="text-red-500">*</span></label>
                 <textarea id="ca-simplified" bind:value={form.simplified_persona} required rows={2}
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none input-field"
                     placeholder="出自 Fate/stay night 的角色卫宫士郎，冬木市的见习魔术师，性格正义感强烈。"></textarea>
                 <p class="text-xs text-text-secondary mt-1">这是给其它角色看的角色名片（角色简介）</p>
             </div>
@@ -271,7 +271,7 @@
                     <div>
                         <label class="block text-sm font-medium mb-1" for="ca-provider">模型提供商 <span class="text-red-500">*</span></label>
                         <select id="ca-provider" bind:value={form.model_provider} onchange={handleProviderChange}
-                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20">
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field">
                             <option value="openai">OpenAI</option>
                             <option value="anthropic">Anthropic</option>
                             <option value="google">Google</option>
@@ -283,13 +283,13 @@
                     <div>
                         <label class="block text-sm font-medium mb-1" for="ca-model">模型名称 <span class="text-red-500">*</span></label>
                         <input id="ca-model" type="text" bind:value={form.model_name} required
-                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                             placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
                     </div>
                     <div class="col-span-2">
                         <label class="block text-sm font-medium mb-1" for="ca-baseurl">Base URL</label>
                         <input id="ca-baseurl" type="text" bind:value={form.base_url}
-                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                             placeholder="可选，默认使用官方地址" />
                     </div>
                     <div class="col-span-2 flex gap-3 items-end">
@@ -297,7 +297,7 @@
                             <label class="block text-sm font-medium mb-1" for="ca-apikey">API Key <span class="text-red-500">*</span></label>
                             <div class="relative">
                                 <input id="ca-apikey" type={apiKeyVisible ? 'text' : 'password'} bind:value={form.api_key} required
-                                    class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                                    class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field" />
                                 <button type="button"
                                     onclick={() => apiKeyVisible = !apiKeyVisible}
                                     class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
@@ -339,12 +339,12 @@
                 <div>
                     <label class="block text-sm font-medium mb-1" for="ca-temp">Temperature</label>
                     <input id="ca-temp" type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field" />
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1" for="ca-maxtok">Max Tokens</label>
                     <input id="ca-maxtok" type="number" bind:value={form.max_tokens} min={1}
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field" />
                 </div>
                 <div class="col-span-2 flex items-center gap-2">
                     <input id="ca-thinking" type="checkbox" bind:checked={form.thinking_mode}
@@ -360,7 +360,7 @@
                 <button type="button" onclick={() => open = false}
                     class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">取消</button>
                 <button type="submit" disabled={submitting}
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary">
                     {submitting ? '创建中...' : '创建'}
                 </button>
             </div>

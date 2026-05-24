@@ -129,7 +129,7 @@
                             config = { ...config!, history_limit: v };
                             queueSave({ history_limit: v });
                         }}
-                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                     />
                 </div>
 
@@ -146,7 +146,7 @@
                             config = { ...config!, overflow_summary_threshold: v };
                             queueSave({ overflow_summary_threshold: v });
                         }}
-                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                     />
                 </div>
 
@@ -176,7 +176,7 @@
                             config = { ...config!, message_limit: v };
                             queueSave({ message_limit: v });
                         }}
-                        class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                         class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 input-field"
                     />
                 </div>
 

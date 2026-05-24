@@ -166,7 +166,7 @@
                 rows={8}
                 maxlength={3000}
                 disabled={!memoryEnabled}
-                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface disabled:opacity-50 disabled:cursor-not-allowed input-field"
                 placeholder="和该角色有关的记忆"
             ></textarea>
             <div class="absolute bottom-2 right-2 text-[10px] text-text-secondary">
@@ -213,7 +213,7 @@
                                     rows={3}
                                     maxlength={500}
                                     disabled={!memoryEnabled}
-                                    class="w-full px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-bg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    class="w-full px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-bg disabled:opacity-50 disabled:cursor-not-allowed input-field"
                                     placeholder="关于此人的重要信息，如喜好、习惯、共同经历..."
                                 ></textarea>
                                 <div class="absolute bottom-1 right-2 text-[10px] text-text-secondary">

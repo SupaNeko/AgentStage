@@ -18,9 +18,14 @@
     import ProfileView from '$lib/components/ProfileView.svelte';
     import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
     import { UserAttentionType, ProgressBarStatus } from '@tauri-apps/api/window';
+    import { themeStore } from '$lib/stores/themeStore.svelte';
 
     onMount(() => {
-        settingsStore.load();
+        (async () => {
+            await settingsStore.load();
+            await themeStore.loadThemes();
+            await themeStore.applyTheme(settingsStore.settings?.theme ?? 'default');
+        })();
         const unlistenFns: (() => void)[] = [];
         const win = getCurrentWebviewWindow();
         let flashTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -127,6 +132,8 @@
         };
     });
 </script>
+
+<svelte:head><style id="theme-active"></style></svelte:head>
 
 <div class="flex h-screen w-screen overflow-hidden bg-bg">
     <!-- Left Navigation -->

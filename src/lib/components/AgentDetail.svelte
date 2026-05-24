@@ -250,7 +250,7 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick={handleStartChat} class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-sm hover:bg-primary-dark rounded-lg transition-colors">
+                <button onclick={handleStartChat} class="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-sm hover:bg-primary-dark rounded-lg transition-colors btn-primary">
                     <MessageSquare size={16} />
                     <span>开始聊天</span>
                 </button>
@@ -306,7 +306,7 @@
                             <div>
                                 <label class="block text-sm font-medium mb-1">角色名称 <span class="text-red-500">*</span></label>
                                 <input type="text" bind:value={form.name} maxlength={20}
-                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
                             </div>
                         </div>
                     </div>
@@ -318,14 +318,14 @@
                             <div>
                                 <label class="block text-sm font-medium mb-1">详细人设 <span class="text-red-500">*</span></label>
                                 <textarea bind:value={form.detailed_persona} rows={5}
-                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface input-field"
                                     placeholder="你是 Fate/stay night 中的角色卫宫士郎，性格坚韧不拔，内心温柔但执拗，拥有强烈的正义感..."></textarea>
                                 <p class="text-xs text-text-secondary mt-1">角色自己看到的完整设定，直接注入 System Prompt</p>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium mb-1">简易人设 <span class="text-red-500">*</span></label>
                                 <textarea bind:value={form.simplified_persona} rows={2}
-                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface"
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface input-field"
                                     placeholder="出自 Fate/stay night 的角色卫宫士郎，冬木市的见习魔术师，性格正义感强烈。"></textarea>
                                 <p class="text-xs text-text-secondary mt-1">给其它角色看的角色名片（角色简介）</p>
                             </div>
@@ -349,7 +349,7 @@
                         <div>
                             <label class="block text-sm font-medium mb-1">模型提供商 <span class="text-red-500">*</span></label>
                             <select bind:value={form.model_provider} onchange={handleProviderChange}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface">
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field">
                                 <option value="openai">OpenAI</option>
                                 <option value="anthropic">Anthropic</option>
                                 <option value="google">Google</option>
@@ -361,13 +361,13 @@
                         <div>
                             <label class="block text-sm font-medium mb-1">模型名称 <span class="text-red-500">*</span></label>
                             <input type="text" bind:value={form.model_name}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
                                 placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
                         </div>
                         <div class="col-span-2">
                             <label class="block text-sm font-medium mb-1">Base URL</label>
                             <input type="text" bind:value={form.base_url}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
                                 placeholder="可选，默认使用官方地址" />
                         </div>
                         <div class="col-span-2 flex gap-3 items-end">
@@ -375,7 +375,7 @@
                                 <label class="block text-sm font-medium mb-1">API Key</label>
                                 <div class="relative">
                                     <input type={apiKeyVisible ? 'text' : 'password'} bind:value={form.api_key}
-                                        class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                                        class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
                                     <button type="button"
                                         onclick={() => apiKeyVisible = !apiKeyVisible}
                                         class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
@@ -417,12 +417,12 @@
                         <div>
                             <label class="block text-sm font-medium mb-1">Temperature</label>
                             <input type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-1">Max Tokens</label>
                             <input type="number" bind:value={form.max_tokens} min={1} max={32768}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface" />
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
                         </div>
                         <div class="col-span-2 flex items-center gap-2">
                             <input id="ad-thinking" type="checkbox" bind:checked={form.thinking_mode}
@@ -442,9 +442,9 @@
                         {#if proactiveEnabled}
                             <div class="flex gap-2 items-center">
                                 <span class="text-sm">触发时间区间（分钟）</span>
-                                <input type="number" min={1} bind:value={proactiveMinMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded" />
+                                <input type="number" min={1} bind:value={proactiveMinMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded input-field" />
                                 <span>~</span>
-                                <input type="number" min={1} bind:value={proactiveMaxMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded" />
+                                <input type="number" min={1} bind:value={proactiveMaxMinutes} class="w-20 px-2 py-1 bg-bg border border-border rounded input-field" />
                             </div>
                             <p class="text-xs text-text-secondary mt-1">角色每次发消息后，会在此区间内随机一个时间，若期间未再发言则触发一次。</p>
                         {/if}
@@ -483,7 +483,7 @@
                 </button>
                 {#if activeTab === 'config'}
                     <button onclick={handleSave} disabled={saving}
-                        class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50">
+                        class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary">
                         {#if saving}
                             <Loader2 size={16} class="animate-spin" />
                             <span>保存中...</span>

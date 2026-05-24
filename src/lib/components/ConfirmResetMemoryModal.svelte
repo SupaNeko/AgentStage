@@ -7,8 +7,8 @@
 </script>
 
 {#if open}
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div class="bg-surface rounded-xl shadow-lg p-6 w-full max-w-sm mx-4">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 modal-overlay">
+        <div class="bg-surface rounded-xl shadow-lg p-6 w-full max-w-sm mx-4 modal-card">
             <h3 class="text-lg font-semibold mb-2">确认重置记忆</h3>
             <p class="text-sm text-text-secondary mb-6">
                 此操作将清空该角色的长期记忆和所有对他人的记忆，且无法撤销。是否继续？
