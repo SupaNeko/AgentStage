@@ -17,6 +17,7 @@ use commands::session::{
     list_chat_pages,
 };
 use commands::settings::{get_settings, update_settings};
+use commands::theme::{list_themes, read_theme_css};
 use commands::upload::upload_avatar;
 use commands::user_persona::{list_user_personas, create_user_persona, update_user_persona, delete_user_persona, get_current_user_persona, activate_user_persona};
 use commands::agent_relationship::{list_agent_relationships, update_agent_relationship, add_friendships, remove_friendship, update_agent_memory};
@@ -64,6 +65,10 @@ pub fn run() {
             let app_data_dir = get_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
             logger::init(&app_data_dir);
+
+            if let Err(e) = commands::theme::ensure_themes_initialized() {
+                logger::error(&format!("Failed to initialize themes directory: {}", e));
+            }
 
             // 全局 panic hook：所有 panic 都写日志，禁止静默崩溃
             {
@@ -179,6 +184,8 @@ pub fn run() {
             log_frontend,
             get_settings,
             update_settings,
+            list_themes,
+            read_theme_css,
             upload_avatar,
             list_user_personas,
             create_user_persona,

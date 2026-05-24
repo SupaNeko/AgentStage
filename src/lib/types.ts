@@ -158,3 +158,14 @@ export interface TimerFormData {
     interval_minutes?: number;
     target_session_id?: string;
 }
+
+export interface ThemeInfo {
+    id: string;
+    name: string;
+    version: string;
+    author: string;
+    description: string;
+    tags: string[];
+    preview_path: string;
+    source: 'builtin' | 'user';
+}
