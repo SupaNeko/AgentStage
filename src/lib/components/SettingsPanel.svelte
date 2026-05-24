@@ -48,13 +48,13 @@
             });
             if (quietHoursEnabled) {
                 await invoke('update_quiet_hours', {
-                    quiet_hours_start: timeToMinutes(quietStart),
-                    quiet_hours_end: timeToMinutes(quietEnd),
+                    quietHoursStart: timeToMinutes(quietStart),
+                    quietHoursEnd: timeToMinutes(quietEnd),
                 });
             } else {
                 await invoke('update_quiet_hours', {
-                    quiet_hours_start: -1,
-                    quiet_hours_end: -1,
+                    quietHoursStart: -1,
+                    quietHoursEnd: -1,
                 });
             }
             if (settingsStore.settings) {
