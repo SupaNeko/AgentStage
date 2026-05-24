@@ -25,21 +25,24 @@
         const win = getCurrentWebviewWindow();
         let flashTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        // Track window focus via window events (more reliable than isFocused() in WebView2)
+        // Track OS-level window focus via Tauri onFocusChanged
         let isWindowFocused = true;
-        const onBlur = () => { isWindowFocused = false; };
-        const onFocus = () => {
-            isWindowFocused = true;
-            // Cancel notification state when window gains focus
-            if (flashTimeout) {
-                clearTimeout(flashTimeout);
-                flashTimeout = null;
-            }
-            win.requestUserAttention(null).catch(() => {});
-            win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
-        };
-        window.addEventListener('blur', onBlur);
-        window.addEventListener('focus', onFocus);
+        let unlistenFocus: (() => void) | undefined;
+        (async () => {
+            unlistenFocus = await win.onFocusChanged((event) => {
+                const focused = event.payload;
+                isWindowFocused = focused;
+                logger.debug('[DEBUG App focusChanged]', { focused });
+                if (focused) {
+                    if (flashTimeout) {
+                        clearTimeout(flashTimeout);
+                        flashTimeout = null;
+                    }
+                    win.requestUserAttention(null).catch(() => {});
+                    win.setProgressBar({ status: ProgressBarStatus.None }).catch(() => {});
+                }
+            });
+        })();
 
         listen('new_message', async (event) => {
             const msg = event.payload as { session_id: string; content?: string; created_at?: number; id?: string; page_index?: number };
@@ -70,6 +73,15 @@
             // 判断是否需要任务栏提醒
             const isCurrentSession = msg.session_id === sessionStore.selectedSessionId && appState.currentView === 'chat';
             logger.debug('[DEBUG App taskbar check]', { isWindowFocused, isCurrentSession, sessionId: msg.session_id, selectedId: sessionStore.selectedSessionId, view: appState.currentView });
+
+            // Fallback: poll isFocused in case onFocusChanged didn't fire reliably
+            try {
+                const realFocus = await win.isFocused();
+                if (realFocus !== isWindowFocused) {
+                    logger.debug('[DEBUG App focus mismatch]', { tracked: isWindowFocused, actual: realFocus });
+                    isWindowFocused = realFocus;
+                }
+            } catch { /* ignore */ }
 
             if (!isWindowFocused || !isCurrentSession) {
                 // 开始任务栏闪烁（Critical = 窗口+任务栏一起闪）
@@ -109,8 +121,7 @@
         }).then((fn) => unlistenFns.push(fn));
 
         return () => {
-            window.removeEventListener('blur', onBlur);
-            window.removeEventListener('focus', onFocus);
+            unlistenFocus?.();
             if (flashTimeout) clearTimeout(flashTimeout);
             unlistenFns.forEach((fn) => fn());
         };
