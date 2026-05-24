@@ -7,6 +7,11 @@
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import { themeStore } from '$lib/stores/themeStore.svelte';
     import { convertFileSrc } from '@tauri-apps/api/core';
+    import { onMount } from 'svelte';
+
+    onMount(() => {
+        themeStore.loadThemes();
+    });
 
     let draft = $state({ global_min_trigger_interval: 30 });
     let saving = $state(false);
@@ -133,47 +138,52 @@
                 </div>
             {:else if activeTab === 'appearance'}
                 <div class="p-6">
-                    <h3 class="text-lg font-semibold text-text mb-1">选择主题</h3>
-                    <p class="text-sm text-text-secondary mb-4">切换后立即生效</p>
-                    
-                    <div class="grid grid-cols-2 gap-4">
-                        {#each themeStore.themes as theme}
-                            <button
-                                class="relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer text-left
-                                       {themeStore.activeThemeId === theme.id
-                                           ? 'border-primary shadow-md'
-                                           : 'border-border hover:border-primary/40'}"
-                                onclick={() => themeStore.applyTheme(theme.id)}
-                            >
-                                <!-- Preview image or gradient placeholder -->
-                                <div class="h-20 bg-surface flex items-center justify-center">
-                                    {#if theme.preview_path}
-                                        <img
-                                            src={convertFileSrc(theme.preview_path)}
-                                            alt={theme.name}
-                                            class="w-full h-full object-cover"
-                                        />
-                                    {:else}
-                                        <div class="w-full h-full bg-gradient-to-br from-bg to-surface"></div>
-                                    {/if}
-                                </div>
-                                <!-- Info row -->
-                                <div class="p-3 bg-surface">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-medium text-text">{theme.name}</span>
-                                        {#if themeStore.activeThemeId === theme.id}
-                                            <span class="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                                                <span class="text-white text-xs">✓</span>
-                                            </span>
+                    <h3 class="text-lg font-semibold text-text mb-4">选择主题</h3>
+
+                    {#if themeStore.themes.length === 0}
+                        <div class="text-sm text-text-secondary py-8 text-center">
+                            暂无可用主题
+                        </div>
+                    {:else}
+                        <div class="grid grid-cols-2 gap-4">
+                            {#each themeStore.themes as theme}
+                                <button
+                                    class="relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer text-left
+                                           {themeStore.activeThemeId === theme.id
+                                               ? 'border-primary shadow-md'
+                                               : 'border-border hover:border-primary/40'}"
+                                    onclick={() => themeStore.applyTheme(theme.id)}
+                                >
+                                    <!-- Preview image or gradient placeholder -->
+                                    <div class="h-20 bg-surface flex items-center justify-center">
+                                        {#if theme.preview_path}
+                                            <img
+                                                src={convertFileSrc(theme.preview_path)}
+                                                alt={theme.name}
+                                                class="w-full h-full object-cover"
+                                            />
+                                        {:else}
+                                            <div class="w-full h-full bg-gradient-to-br from-bg to-surface"></div>
                                         {/if}
                                     </div>
-                                    <span class="text-xs text-text-secondary">
-                                        {theme.source === 'builtin' ? '内置' : '用户'}
-                                    </span>
-                                </div>
-                            </button>
-                        {/each}
-                    </div>
+                                    <!-- Info row -->
+                                    <div class="p-3 bg-surface">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-sm font-medium text-text">{theme.name}</span>
+                                            {#if themeStore.activeThemeId === theme.id}
+                                                <span class="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                                                    <span class="text-white text-xs">✓</span>
+                                                </span>
+                                            {/if}
+                                        </div>
+                                        <span class="text-xs text-text-secondary">
+                                            {theme.source === 'builtin' ? '内置' : '用户'}
+                                        </span>
+                                    </div>
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
                 </div>
             {/if}
         </div>
