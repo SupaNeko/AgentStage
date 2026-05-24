@@ -6,8 +6,9 @@
     --color-border:         #a0845c;
     --color-text:           #3e2723;
     --color-text-secondary: #8b6b4a;
-    --color-primary:        #b8402e;
-    --color-primary-dark:   #972e2a;
+    --color-primary:        #8b5e3c;
+    --color-primary-dark:   #6b4226;
+    --color-primary-light:  #a0704a;
 }
 
 /* ================================================================
@@ -19,38 +20,25 @@ html, body {
     background-color: var(--color-bg);
 }
 
-body {
-    background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
-        repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 199px,
-            rgba(0, 0, 0, 0.06) 199px,
-            rgba(0, 0, 0, 0.06) 201px
-        );
-}
-
 /* ================================================================
-   Left Nav — dark wood frame with grain texture
+   Left Nav — simple, no texture
    ================================================================ */
 
 .left-nav {
-    background:
-        linear-gradient(180deg, rgba(0,0,0,0.05), transparent 30%, transparent 70%, rgba(0,0,0,0.15)),
-        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22128%22%20height%3D%22128%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22darkwood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.008%200.10%22%20numOctaves%3D%225%22%20seed%3D%2219%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.15%200.04%200%20%20%200%20%20%200.22%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.10%200.04%200%20%20%200%20%20%200.14%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.06%200.02%200%20%20%200%20%20%200.08%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.40%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22128%22%20height%3D%22128%22%20filter%3D%22url%28%23darkwood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A");
-    border-right: 2px solid #a0845c;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
+    border-right: none;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.12);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 /* ================================================================
-   Nav Tabs — carved depressions
+   Nav Tabs
    ================================================================ */
 
 .nav-tab {
     background: rgba(0, 0, 0, 0.10);
     border-radius: 4px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.15);
     transition: background-color 0.15s ease;
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
@@ -65,7 +53,7 @@ body {
 }
 
 /* ================================================================
-   Mid Panel — parchment sheet with paper texture
+   Mid Panel — medium-thickness plank (between nav and chat)
    ================================================================ */
 
 .mid-panel {
@@ -73,8 +61,8 @@ body {
         url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
         linear-gradient(180deg, #f0e0c8 0%, #e8d4b0 50%, #f0e0c8 100%);
     background-blend-mode: multiply;
-    border-right: 2px solid var(--color-border);
-    box-shadow: 2px 0 6px rgba(0, 0, 0, 0.05);
+    border-right: none;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.10), 6px 0 16px rgba(0, 0, 0, 0.04);
 }
 
 /* ================================================================
@@ -87,30 +75,23 @@ body {
 }
 
 .bboard-item:hover {
-    background-color: rgba(184, 64, 46, 0.05);
+    background-color: rgba(139, 94, 60, 0.06);
 }
 
 .bboard-item.active {
-    background-color: rgba(184, 64, 46, 0.1);
+    background-color: rgba(139, 94, 60, 0.12);
     border-left: 3px solid var(--color-primary);
 }
 
 /* ================================================================
-   Chat View — wood plank wall with grain + plank seams
+   Chat View — thickest plank, tree bark texture
    ================================================================ */
 
 .chat-view {
     background:
-        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
-        linear-gradient(180deg, rgba(0,0,0,0.03) 0%, transparent 40%, transparent 60%, rgba(0,0,0,0.03) 100%),
-        repeating-linear-gradient(
-            90deg,
-            transparent 0px,
-            transparent 199px,
-            rgba(60, 30, 15, 0.08) 199px,
-            rgba(60, 30, 15, 0.08) 201px
-        );
-    background-color: var(--color-bg);
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22bark%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.10%200.012%22%20numOctaves%3D%227%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%20result%3D%22ridges%22%2F%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.18%200.05%22%20numOctaves%3D%224%22%20seed%3D%2241%22%20stitchTiles%3D%22stitch%22%20result%3D%22rough%22%2F%3E%0A%20%20%20%20%20%20%3CfeComposite%20in%3D%22ridges%22%20in2%3D%22rough%22%20operator%3D%22arithmetic%22%20k1%3D%220.6%22%20k2%3D%220%22%20k3%3D%220.4%22%20k4%3D%220%22%20result%3D%22combined%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.10%200.04%200%20%20%200%20%20%200.32%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.06%200.03%200%20%20%200%20%20%200.20%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.04%200.02%200%20%20%200%20%20%200.12%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200.80%22%0A%20%20%20%20%20%20%20%20in%3D%22combined%22%2F%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23bark%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, rgba(0,0,0,0.06) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.06) 100%);
+    background-color: #5c3d2e;
 }
 
 /* ================================================================
@@ -118,13 +99,13 @@ body {
    ================================================================ */
 
 .chat-header {
-    background: linear-gradient(180deg, #d4b896, #c9a878);
+    background: linear-gradient(180deg, #8b6b4a, #7a5c3e);
     border-bottom: 2px solid var(--color-border);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
     font-size: 1.1em;
     letter-spacing: 0.05em;
-    color: var(--color-text);
+    color: #f0e0c8;
 }
 
 /* ================================================================
@@ -132,36 +113,40 @@ body {
    ================================================================ */
 
 .chat-input-area {
-    background: linear-gradient(180deg, #d4b896, #c9a878);
+    background: linear-gradient(180deg, #8b6b4a, #7a5c3e);
     border-top: 2px solid var(--color-border);
-    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.08);
     font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 .chat-input-area input,
 .chat-input-area textarea {
-    background: linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #f5ead5, #eddec0, #f5ead5);
+    background-blend-mode: multiply;
     border: 2px solid var(--color-border);
     border-radius: 4px;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.10);
     font-family: 'Noto Serif SC', Georgia, serif;
     color: var(--color-text);
 }
 
 /* ================================================================
-   Message Bubble — parchment note with pinned-on depth
+   Message Bubble — wooden patch glued onto the board
+   Deeper shadow for "stuck-on" feel, slightly different tint from bg
    ================================================================ */
 
 .msg-bubble {
     background:
-        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22paper%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.06%200.06%22%20numOctaves%3D%223%22%20seed%3D%225%22%20stitchTiles%3D%22stitch%22%20result%3D%22noise%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.04%200.02%200%20%20%200%20%20%200.91%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.03%200.02%200%20%20%200%20%20%200.84%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.02%200.02%200%20%20%200%20%20%200.74%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%200%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22noise%22%20result%3D%22tint%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22tint%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.12%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23paper%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
-        linear-gradient(180deg, #f0e0c8 0%, #e8d4b0 50%, #f0e0c8 100%);
-    background-blend-mode: multiply;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #c9a878 0%, #bfa070 50%, #c4a878 100%);
+    border: 1px solid #8b6b4a;
+    border-radius: 3px;
     box-shadow:
-        2px 3px 0 rgba(0, 0, 0, 0.08),
-        4px 6px 10px rgba(0, 0, 0, 0.12);
+        2px 3px 0 rgba(0, 0, 0, 0.10),
+        4px 6px 8px rgba(0, 0, 0, 0.14),
+        6px 8px 0 rgba(0, 0, 0, 0.04);
     font-family: 'Noto Serif SC', Georgia, serif;
     color: var(--color-text);
 }
@@ -175,31 +160,55 @@ body {
 }
 
 /* ================================================================
-   Primary Button — wax-seal stamp
+   Avatars — raised disc effect
+   Targets avatar-sized rounded-full elements
    ================================================================ */
 
-.btn-primary {
-    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
-    color: var(--color-surface);
-    border-radius: 4px;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    box-shadow: 0 2px 0 #6b1810, 0 3px 6px rgba(0, 0, 0, 0.2);
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
-    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
-    letter-spacing: 0.05em;
-}
-
-.btn-primary:hover {
-    background: linear-gradient(180deg, #c85a48, #a84030);
-}
-
-.btn-primary:active {
-    transform: translateY(1px);
-    box-shadow: 0 1px 0 #6b1810, 0 1px 3px rgba(0, 0, 0, 0.2);
+.w-8.rounded-full,
+.w-9.rounded-full,
+.w-10.rounded-full,
+.w-12.rounded-full,
+.w-16.rounded-full {
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.12),
+        0 2px 3px rgba(0, 0, 0, 0.20),
+        0 4px 8px rgba(0, 0, 0, 0.10);
+    border: 1.5px solid rgba(0, 0, 0, 0.12);
 }
 
 /* ================================================================
-   Input Fields — carved groove with paper texture
+   Primary Button — brown wood with texture, pressable
+   ================================================================ */
+
+.btn-primary {
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, var(--color-primary-light), var(--color-primary), var(--color-primary-dark));
+    background-blend-mode: overlay;
+    color: #f5ead5;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.20);
+    box-shadow: 0 2px 0 #4a2a15, 0 3px 6px rgba(0, 0, 0, 0.25);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
+    letter-spacing: 0.05em;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:hover {
+    background:
+        url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3Cfilter%20id%3D%22wood%22%20x%3D%220%25%22%20y%3D%220%25%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%0A%20%20%20%20%20%20%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.004%200.12%22%20numOctaves%3D%226%22%20seed%3D%2211%22%20stitchTiles%3D%22stitch%22%20result%3D%22grain%22%2F%3E%0A%20%20%20%20%20%20%3CfeColorMatrix%20type%3D%22matrix%22%0A%20%20%20%20%20%20%20%20values%3D%220.22%200.06%200%20%20%200%20%20%200.57%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.18%200.08%200%20%20%200%20%20%200.42%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200.12%200.06%200%20%20%200%20%20%200.28%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%200%20%20%20%200%20%20%20%200%20%20%201%20%20%200%22%0A%20%20%20%20%20%20%20%20in%3D%22grain%22%20result%3D%22colored%22%2F%3E%0A%20%20%20%20%20%20%3CfeComponentTransfer%20in%3D%22colored%22%3E%0A%20%20%20%20%20%20%20%20%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.35%22%2F%3E%0A%20%20%20%20%20%20%3C%2FfeComponentTransfer%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Crect%20width%3D%22256%22%20height%3D%22256%22%20filter%3D%22url%28%23wood%29%22%2F%3E%0A%3C%2Fsvg%3E%0A"),
+        linear-gradient(180deg, #b08050, #9a6a3c, #7d5028);
+    background-blend-mode: overlay;
+}
+
+.btn-primary:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #4a2a15, 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* ================================================================
+   Input Fields
    ================================================================ */
 
 .input-field {
@@ -216,7 +225,9 @@ body {
 
 .input-field:focus {
     border-color: var(--color-primary);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08), 0 0 0 2px rgba(184, 64, 46, 0.15);
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.08),
+        0 0 0 2px rgba(139, 94, 60, 0.15);
     outline: none;
 }
 
@@ -225,7 +236,7 @@ body {
    ================================================================ */
 
 .modal-overlay {
-    background-color: rgba(62, 39, 35, 0.5);
+    background-color: rgba(62, 39, 35, 0.55);
     backdrop-filter: blur(2px);
 }
 
@@ -233,7 +244,7 @@ body {
     background-color: var(--color-surface);
     border: 2px solid var(--color-border);
     border-radius: 6px;
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1), 8px 8px 16px rgba(0, 0, 0, 0.15);
+    box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.08), 6px 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* ================================================================
@@ -261,11 +272,11 @@ body {
 }
 
 .hover\:bg-gray-50:hover {
-    background-color: rgba(184, 64, 46, 0.06);
+    background-color: rgba(160, 132, 92, 0.10);
 }
 
 .hover\:bg-gray-100:hover {
-    background-color: rgba(184, 64, 46, 0.10);
+    background-color: rgba(160, 132, 92, 0.18);
 }
 
 .text-gray-400,
