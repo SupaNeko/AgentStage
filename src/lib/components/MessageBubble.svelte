@@ -32,9 +32,10 @@
 
     <!-- 聊天气泡 -->
     <div
-        class="{isMe
-            ? 'bg-primary text-white rounded-2xl rounded-tr-sm'
-            : 'bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 min-w-[80px]"
+        class="msg-bubble {isMe
+            ? 'msg-self bg-primary text-white rounded-2xl rounded-tr-sm'
+            : 'msg-other bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 min-w-[80px]"
+        style="--sender-avatar: {message.sender_avatar ? `url(${resolveAvatarUrl(message.sender_avatar)})` : 'none'}"
     >
         {message.content}
     </div>

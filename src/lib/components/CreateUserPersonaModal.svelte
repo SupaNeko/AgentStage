@@ -46,8 +46,8 @@
     }
 </script>
 
-    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick={(e) => e.target === e.currentTarget && onClose()}>
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6">
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center modal-overlay" onclick={(e) => e.target === e.currentTarget && onClose()}>
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 modal-card">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold">创建新人设</h2>
             <button onclick={onClose} class="text-text-secondary hover:text-text"><X size={20} /></button>

@@ -51,7 +51,7 @@
     }
 </script>
 
-<div class="flex flex-col h-full w-full bg-surface border-r border-border">
+<div class="flex flex-col h-full w-full bg-surface border-r border-border mid-panel">
     <!-- Header -->
     <header class="flex items-center justify-between p-4 border-b border-border">
         <h2 class="text-base font-semibold">会话列表</h2>
@@ -85,7 +85,8 @@
                 {#each sessionStore.sessions as session (session.id)}
                     {@const display = getSessionDisplay(session)}
                     <button
-                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {sessionStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg list-item {sessionStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        class:active={sessionStore.selectedSessionId === session.id}
                         onclick={() => handleSessionClick(session.id)}
                     >
                         <!-- Avatar -->

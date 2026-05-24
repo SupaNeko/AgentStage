@@ -58,8 +58,8 @@
     let { onclose }: { onclose?: () => void } = $props();
 </script>
 
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col modal-card">
         <div class="flex items-center justify-between p-4 border-b border-border shrink-0">
             <h3 class="text-lg font-semibold flex items-center gap-2">
                 <Users size={20} /> 新建群聊

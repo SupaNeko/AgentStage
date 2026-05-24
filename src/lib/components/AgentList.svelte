@@ -34,7 +34,7 @@
     );
 </script>
 
-<div class="flex flex-col h-full w-full bg-surface border-r border-border">
+<div class="flex flex-col h-full w-full bg-surface border-r border-border mid-panel">
     <!-- Header -->
     <header class="flex items-center justify-between p-4 border-b border-border">
         <h2 class="text-base font-semibold">角色列表</h2>
@@ -73,7 +73,8 @@
             <div class="divide-y divide-border">
                 {#each filteredAgents as agent}
                     <button
-                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg {appState.selectedAgentId === agent.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg list-item {appState.selectedAgentId === agent.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        class:active={appState.selectedAgentId === agent.id}
                         onclick={() => appState.selectAgent(agent.id)}
                     >
                         <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
