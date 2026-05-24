@@ -19,7 +19,7 @@
             <p class="text-sm text-text-secondary mb-6">{content}</p>
             <div class="flex justify-end gap-2">
                 <button onclick={onCancel} class="px-4 py-2 text-sm rounded-lg hover:bg-bg transition-colors">取消</button>
-                <button onclick={onConfirm} class="px-4 py-2 text-sm rounded-lg {confirmClass}">{confirmText}</button>
+                <button onclick={onConfirm} class="px-4 py-2 text-sm rounded-lg btn-primary {confirmClass}">{confirmText}</button>
             </div>
         </div>
     </div>

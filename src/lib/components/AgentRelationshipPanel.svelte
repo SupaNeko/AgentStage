@@ -106,7 +106,7 @@
             <p class="mt-1">在群聊或私聊中会自动显示关联对象</p>
             <button
                 onclick={() => showAddModal = true}
-                class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors"
+                class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark transition-colors btn-primary"
             >
                 <Plus size={16} />
                 添加关系
@@ -153,7 +153,7 @@
                                 onblur={() => handleBlur(item)}
                                 rows={2}
                                 maxlength={200}
-                                class="w-full px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-bg"
+                                class="w-full px-2.5 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-bg input-field"
                                 placeholder="该角色对此人的主观看法，如：他是我的好朋友"
                             ></textarea>
                             <div class="absolute bottom-1 right-2 text-[10px] text-text-secondary">

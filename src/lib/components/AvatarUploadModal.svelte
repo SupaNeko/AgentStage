@@ -209,7 +209,7 @@
                         <button
                             onclick={handleConfirmCrop}
                             disabled={uploading}
-                            class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                            class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary"
                         >
                             <Upload size={16} />
                             {uploading ? '上传中...' : '确认'}
@@ -228,7 +228,7 @@
                     <input type="file" accept="image/*" bind:this={fileInput} onchange={handleFileSelect} class="hidden" />
                     <button
                         onclick={() => fileInput?.click()}
-                        class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+                        class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors btn-primary"
                     >
                         <Upload size={16} />
                         上传新头像

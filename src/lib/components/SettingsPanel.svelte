@@ -72,8 +72,8 @@
     let { onclose }: { onclose: () => void } = $props();
 </script>
 
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}>
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}>
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col modal-card">
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold">设置</h3>
             <button onclick={onclose} class="p-1 hover:bg-gray-100 rounded">
@@ -110,7 +110,7 @@
                             type="number"
                             min="0"
                             bind:value={draft.global_min_trigger_interval}
-                            class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
                         />
                         <p class="text-xs text-text-secondary mt-1">0 = 不限制，>0 = 防止角色被连续调用的最小间隔秒数</p>
                     </div>
@@ -123,9 +123,9 @@
                         </label>
                         {#if quietHoursEnabled}
                             <div class="flex gap-2 items-center">
-                                <input type="time" bind:value={quietStart} class="px-2 py-1 bg-bg border border-border rounded" />
+                                <input type="time" bind:value={quietStart} class="px-2 py-1 bg-bg border border-border rounded input-field" />
                                 <span>~</span>
-                                <input type="time" bind:value={quietEnd} class="px-2 py-1 bg-bg border border-border rounded" />
+                                <input type="time" bind:value={quietEnd} class="px-2 py-1 bg-bg border border-border rounded input-field" />
                             </div>
                             <p class="text-xs text-text-secondary mt-1">在此期间，所有主动会话和定时任务均不会触发（到达后顺延）。</p>
                         {/if}
@@ -181,7 +181,7 @@
             <button
                 onclick={handleSave}
                 disabled={saving}
-                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary"
             >
                 {saving ? '保存中...' : '保存'}
             </button>

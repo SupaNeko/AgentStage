@@ -82,7 +82,7 @@
             <button
                 onclick={handleAdd}
                 disabled={selectedIds.length === 0 || loading}
-                class="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50"
+                class="w-full py-2 bg-primary text-white rounded-lg hover:bg-primary-dark disabled:opacity-50 btn-primary"
             >
                 {loading ? '添加中...' : `添加 (${selectedIds.length})`}
             </button>

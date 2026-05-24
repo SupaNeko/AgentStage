@@ -125,7 +125,7 @@
         {:else}
             <button
                 onclick={(e) => { e.stopPropagation(); handleActivate(); }}
-                class="px-3 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary hover:text-white transition-colors"
+                class="px-3 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium hover:bg-primary hover:text-white transition-colors btn-primary"
             >
                 启用
             </button>
@@ -145,11 +145,11 @@
             <div class="pt-3 space-y-3">
                 <div>
                     <label class="block text-xs font-medium text-text-secondary mb-1">角色名</label>
-                    <input type="text" bind:value={draftName} class="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                    <input type="text" bind:value={draftName} class="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary input-field" />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-text-secondary mb-1">简易人设</label>
-                    <textarea bind:value={draftDesc} rows={2} class="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"></textarea>
+                    <textarea bind:value={draftDesc} rows={2} class="w-full px-3 py-2 rounded-lg border border-border bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none input-field"></textarea>
                 </div>
                 <div class="flex items-center gap-2">
                     <button onclick={handleUseDefaultAvatar} class="text-xs text-primary hover:underline">使用默认头像</button>
@@ -158,7 +158,7 @@
                     <button onclick={handleDelete} class="px-3 py-1.5 rounded-lg text-xs text-red-500 hover:bg-red-50">删除</button>
                     <div class="flex gap-2">
                         <button onclick={handleCancel} class="px-3 py-1.5 rounded-lg text-xs text-text-secondary hover:bg-gray-100">取消</button>
-                        <button onclick={handleSave} disabled={saving} class="px-3 py-1.5 rounded-lg text-xs bg-primary text-white disabled:opacity-50">
+                        <button onclick={handleSave} disabled={saving} class="px-3 py-1.5 rounded-lg text-xs bg-primary text-white disabled:opacity-50 btn-primary">
                             {saving ? '保存中...' : '保存'}
                         </button>
                     </div>

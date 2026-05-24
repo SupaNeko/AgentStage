@@ -77,7 +77,7 @@
                         bind:value={referenceCharacter}
                         disabled={generating}
                         placeholder="如：Fate/stay night 中的 Saber"
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                     />
                 </div>
 
@@ -88,7 +88,7 @@
                         disabled={generating}
                         rows={4}
                         placeholder="可填写任意相关内容：设定、要求、台词、聊天记录等..."
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface disabled:opacity-50"
+                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none bg-surface disabled:opacity-50 input-field"
                     ></textarea>
                 </div>
 
@@ -108,7 +108,7 @@
                 <button
                     onclick={handleGenerate}
                     disabled={generating || (!referenceCharacter.trim() && !supplement.trim())}
-                    class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                    class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary"
                 >
                     {#if generating}
                         <Loader2 size={16} class="animate-spin" />

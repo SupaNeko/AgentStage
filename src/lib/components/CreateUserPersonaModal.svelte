@@ -70,13 +70,13 @@
         <!-- Name -->
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">角色名 <span class="text-red-500">*</span></label>
-            <input type="text" bind:value={name} class="w-full px-3 py-2 rounded-lg border border-border bg-bg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="给你的角色起个名字" />
+            <input type="text" bind:value={name} class="w-full px-3 py-2 rounded-lg border border-border bg-bg focus:outline-none focus:ring-2 focus:ring-primary input-field" placeholder="给你的角色起个名字" />
         </div>
 
         <!-- Description -->
         <div class="mb-6">
             <label class="block text-sm font-medium mb-1">简易人设</label>
-            <textarea bind:value={description} rows={3} class="w-full px-3 py-2 rounded-lg border border-border bg-bg focus:outline-none focus:ring-2 focus:ring-primary resize-none" placeholder="其他角色会看到的你的人设描述"></textarea>
+            <textarea bind:value={description} rows={3} class="w-full px-3 py-2 rounded-lg border border-border bg-bg focus:outline-none focus:ring-2 focus:ring-primary resize-none input-field" placeholder="其他角色会看到的你的人设描述"></textarea>
         </div>
 
         <!-- Actions -->
@@ -85,7 +85,7 @@
             <button
                 onclick={handleCreate}
                 disabled={!name.trim() || saving}
-                class="px-4 py-2 rounded-lg bg-primary text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                class="px-4 py-2 rounded-lg bg-primary text-white disabled:opacity-50 disabled:cursor-not-allowed btn-primary"
             >
                 {saving ? '创建中...' : '创建'}
             </button>

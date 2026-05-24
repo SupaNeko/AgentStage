@@ -121,7 +121,7 @@
                     {#each historyStore.groupedSessions.private as session (session.id)}
                         {@const display = getSessionDisplay(session)}
                         <button
-                            class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg list-item {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                            class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg bboard-item {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                             class:active={historyStore.selectedSessionId === session.id}
                             onclick={() => handleSessionClick(session.id)}
                             oncontextmenu={(e) => handleContextMenu(e, session.id)}
@@ -190,7 +190,7 @@
                     {#each historyStore.groupedSessions.group as session (session.id)}
                         {@const display = getSessionDisplay(session)}
                         <button
-                            class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg list-item {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                            class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg bboard-item {historyStore.selectedSessionId === session.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                             class:active={historyStore.selectedSessionId === session.id}
                             onclick={() => handleSessionClick(session.id)}
                             oncontextmenu={(e) => handleContextMenu(e, session.id)}

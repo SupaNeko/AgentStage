@@ -52,7 +52,7 @@
                 type="text"
                 placeholder="搜索角色..."
                 bind:value={searchQuery}
-                class="w-full pl-9 pr-3 py-2 text-sm bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                class="w-full pl-9 pr-3 py-2 text-sm bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
             />
         </div>
     </div>
@@ -73,7 +73,7 @@
             <div class="divide-y divide-border">
                 {#each filteredAgents as agent}
                     <button
-                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg list-item {appState.selectedAgentId === agent.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-bg bboard-item {appState.selectedAgentId === agent.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                         class:active={appState.selectedAgentId === agent.id}
                         onclick={() => appState.selectAgent(agent.id)}
                     >

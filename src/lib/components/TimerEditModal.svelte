@@ -172,7 +172,7 @@
                     bind:value={description}
                     disabled={submitting}
                     placeholder="任务描述"
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                 />
             </div>
 
@@ -242,7 +242,7 @@
                                 bind:value={afterMinutes}
                                 min={1}
                                 disabled={submitting}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                             />
                         </div>
                     {:else}
@@ -252,7 +252,7 @@
                                 type="datetime-local"
                                 bind:value={datetimeValue}
                                 disabled={submitting}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                             />
                         </div>
                     {/if}
@@ -296,7 +296,7 @@
                             bind:value={intervalMinutes}
                             min={1}
                             disabled={submitting}
-                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                         />
                     </div>
                 </div>
@@ -327,7 +327,7 @@
                             type="datetime-local"
                             bind:value={editNextTriggerAt}
                             disabled={submitting}
-                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                            class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                         />
                     </div>
                 </div>
@@ -339,7 +339,7 @@
                 <select
                     bind:value={targetSessionId}
                     disabled={submitting}
-                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50"
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface disabled:opacity-50 input-field"
                 >
                     <option value="">自动创建新会话</option>
                     {#each sessions as session}
@@ -360,7 +360,7 @@
             <button
                 onclick={handleSave}
                 disabled={submitting || !description.trim()}
-                class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50"
+                class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary"
             >
                 {#if submitting}
                     <Loader2 size={16} class="animate-spin" />
