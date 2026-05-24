@@ -1905,15 +1905,6 @@ impl Scheduler {
     }
 }
 
-/// 安全截断字符串，按字符计数，避免 UTF-8 切片 panic
-pub fn truncate_preview(content: &str, max_chars: usize) -> String {
-    if content.chars().count() > max_chars {
-        content.chars().take(max_chars).collect::<String>() + "..."
-    } else {
-        content.to_string()
-    }
-}
-
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -2098,6 +2089,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
                     content: "Hello".to_string(),
                     created_at: 1000,
                     page_index: 0,
+                    restored_from_failure: false,
                 });
         }
         {
@@ -2144,6 +2136,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
                         content: "Second".to_string(),
                         created_at: 2000,
                         page_index: 0,
+                        restored_from_failure: false,
                     },
                     PendingMessage {
                         message_id: "msg-1".to_string(),
@@ -2153,6 +2146,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
                         content: "First".to_string(),
                         created_at: 1000,
                         page_index: 0,
+                        restored_from_failure: false,
                     },
                     PendingMessage {
                         message_id: "msg-3".to_string(),
@@ -2162,6 +2156,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
                         content: "Third".to_string(),
                         created_at: 3000,
                         page_index: 0,
+                        restored_from_failure: false,
                     },
                 ]);
         }
@@ -2226,35 +2221,6 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
         // 验证已分发到 unread
         let unread = scheduler.unread_messages.lock().await;
         assert!(unread.contains_key(&session_id));
-    }
-
-    #[test]
-    fn test_truncate_preview_chinese_no_panic() {
-        // 120 bytes, 60 chars — old &s[..100] would panic here
-        let content = "你好".repeat(60);
-        let preview = truncate_preview(&content, 100);
-        assert!(preview.ends_with("..."));
-        assert_eq!(preview.chars().count(), 103); // 100 chars + "..."
-    }
-
-    #[test]
-    fn test_truncate_preview_exact_boundary() {
-        // 99 bytes, 33 chars — should NOT truncate
-        let content = "你好".repeat(33);
-        let preview = truncate_preview(&content, 100);
-        assert_eq!(preview, content);
-    }
-
-    #[test]
-    fn test_truncate_preview_short() {
-        let preview = truncate_preview("Hello", 100);
-        assert_eq!(preview, "Hello");
-    }
-
-    #[test]
-    fn test_truncate_preview_empty() {
-        let preview = truncate_preview("", 100);
-        assert_eq!(preview, "");
     }
 
     #[test]
