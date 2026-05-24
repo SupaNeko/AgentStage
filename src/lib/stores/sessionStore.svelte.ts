@@ -88,13 +88,20 @@ export class SessionStore {
     async resetSession(sessionId: string): Promise<string> {
         try {
             const pageId = await invoke<string>('reset_session', { req: { session_id: sessionId } });
-            await this.loadSessions();
+            // 先清除本地预览，防止 loadSessions 的缓存快照留住旧值
             const idx = this.sessions.findIndex(s => s.id === sessionId);
             if (idx !== -1) {
                 this.sessions[idx].last_message_preview = '';
                 this.sessions[idx].unread_count = 0;
-                this.sessions = [...this.sessions];
             }
+            await this.loadSessions();
+            // loadSessions 后兜底：后端 subquery 可能返回旧 page 的消息
+            const idx2 = this.sessions.findIndex(s => s.id === sessionId);
+            if (idx2 !== -1) {
+                this.sessions[idx2].last_message_preview = '';
+                this.sessions[idx2].unread_count = 0;
+            }
+            this.sessions = [...this.sessions];
             // 清空前端消息列表，强制重新加载
             const { messageStore } = await import('$lib/stores/messageStore.svelte');
             messageStore.setSessionId(sessionId);

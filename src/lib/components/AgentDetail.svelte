@@ -148,6 +148,7 @@
             };
             const updated = await invoke<Agent>('update_agent', { req: updateReq });
             agent = updated;
+            await agentStore.loadAgents();
             await invoke('update_agent_proactive', {
                 agentId: agent.id,
                 proactiveEnabled: proactiveEnabled ? 1 : 0,
@@ -183,6 +184,7 @@
         form.model_provider = sourceAgent.model_provider || 'openai';
         form.model_name = sourceAgent.model_name || '';
         form.base_url = sourceAgent.base_url || '';
+        form.api_key = sourceAgent.api_key || '';
         form.temperature = sourceAgent.temperature;
         form.max_tokens = sourceAgent.max_tokens;
         form.thinking_mode = sourceAgent.thinking_mode ?? false;

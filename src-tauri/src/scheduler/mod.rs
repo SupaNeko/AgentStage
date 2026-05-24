@@ -1531,10 +1531,11 @@ impl Scheduler {
                 let mut stmt = conn.prepare(
                     "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
                             m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
-                            COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                            COALESCE(a.name, up.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
                             m.page_index
                      FROM messages m
                      LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                     LEFT JOIN user_personas up ON m.sender_type = 'user' AND m.sender_id = up.id
                      WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
                      ORDER BY m.created_at DESC
                      LIMIT ?3"
@@ -1727,18 +1728,19 @@ impl Scheduler {
         }
 
         // Query messages: OFFSET=last_index, LIMIT=threshold
-        let messages: Vec<crate::models::message::Message> = {
-            let mut stmt = conn.prepare(
-                "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
-                        m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
-                        COALESCE(a.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
-                        m.page_index
-                 FROM messages m
-                 LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
-                 WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
-                 ORDER BY m.created_at ASC
-                 LIMIT ?3 OFFSET ?4"
-            ).map_err(|e| e.to_string())?;
+            let messages: Vec<crate::models::message::Message> = {
+                let mut stmt = conn.prepare(
+                    "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
+                            m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
+                            COALESCE(a.name, up.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                            m.page_index
+                     FROM messages m
+                     LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                     LEFT JOIN user_personas up ON m.sender_type = 'user' AND m.sender_id = up.id
+                     WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
+                     ORDER BY m.created_at ASC
+                     LIMIT ?3 OFFSET ?4"
+                ).map_err(|e| e.to_string())?;
 
             let rows = stmt.query_map(
                 rusqlite::params![session_id, page_index, threshold, last_index],

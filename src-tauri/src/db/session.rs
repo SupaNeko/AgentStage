@@ -105,7 +105,7 @@ pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<S
                 gs.name,
                 gs.avatar_path,
                 gs.is_dissolved,
-                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 AND m.page_index = COALESCE(ps.current_chat_page, gs.current_chat_page, 0) ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -130,7 +130,7 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
                 gs.name,
                 gs.avatar_path,
                 gs.is_dissolved,
-                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 AND m.page_index = COALESCE(ps.current_chat_page, gs.current_chat_page, 0) ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -156,7 +156,7 @@ pub fn list_history_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> 
                 gs.name,
                 gs.avatar_path,
                 gs.is_dissolved,
-                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 AND m.page_index = COALESCE(ps.current_chat_page, gs.current_chat_page, 0) ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
