@@ -1,6 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap');
 
-@theme {
+:root {
     --color-bg:             #e8d5b0;
     --color-surface:        #f4e8d1;
     --color-border:         #a0845c;
@@ -12,7 +12,7 @@
 
 html, body {
     font-family: 'Noto Serif SC', Georgia, 'Times New Roman', serif;
-    background-color: #e8d5b0;
+    background-color: var(--color-bg);
 }
 
 body {
@@ -37,6 +37,7 @@ body {
     background: linear-gradient(180deg, #c4a168 0%, #b89050 50%, #c4a168 100%);
     border-right: 2px solid #a0845c;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 .nav-tab {
@@ -44,6 +45,7 @@ body {
     border-radius: 4px;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
     transition: background-color 0.15s ease;
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 .nav-tab:hover {
@@ -83,7 +85,9 @@ body {
     background: linear-gradient(180deg, #d4b896, #c9a878);
     border-bottom: 2px solid var(--color-border);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    font-family: 'Noto Serif SC', Georgia, serif;
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
+    font-size: 1.1em;
+    letter-spacing: 0.05em;
     color: var(--color-text);
 }
 
@@ -91,6 +95,7 @@ body {
     background: linear-gradient(180deg, #d4b896, #c9a878);
     border-top: 2px solid var(--color-border);
     box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
 }
 
 .chat-input-area input,
@@ -110,26 +115,6 @@ body {
     box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.12), 6px 6px 12px rgba(0, 0, 0, 0.08);
     font-family: 'Noto Serif SC', Georgia, serif;
     color: var(--color-text);
-    position: relative;
-    padding-top: 18px;
-}
-
-.msg-bubble::before {
-    content: '';
-    position: absolute;
-    top: -14px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background-image: var(--sender-avatar);
-    background-color: var(--color-primary);
-    background-size: cover;
-    background-position: center;
-    border: 2px solid #8b6914;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    z-index: 1;
 }
 
 .msg-self {
@@ -147,7 +132,8 @@ body {
     border: 1px solid rgba(0, 0, 0, 0.15);
     box-shadow: 0 2px 0 #6b1810, 0 3px 6px rgba(0, 0, 0, 0.2);
     transition: transform 0.1s ease, box-shadow 0.1s ease;
-    font-family: 'Noto Serif SC', Georgia, serif;
+    font-family: 'Ma Shan Zheng', 'Noto Serif SC', cursive;
+    letter-spacing: 0.05em;
 }
 
 .btn-primary:hover {
