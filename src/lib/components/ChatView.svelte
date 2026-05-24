@@ -342,6 +342,12 @@
                 } else {
                     await messageStore.loadMessages(sessionId);
                 }
+                // Update session list preview from last loaded message
+                const msgs = messageStore.messages;
+                if (msgs.length > 0) {
+                    const last = msgs[msgs.length - 1];
+                    sessionStore.updateSessionPreview(sessionId, last.content, last.created_at);
+                }
             }
         } catch (err) {
             logger.debug('[DEBUG ChatView.handleSend] chat mode failed', { error: err });

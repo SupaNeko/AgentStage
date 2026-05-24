@@ -9,13 +9,23 @@ export class SessionStore {
     async loadSessions() {
         try {
             const fresh = await invoke<Session[]>('list_sessions');
-            // 保留已有的 unread_count，因为后端不维护实时未读计数
+            // 保留已有的 unread_count 和 last_message_preview（后端已不再维护预览）
             const existingUnread = new Map(this.sessions.map(s => [s.id, s.unread_count]));
+            const existingPreview = new Map(
+                this.sessions
+                    .filter(s => s.last_message_preview)
+                    .map(s => [s.id, { preview: s.last_message_preview, time: s.last_message_at }])
+            );
             this.sessions = fresh
-                .map(s => ({
-                    ...s,
-                    unread_count: existingUnread.get(s.id) ?? s.unread_count,
-                }))
+                .map(s => {
+                    const cached = existingPreview.get(s.id);
+                    return {
+                        ...s,
+                        unread_count: existingUnread.get(s.id) ?? s.unread_count,
+                        last_message_preview: cached?.preview ?? s.last_message_preview ?? null,
+                        last_message_at: cached?.time ?? s.last_message_at ?? null,
+                    };
+                })
                 .filter(s => {
                     if (s.session_type === 'group' && s.is_dissolved) return false;
                     if (s.session_type === 'private') {
