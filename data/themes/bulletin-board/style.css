@@ -2,7 +2,7 @@
 
 @theme {
     --color-bg:             #e8d5b0;
-    --color-surface:        #faf3e3;
+    --color-surface:        #f4e8d1;
     --color-border:         #a0845c;
     --color-text:           #3e2723;
     --color-text-secondary: #8b6b4a;
@@ -185,6 +185,66 @@ body {
     border-radius: 6px;
     box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1), 8px 8px 16px rgba(0, 0, 0, 0.15);
 }
+
+/* ================================================================
+   Hardcoded Color Overrides
+   Maps Tailwind built-in white/gray to bulletin board wood/parchment.
+   Rules loaded AFTER Tailwind CSS, same specificity wins by cascade.
+   ================================================================ */
+
+/* White backgrounds → parchment surface */
+.bg-white {
+    background-color: var(--color-surface);
+}
+
+/* Gray backgrounds → wood tints */
+.bg-gray-50 {
+    background-color: #f2e4cc;
+}
+.bg-gray-100 {
+    background-color: rgba(160, 132, 92, 0.15);
+}
+.bg-gray-200 {
+    background-color: rgba(160, 132, 92, 0.22);
+}
+.bg-gray-300 {
+    background-color: rgba(160, 132, 92, 0.45);
+}
+
+/* Hover states → warm reddish tint */
+.hover\:bg-gray-50:hover {
+    background-color: rgba(184, 64, 46, 0.06);
+}
+.hover\:bg-gray-100:hover {
+    background-color: rgba(184, 64, 46, 0.10);
+}
+
+/* Gray text → warm brown */
+.text-gray-400,
+.text-gray-500 {
+    color: var(--color-text-secondary);
+}
+
+/* Separator bar (toast progress track) */
+.bg-gray-200\/30 {
+    background-color: rgba(160, 132, 92, 0.1);
+}
+
+/* Red/Green status backgrounds: tint toward warmer versions */
+.bg-red-50 {
+    background-color: rgba(184, 64, 46, 0.1);
+}
+.hover\:bg-red-50:hover {
+    background-color: rgba(184, 64, 46, 0.15);
+}
+
+.bg-green-50 {
+    background-color: rgba(107, 142, 35, 0.1);
+}
+
+/* ================================================================
+   Scrollbar (reprise — overrides above don't touch this)
+   ================================================================ */
 
 ::-webkit-scrollbar {
     width: 8px;
