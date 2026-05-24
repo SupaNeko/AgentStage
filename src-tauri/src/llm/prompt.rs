@@ -25,9 +25,8 @@ impl PromptAssembler {
 
         // Layer 1: System Prompt
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        system_layers.push(format!("{}\n{}",
-            prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now),
-            prompt_templates::TIMER_CAPABILITY
+        system_layers.push(format!("{}",
+            prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now)
         ));
 
         // Layer 2: Self Persona

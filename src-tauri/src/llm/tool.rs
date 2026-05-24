@@ -11,6 +11,7 @@ use crate::models::scheduled_task::CreateTimerRequest;
 
 pub fn split_br_tags(content: &str) -> Vec<String> {
     content.split("<br/>")
+        .flat_map(|s| s.split("</n>"))
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
@@ -21,7 +22,7 @@ pub fn send_message_tool_schema() -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "send_message",
-            "description": "向指定会话发送一条消息。\n- 你可以在 content 中使用 <br/> 标签进行分割，被分割的消息将被显示为多条消息。\n- target_id 必须是系统提供的完整 session_id，绝对不能使用会话名称或其他 ID。\n- 只能回复 context_list 中列出的会话。\n- target_type 的取值为 \"private\"（私聊）或 \"group\"（群聊）。\n- 如果 target_id 无效，调用将会失败。",
+            "description": "向指定会话发送一条消息。\n- 你可以在 content 中使用 <br/> 或 </n> 标签进行分割，被分割的消息将被显示为多条消息。\n- target_id 必须是系统提供的完整 session_id，绝对不能使用会话名称或其他 ID。\n- 只能回复 context_list 中列出的会话。\n- target_type 的取值为 \"private\"（私聊）或 \"group\"（群聊）。\n- 如果 target_id 无效，调用将会失败。",
 
             "parameters": {
                 "type": "object",
@@ -332,7 +333,7 @@ impl ToolExecutor {
             bound_page, target_id
         ));
 
-        // 按 <br/> 拆分内容，每条拆分段作为独立消息插入
+        // 按 <br/> 或 </n> 拆分内容，每条拆分段作为独立消息插入
         let contents = split_br_tags(content);
         let conn = self.db_state.0.lock().await;
         let mut messages = Vec::new();

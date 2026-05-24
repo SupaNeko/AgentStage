@@ -48,6 +48,7 @@ pub struct SessionResponse {
     pub mute_enabled: Option<bool>,
     pub current_chat_page: i32,
     pub is_dissolved: bool,
+    pub last_message_preview: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

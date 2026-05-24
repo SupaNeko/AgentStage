@@ -214,20 +214,6 @@
         }
     });
 
-    // Typing indicator 出现时，如果用户之前在底部（scrollPositions 中没有记录），自动滚动到底部
-    // 双重 requestAnimationFrame：第一层等 DOM 更新，第二层等浏览器 layout/paint 完成后滚动
-    $effect(() => {
-        const count = displayedTypingAgents.length;
-        const currentId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
-        if (count > 0 && currentId && !scrollPositions.has(currentId)) {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    scrollToBottom();
-                });
-            });
-        }
-    });
-
     async function handleResetMessageCount() {
         const sessionId = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
         if (!sessionId || !sessionConfig) return;

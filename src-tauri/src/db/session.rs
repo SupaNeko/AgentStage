@@ -93,6 +93,7 @@ fn build_session_response_from_row(row: &rusqlite::Row) -> Result<SessionRespons
         mute_enabled: row.get::<_, Option<i32>>(5)?.map(|v| v != 0),
         current_chat_page: row.get(4)?,
         is_dissolved: row.get::<_, Option<i32>>(8)?.map(|v| v != 0).unwrap_or(false),
+        last_message_preview: row.get(9)?,
     })
 }
 
@@ -103,7 +104,8 @@ pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<S
                 ss.mute_enabled,
                 gs.name,
                 gs.avatar_path,
-                gs.is_dissolved
+                gs.is_dissolved,
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -127,7 +129,8 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
                 ss.mute_enabled,
                 gs.name,
                 gs.avatar_path,
-                gs.is_dissolved
+                gs.is_dissolved,
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
@@ -152,7 +155,8 @@ pub fn list_history_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> 
                 ss.mute_enabled,
                 gs.name,
                 gs.avatar_path,
-                gs.is_dissolved
+                gs.is_dissolved,
+                (SELECT m.content FROM messages m WHERE m.session_id = s.id AND m.is_deleted = 0 ORDER BY m.created_at DESC LIMIT 1) as last_message_preview
          FROM sessions s
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
