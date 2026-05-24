@@ -86,20 +86,19 @@ fn build_session_response_from_row(row: &rusqlite::Row) -> Result<SessionRespons
         id: row.get(0)?,
         session_type: row.get(1)?,
         last_message_at: row.get(2)?,
-        last_message_preview: row.get(3)?,
-        unread_count: row.get(4)?,
+        unread_count: row.get(3)?,
         participants: Vec::new(),
-        group_name: row.get(7)?,
-        group_avatar: crate::db::resolve_avatar_path(row.get(8)?),
-        mute_enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0),
-        current_chat_page: row.get(5)?,
-        is_dissolved: row.get::<_, Option<i32>>(9)?.map(|v| v != 0).unwrap_or(false),
+        group_name: row.get(6)?,
+        group_avatar: crate::db::resolve_avatar_path(row.get(7)?),
+        mute_enabled: row.get::<_, Option<i32>>(5)?.map(|v| v != 0),
+        current_chat_page: row.get(4)?,
+        is_dissolved: row.get::<_, Option<i32>>(8)?.map(|v| v != 0).unwrap_or(false),
     })
 }
 
 pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<SessionResponse>> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+        "SELECT s.id, s.session_type, s.last_message_at, s.unread_count,
                 COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
                 ss.mute_enabled,
                 gs.name,
@@ -123,7 +122,7 @@ pub fn get_session_by_id(conn: &Connection, session_id: &str) -> Result<Option<S
 
 pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+        "SELECT s.id, s.session_type, s.last_message_at, s.unread_count,
                 COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
                 ss.mute_enabled,
                 gs.name,
@@ -148,7 +147,7 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
 
 pub fn list_history_sessions(conn: &Connection) -> Result<Vec<SessionResponse>> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.session_type, s.last_message_at, s.last_message_preview, s.unread_count,
+        "SELECT s.id, s.session_type, s.last_message_at, s.unread_count,
                 COALESCE(ps.current_chat_page, gs.current_chat_page, 0),
                 ss.mute_enabled,
                 gs.name,
@@ -313,15 +312,6 @@ pub fn clear_session_history(conn: &Connection, session_id: &str) -> Result<bool
 
     tx.commit()?;
     Ok(true)
-}
-
-pub fn update_session_last_message(conn: &Connection, session_id: &str, preview: &str) -> Result<()> {
-    let now = chrono::Utc::now().timestamp_millis();
-    conn.execute(
-        "UPDATE sessions SET last_message_at = ?2, last_message_preview = ?3, updated_at = ?4 WHERE id = ?1",
-        (session_id, now, preview, now),
-    )?;
-    Ok(())
 }
 
 pub fn create_group_session(
@@ -555,12 +545,6 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<(String, i32
     conn.execute(
         "UPDATE session_settings SET last_overflow_summary_index = 0 WHERE session_id = ?1",
         [session_id],
-    )?;
-
-    // 清空会话最后消息预览（新 page 没有消息）
-    conn.execute(
-        "UPDATE sessions SET last_message_preview = '', updated_at = ?1 WHERE id = ?2",
-        (now, session_id),
     )?;
 
     tx.commit()?;

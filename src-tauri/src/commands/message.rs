@@ -1,7 +1,6 @@
 use tauri::State;
 use crate::db::connection::{get_db, DbState};
 use crate::db::message as message_repo;
-use crate::db::session as session_repo;
 use crate::models::message::{Message, SendMessageRequest, GetSessionMessagesRequest, SendHistoryMessageRequest};
 use crate::llm::provider::LlmProvider;
 use crate::scheduler::Scheduler;
@@ -51,14 +50,6 @@ pub async fn send_user_message(
     ).map_err(|e| e.to_string())?;
 
     crate::logger::debug(&format!("[DEBUG send_user_message] insert_message succeeded, message_id={}, page_index={}", message.id, message.page_index));
-
-    // 更新会话最后消息预览（按字符截断，防止 UTF-8 切片 panic）
-    let preview = if req.content.chars().count() > 100 {
-        req.content.chars().take(100).collect::<String>() + "..."
-    } else {
-        req.content.clone()
-    };
-    let _ = session_repo::update_session_last_message(&conn, &req.session_id, &preview);
 
     drop(conn);
 
