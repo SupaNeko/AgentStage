@@ -6,7 +6,6 @@ use serde::Serialize;
 use chrono::Timelike;
 
 use crate::db::agent as agent_repo;
-use crate::db::session as session_repo;
 use crate::db::settings as settings_repo;
 use crate::db::trigger_state as trigger_repo;
 use crate::db::frozen_state as frozen_state_repo;
@@ -896,106 +895,33 @@ impl Scheduler {
             agent_id, agent_messages.len()
         ));
         for (i, msg) in agent_messages.iter().enumerate() {
+            let preview: String = msg.content.chars().take(80).collect();
             crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, agent_message[{}]: session_id={}, content_preview={}",
-                agent_id, i, msg.session_id, crate::scheduler::truncate_preview(&msg.content, 80)
+                agent_id, i, msg.session_id, preview
             ));
         }
 
-        // === 阶段 6：更新计数器和会话预览 ===
-        let update_start = chrono::Utc::now().timestamp_millis();
-        let sessions_to_check: Vec<String> = {
-            let conn = self.db_state.0.lock().await;
-
-            for msg in &agent_messages {
-                // 递增消息计数器（先尝试 private_sessions，再尝试 group_sessions）
-                let rows = conn.execute(
-                    "UPDATE private_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
-                    [&msg.session_id],
-                ).unwrap_or(0);
-                if rows == 0 {
-                    let _ = conn.execute(
-                        "UPDATE group_sessions SET agent_message_count = agent_message_count + 1 WHERE session_id = ?1",
-                        [&msg.session_id],
-                    );
-                }
-
-                // 更新会话最后消息预览（按字符截断，防止 UTF-8 切片 panic）
-                let preview = truncate_preview(&msg.content, 100);
-                let _ = session_repo::update_session_last_message(&conn, &msg.session_id, &preview);
-            }
-
-            agent_messages.iter().map(|m| m.session_id.clone()).collect()
-        };
-
-        // 检查是否达到上限（在释放 conn 后）
-        for sid in &sessions_to_check {
-            if let Some(session_name) = self.check_and_freeze_if_needed(sid).await {
-                self.emit("system_notice", serde_json::json!({
-                    "content": format!("{} 已达到消息上限，自动对话已暂停。发送消息或点击重置以继续。", session_name)
-                }));
-            }
-        }
-
-        let update_elapsed = chrono::Utc::now().timestamp_millis() - update_start;
+        // === 阶段 6+7：统一后处理（emit, distribute, freeze check, counter） ===
+        let post_start = chrono::Utc::now().timestamp_millis();
+        self.handle_agent_response(agent_id, &agent_messages).await?;
+        let post_elapsed = chrono::Utc::now().timestamp_millis() - post_start;
         crate::logger::debug(&format!(
-            "[DEBUG trigger_agent_inner] agent_id={}, message_update_elapsed_ms={}",
-            agent_id, update_elapsed
+            "[DEBUG trigger_agent_inner] agent_id={}, unified_post_elapsed_ms={}",
+            agent_id, post_elapsed
         ));
 
-        // 更新触发时间（同时清除 is_triggering，作为双重保险）
+        // 更新触发时间
         {
             let conn = self.db_state.0.lock().await;
             trigger_repo::update_trigger_time(&conn, agent_id)
                 .map_err(|e| e.to_string())?;
         }
 
-        // === 阶段 7：触发链 ===
-        crate::logger::debug(&format!(
-            "[DEBUG trigger_agent_inner] agent_id={}, entering stage7 (emit+distribute), agent_messages={}",
-            agent_id, agent_messages.len()
-        ));
-        for msg in &agent_messages {
-            let session_exists: bool = {
-                let conn = self.db_state.0.lock().await;
-                conn.query_row(
-                    "SELECT COUNT(*) FROM sessions WHERE id = ?1 AND is_deleted = 0",
-                    [&msg.session_id],
-                    |row| Ok(row.get::<_, i32>(0)? > 0),
-                ).unwrap_or(false)
-            };
-            crate::logger::debug(&format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, msg_page={}, session_exists={}",
-                agent_id, msg.session_id, msg.page_index, session_exists
-            ));
-            if !session_exists {
-                crate::logger::debug(&format!(
-                    "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, SKIP emit/distribute (session deleted)",
-                    agent_id, msg.session_id
-                ));
-                continue;
-            }
-            // snapshot_pages 检查已移除：后端只负责推送消息，前端负责决定是否渲染
-
-            crate::logger::debug(&format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, session_id={}, emitting new_message message_id={}",
-                agent_id, msg.session_id, msg.id
-            ));
-            self.emit("new_message", msg);
-            self.distribute_message(&msg.session_id, msg, agent_id).await?;
-        }
-
-        // 消息已推入各角色的 unread，由后台扫描在下次 tick 时触发
-        //（避免 async fn 递归调用问题）
-
         let inner_elapsed = chrono::Utc::now().timestamp_millis() - inner_start;
         crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] END agent_id={}, total_elapsed_ms={}", agent_id, inner_elapsed
         ));
-        self.emit(
-            "agent_completed",
-            serde_json::json!({"agent_id": agent_id}),
-        );
 
         Ok(())
     }
@@ -1990,6 +1916,7 @@ pub fn truncate_preview(content: &str, max_chars: usize) -> String {
     mod tests {
         use super::*;
         use rusqlite::Connection;
+        use crate::db::session as session_repo;
         use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8};
         use std::sync::atomic::{AtomicUsize, Ordering};
         use async_trait::async_trait;
