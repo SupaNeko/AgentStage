@@ -134,6 +134,23 @@ import { invoke } from '@tauri-apps/api/core';
 const agents = await invoke<Agent[]>('list_agents');
 ```
 
+### Parameter naming: camelCase in frontend, snake_case in Rust
+
+Tauri v2's `#[tauri::command]` macro **automatically converts** camelCase (frontend) ↔ snake_case (Rust). The frontend sends camelCase; the macro deserializes it into snake_case Rust parameters.
+
+```rust
+// Rust (src-tauri)
+#[tauri::command]
+pub async fn update_quiet_hours(quiet_hours_start: i32, quiet_hours_end: i32) -> Result<(), String> { ... }
+```
+
+```ts
+// Frontend (src) — MUST use camelCase
+await invoke('update_quiet_hours', { quietHoursStart: 0, quietHoursEnd: 480 });
+```
+
+> **Rule:** Frontend `invoke()` calls always use **camelCase** parameter keys. Rust command parameters are always **snake_case**. Tauri v2 bridges them automatically.
+
 ---
 
 ## Code Style & Conventions
