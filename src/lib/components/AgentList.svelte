@@ -77,7 +77,7 @@
                         class:active={appState.selectedAgentId === agent.id}
                         onclick={() => appState.selectAgent(agent.id)}
                     >
-                        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 overflow-hidden">
                             {#if agent.avatar_path}
                                 <img src={resolveAvatarUrl(agent.avatar_path)} alt={agent.name} class="w-full h-full rounded-full object-cover" />
                             {:else}

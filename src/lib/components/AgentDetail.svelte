@@ -218,7 +218,7 @@
     });
 </script>
 
-<div class="flex flex-col h-full bg-bg">
+<div class="flex flex-col h-full bg-bg detail-panel">
     {#if loading}
         <div class="flex items-center justify-center h-full text-text-secondary">
             <Loader2 size={24} class="animate-spin mr-2" />

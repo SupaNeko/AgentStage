@@ -4,7 +4,7 @@
 
 **Goal:** Build a runtime theme-switching system with two built-in themes (default light + fantasy bulletin board). Users switch themes instantly via Settings panel. Architecture supports future user-installed themes.
 
-**Architecture:** Backend scans `data/themes/` directories, returns ThemeInfo list + CSS content. Frontend themeStore manages active theme; `<style id="theme-active">` textContent replacement applies CSS instantly. Components gain semantic class names for theme CSS to target. No Tailwind build changes — theme @theme tokens override Tailwind v4 CSS variables at runtime.
+**Architecture:** Backend scans `data/themes/` directories, returns ThemeInfo list + CSS content. Frontend themeStore manages active theme; `<style id="theme-active">` textContent replacement applies CSS instantly. Components gain semantic class names for theme CSS to target. No Tailwind build changes �?theme @theme tokens override Tailwind v4 CSS variables at runtime.
 
 **Tech Stack:** Rust (Tauri commands), Svelte 5 Runes, Tailwind v4, CSS custom properties
 
@@ -22,9 +22,9 @@
 | `data/themes/default/theme.json` | Create | Default theme metadata |
 | `data/themes/default/style.css` | Create | Default theme CSS (current palette) |
 | `data/themes/default/preview.png` | Create | Placeholder preview image |
-| `data/themes/bulletin-board/theme.json` | Create | Bulletin board metadata |
-| `data/themes/bulletin-board/style.css` | Create | Bulletin board theme CSS |
-| `data/themes/bulletin-board/preview.png` | Create | Placeholder preview image |
+| `data/themes/wooden/theme.json` | Create | Bulletin board metadata |
+| `data/themes/wooden/style.css` | Create | Bulletin board theme CSS |
+| `data/themes/wooden/preview.png` | Create | Placeholder preview image |
 | `src/App.svelte` | Modify | Inject `<style id="theme-active">`, load themes on mount |
 | `src/lib/components/SettingsPanel.svelte` | Modify | Add "主题" tab + theme card grid |
 | `src/lib/components/LeftNav.svelte` | Modify | Add `left-nav`, `nav-tab` classes |
@@ -274,7 +274,7 @@ fn copy_builtin_themes() -> Result<(), String> {
 
 For simplicity in this phase (since we have no user-installed themes yet), we can also just create the theme files directly in `data/themes/` without the resource copy mechanism. The Tauri dev server has access to the project root, so in dev mode we can write directly. The initialization code can just ensure the directories exist.
 
-**Simplified approach for this phase:** During app startup, ensure `data/themes/default/` and `data/themes/bulletin-board/` directories exist. If they don't, write the built-in theme files to them. This works for both dev and production.
+**Simplified approach for this phase:** During app startup, ensure `data/themes/default/` and `data/themes/wooden/` directories exist. If they don't, write the built-in theme files to them. This works for both dev and production.
 
 - [ ] **Step 5: Commit**
 
@@ -369,7 +369,7 @@ Create `data/themes/default/theme.json`:
 Create `data/themes/default/style.css`:
 
 ```css
-/* Theme: Default Light — matches current app appearance exactly */
+/* Theme: Default Light �?matches current app appearance exactly */
 
 @theme {
     --color-bg:             #f3f4f6;
@@ -398,30 +398,30 @@ git commit -m "feat: add default light theme files"
 ### Task 4: Bulletin board theme files
 
 **Files:**
-- Create: `data/themes/bulletin-board/theme.json`
-- Create: `data/themes/bulletin-board/style.css`
+- Create: `data/themes/wooden/theme.json`
+- Create: `data/themes/wooden/style.css`
 
 - [ ] **Step 1: Create bulletin board theme.json**
 
-Create `data/themes/bulletin-board/theme.json`:
+Create `data/themes/wooden/theme.json`:
 
 ```json
 {
     "name": "异世界告示板",
-    "id": "bulletin-board",
+    "id": "wooden",
     "version": "1.0.0",
     "author": "AgentStage",
-    "description": "羊皮纸质感的异世界冒险者告示板风格，暖木色背景、手工木牌气泡、黄铜铆钉细节",
+    "description": "羊皮纸质感的异世界冒险者告示板风格，暖木色背景、手工木牌气泡、黄铜铆钉细�?,
     "tags": ["fantasy", "warm", "textured", "dark"]
 }
 ```
 
 - [ ] **Step 2: Create bulletin board style.css**
 
-Create `data/themes/bulletin-board/style.css`:
+Create `data/themes/wooden/style.css`:
 
 ```css
-/* Theme: Bulletin Board — 异世界告示板 */
+/* Theme: Bulletin Board �?异世界告示板 */
 /* Wood grain, parchment, raised wooden plaques */
 
 /* ===== Font Import ===== */
@@ -536,7 +536,7 @@ body {
     color: var(--color-text);
 }
 
-/* ===== Message Bubbles — Wooden Plaques ===== */
+/* ===== Message Bubbles �?Wooden Plaques ===== */
 .msg-bubble {
     background: linear-gradient(180deg, #d4b896 0%, #c4a882 40%, #ba9e78 60%, #c4a882 100%);
     border: 1px solid var(--color-border);
@@ -650,13 +650,13 @@ body {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add data/themes/bulletin-board/
+git add data/themes/wooden/
 git commit -m "feat: add bulletin board theme CSS with wood grain and 3D plaques"
 ```
 
 ---
 
-### Task 5: App.svelte — theme injection and loading
+### Task 5: App.svelte �?theme injection and loading
 
 **Files:**
 - Modify: `src/App.svelte`
@@ -710,7 +710,7 @@ git commit -m "feat: load and apply theme on app startup"
 
 ---
 
-### Task 6: SettingsPanel — theme selector UI
+### Task 6: SettingsPanel �?theme selector UI
 
 **Files:**
 - Modify: `src/lib/components/SettingsPanel.svelte`
@@ -741,7 +741,7 @@ In the content area where `{#if activeTab === 'appearance'}` renders:
 {#if activeTab === 'appearance'}
     <div class="p-6">
         <h3 class="text-lg font-semibold text-text mb-1">选择主题</h3>
-        <p class="text-sm text-text-secondary mb-4">切换后立即生效</p>
+        <p class="text-sm text-text-secondary mb-4">切换后立即生�?/p>
         
         <div class="grid grid-cols-2 gap-4">
             {#each themeStore.themes as theme}
@@ -771,7 +771,7 @@ In the content area where `{#if activeTab === 'appearance'}` renders:
                             <span class="text-sm font-medium text-text">{theme.name}</span>
                             {#if themeStore.activeThemeId === theme.id}
                                 <span class="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                                    <span class="text-white text-xs">✓</span>
+                                    <span class="text-white text-xs">�?/span>
                                 </span>
                             {/if}
                         </div>
@@ -816,7 +816,7 @@ git commit -m "feat: add theme selector tab in SettingsPanel"
 
 ---
 
-### Task 7: Semantic class names — Navigation and Lists
+### Task 7: Semantic class names �?Navigation and Lists
 
 **Files:**
 - Modify: `src/lib/components/LeftNav.svelte`
@@ -830,7 +830,7 @@ Read `src/lib/components/LeftNav.svelte`. Find the root `<nav>` element and each
 
 - Root element: add `left-nav` to the class attribute (e.g., `class="... left-nav"`)
 - Each tab button: add `nav-tab` to its class attribute
-- Active tab: add conditional class — if the component already tracks active state, do `class="nav-tab" class:active={isActive}`. If not, just add `nav-tab` and let the theme handle `:global(.nav-tab.active)` or use data attributes.
+- Active tab: add conditional class �?if the component already tracks active state, do `class="nav-tab" class:active={isActive}`. If not, just add `nav-tab` and let the theme handle `:global(.nav-tab.active)` or use data attributes.
 
 Example:
 ```svelte
@@ -850,7 +850,7 @@ Example:
 Read `src/lib/components/AgentList.svelte`. Find:
 - Root container: add `mid-panel`
 - Each agent list item: add `list-item`
-- Active/selected item: add conditional class — the theme CSS uses `.list-item.active`
+- Active/selected item: add conditional class �?the theme CSS uses `.list-item.active`
 
 ```svelte
 <div class="... mid-panel">
@@ -884,7 +884,7 @@ git commit -m "feat: add semantic CSS classes to nav and list components"
 
 ---
 
-### Task 8: Semantic class names — ChatView
+### Task 8: Semantic class names �?ChatView
 
 **Files:**
 - Modify: `src/lib/components/ChatView.svelte`
@@ -914,7 +914,7 @@ Add classes to the identified elements:
 <!-- Input area -->
 <div class="... chat-input-area">
     <textarea class="... input-field" ...></textarea>
-    <button class="... btn-primary" ...>发送</button>
+    <button class="... btn-primary" ...>发�?/button>
 </div>
 ```
 
@@ -931,7 +931,7 @@ git commit -m "feat: add semantic CSS classes to ChatView"
 
 ---
 
-### Task 9: Semantic class names — MessageBubble + avatar nail
+### Task 9: Semantic class names �?MessageBubble + avatar nail
 
 **Files:**
 - Modify: `src/lib/components/MessageBubble.svelte`
@@ -1027,7 +1027,7 @@ fn ensure_themes_initialized() -> Result<(), String> {
 
     let builtin_themes: Vec<(&str, &str, &str)> = vec![
         ("default", include_str!("../../data/themes/default/theme.json"), include_str!("../../data/themes/default/style.css")),
-        ("bulletin-board", include_str!("../../data/themes/bulletin-board/theme.json"), include_str!("../../data/themes/bulletin-board/style.css")),
+        ("wooden", include_str!("../../data/themes/wooden/theme.json"), include_str!("../../data/themes/wooden/style.css")),
     ];
 
     for (id, manifest_json, style_css) in builtin_themes {
@@ -1080,7 +1080,7 @@ Create `docs/superpowers/howto/create-theme.md`:
 2. Add `theme.json` with metadata
 3. Add `style.css` with theme tokens and component overrides
 4. Optionally add `preview.png` (256×160 recommended)
-5. Restart AgentStage — your theme appears in Settings > 主题
+5. Restart AgentStage �?your theme appears in Settings > 主题
 
 ## File Structure
 
@@ -1186,7 +1186,7 @@ Expected: 0 new errors. Pre-existing a11y warnings are acceptable.
 Launch the app with `pnpm tauri dev` and verify:
 
 1. **Default theme**: App looks identical to before (no visual regression)
-2. **Switch to bulletin board**: Settings > 主题 > 异世界告示板 → click
+2. **Switch to bulletin board**: Settings > 主题 > 异世界告示板 �?click
 3. **Instant switch**: UI repaints immediately, no flicker
 4. **Chat bubbles**: Wood plaques with avatar nails, 3D shadows
 5. **Navigation**: Left nav shows oak frame gradient
@@ -1220,4 +1220,4 @@ git commit -m "chore: final verification pass for theme system"
 - [x] Placeholder scan: No TBD, TODO, or vague instructions
 - [x] Type consistency: `ThemeInfo` defined in Task 1, used consistently throughout
 - [x] File paths: All paths verified against existing project structure
-- [x] Risk validation point: Task 12 Step 3-2 verifies the key risk — runtime @theme CSS variable override of Tailwind v4 utilities
+- [x] Risk validation point: Task 12 Step 3-2 verifies the key risk �?runtime @theme CSS variable override of Tailwind v4 utilities

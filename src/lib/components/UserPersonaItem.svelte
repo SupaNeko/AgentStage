@@ -141,7 +141,7 @@
 
     <!-- Expanded Content -->
     {#if expanded}
-        <div class="px-4 pb-4 border-t border-border bg-bg">
+        <div class="px-4 pb-4 border-t border-border bg-gray-50">
             <div class="pt-3 space-y-3">
                 <div>
                     <label class="block text-xs font-medium text-text-secondary mb-1">角色名</label>

@@ -11,7 +11,7 @@
 
 <div class="flex h-full">
     <!-- Category List -->
-    <div class="w-56 shrink-0 bg-surface border-r border-border flex flex-col">
+    <div class="w-56 shrink-0 bg-surface border-r border-border flex flex-col profile-sidebar">
         <div class="px-4 py-3 border-b border-border">
             <h2 class="font-semibold text-sm">个人配置</h2>
         </div>
@@ -28,7 +28,7 @@
     </div>
 
     <!-- Detail Area -->
-    <div class="flex-1 min-w-0">
+    <div class="flex-1 min-w-0 detail-panel">
         {#if activeCategory === 'user_persona'}
             <UserPersonaConfig />
         {/if}

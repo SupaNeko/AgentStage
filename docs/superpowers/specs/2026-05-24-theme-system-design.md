@@ -1,15 +1,15 @@
-# Theme System — Design Doc
+# Theme System �?Design Doc
 
 **Date:** 2026-05-24  
 **Status:** DRAFT  
-**Problem:** No theme system exists — all 30+ components use hardcoded Tailwind v4 `@theme` color tokens for light mode only. Users cannot switch visual appearance. A plugin-capable theme architecture is needed.
+**Problem:** No theme system exists �?all 30+ components use hardcoded Tailwind v4 `@theme` color tokens for light mode only. Users cannot switch visual appearance. A plugin-capable theme architecture is needed.
 
 ---
 
 ## 1. Goals
 
 1. **Multiple preset themes**: Ship with default light + a "fantasy bulletin board" theme as built-in presets.
-2. **Global switch, instant effect**: Click a theme card → CSS injects immediately via `<style>` textContent replacement.
+2. **Global switch, instant effect**: Click a theme card �?CSS injects immediately via `<style>` textContent replacement.
 3. **Plugin-architecture ready**: Theme system is decoupled from future UI extension plugins. User-installed themes go in `data/themes/user/`.
 4. **Full visual redefinition (Scope C)**: Each theme controls colors + fonts + border-radius + spacing via `@theme` tokens AND arbitrary component-level CSS overrides.
 
@@ -23,41 +23,41 @@
 ## 2. Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  themes/                                              │
-│  ├── default/        (theme.json + style.css + prev.) │
-│  ├── bulletin-board/                                  │
-│  └── user/           (reserved for future)            │
-└──────────┬───────────────────────────────────────────┘
-           │ list_themes() + read_theme_css()
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  Rust Backend (commands/theme.rs)                     │
-│    • list_themes() → ThemeInfo[]                      │
-│    • read_theme_css(theme_id) → String                │
-└──────────┬───────────────────────────────────────────┘
-           │ invoke()
-           ▼
-┌──────────────────────────────────────────────────────┐
-│  Frontend                                             │
-│  ┌──────────────────┐  ┌───────────────────────────┐ │
-│  │ themeStore        │  │ App.svelte                │ │
-│  │  • themes[]       │  │  <style id="theme-active"> │ │
-│  │  • activeThemeId  │  │  onMount: applyTheme()    │ │
-│  │  • loadThemes()   │  │                           │ │
-│  │  • applyTheme(id) │  │                           │ │
-│  └──────────────────┘  └───────────────────────────┘ │
-│  ┌──────────────────────────────────────────────────┐│
-│  │ SettingsPanel → "主题" tab → ThemeCards          ││
-│  │  (grid of preview + name, click to switch)       ││
-│  └──────────────────────────────────────────────────┘│
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────�?
+�? themes/                                              �?
+�? ├── default/        (theme.json + style.css + prev.) �?
+�? ├── wooden/                                  �?
+�? └── user/           (reserved for future)            �?
+└──────────┬───────────────────────────────────────────�?
+           �?list_themes() + read_theme_css()
+           �?
+┌──────────────────────────────────────────────────────�?
+�? Rust Backend (commands/theme.rs)                     �?
+�?   �?list_themes() �?ThemeInfo[]                      �?
+�?   �?read_theme_css(theme_id) �?String                �?
+└──────────┬───────────────────────────────────────────�?
+           �?invoke()
+           �?
+┌──────────────────────────────────────────────────────�?
+�? Frontend                                             �?
+�? ┌──────────────────�? ┌───────────────────────────�?�?
+�? �?themeStore        �? �?App.svelte                �?�?
+�? �? �?themes[]       �? �? <style id="theme-active"> �?�?
+�? �? �?activeThemeId  �? �? onMount: applyTheme()    �?�?
+�? �? �?loadThemes()   �? �?                          �?�?
+�? �? �?applyTheme(id) �? �?                          �?�?
+�? └──────────────────�? └───────────────────────────�?�?
+�? ┌──────────────────────────────────────────────────┐│
+�? �?SettingsPanel �?"主题" tab �?ThemeCards          ││
+�? �? (grid of preview + name, click to switch)       ││
+�? └──────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────�?
 ```
 
 **CSS injection order** in `<head>`:
 ```
 1. Tailwind v4 compiled CSS (Vite build, <style> or <link>)
-2. <style id="theme-active"></style>   ← runtime injection point
+2. <style id="theme-active"></style>   �?runtime injection point
 ```
 
 Theme CSS at position 2 naturally overrides Tailwind utilities (later in cascade, same specificity).
@@ -71,22 +71,22 @@ Theme CSS at position 2 naturally overrides Tailwind utilities (later in cascade
 ```
 data/themes/
 ├── default/
-│   ├── theme.json
-│   ├── style.css
-│   └── preview.png       (256×160 recommended)
-├── bulletin-board/
-│   ├── theme.json
-│   ├── style.css
-│   └── preview.png
+�?  ├── theme.json
+�?  ├── style.css
+�?  └── preview.png       (256×160 recommended)
+├── wooden/
+�?  ├── theme.json
+�?  ├── style.css
+�?  └── preview.png
 └── user/                 (reserved)
 ```
 
-### 3.2 `theme.json` — Metadata Manifest
+### 3.2 `theme.json` �?Metadata Manifest
 
 ```json
 {
   "name": "异世界告示板",
-  "id": "bulletin-board",
+  "id": "wooden",
   "version": "1.0.0",
   "author": "AgentStage",
   "description": "羊皮纸质感的异世界冒险者告示板风格",
@@ -96,9 +96,9 @@ data/themes/
 
 All fields required except `tags`. `id` must match the directory name and is used as the settings `theme` value.
 
-### 3.3 `style.css` — Two-Layer Theme Definition
+### 3.3 `style.css` �?Two-Layer Theme Definition
 
-**Layer 1: Design Tokens** (`@theme` block — overrides Tailwind v4 semantic colors)
+**Layer 1: Design Tokens** (`@theme` block �?overrides Tailwind v4 semantic colors)
 
 ```css
 @theme {
@@ -128,7 +128,7 @@ All fields required except `tags`. `id` must match the directory name and is use
 
 **Font loading:** Themes may use `@import url('https://fonts.googleapis.com/...')` at the top of style.css. For offline support, `.woff2` files can be placed in the theme directory and referenced with a relative `@font-face`.
 
-**No `!important` needed** — injected `<style>` comes after Tailwind in the cascade with equal specificity, so it wins naturally.
+**No `!important` needed** �?injected `<style>` comes after Tailwind in the cascade with equal specificity, so it wins naturally.
 
 ---
 
@@ -136,20 +136,20 @@ All fields required except `tags`. `id` must match the directory name and is use
 
 ### 4.1 Storage Location
 
-`data/themes/` — same portable directory as the SQLite database (`data/agentstage.db`). This ensures themes move with the app directory.
+`data/themes/` �?same portable directory as the SQLite database (`data/agentstage.db`). This ensures themes move with the app directory.
 
 The `data/themes/` directory is created at app startup if missing. Built-in themes are copied from `src-tauri/resources/themes/` (shipped with the binary in prod, accessible in dev). The `default` theme is always present; other built-in themes are copied on first launch.
 
 ### 4.2 Backend Commands
 
-**`list_themes()`** → `ThemeInfo[]`
+**`list_themes()`** �?`ThemeInfo[]`
 - Scans `data/themes/` for subdirectories
 - Reads each subdirectory's `theme.json`
 - Returns array of `{ id, name, version, author, description, tags, preview_path, source: "builtin"|"user" }`
-- Source is determined by path: `data/themes/user/` → "user", otherwise "builtin"
+- Source is determined by path: `data/themes/user/` �?"user", otherwise "builtin"
 - Skips directories without valid `theme.json`
 
-**`read_theme_css(theme_id: String)`** → `String`
+**`read_theme_css(theme_id: String)`** �?`String`
 - Reads `data/themes/{theme_id}/style.css`
 - Returns raw CSS content as string
 - Returns error if file not found or `theme_id` contains path traversal (`..`, `/`, `\`)
@@ -188,34 +188,34 @@ export const themeStore = new ThemeStore();
 
 ```
 User clicks theme card in SettingsPanel
-  │
-  ▼
-themeStore.applyTheme('bulletin-board')
-  │
-  ├─► invoke('read_theme_css', { themeId: 'bulletin-board' })
-  │     └─► Backend reads data/themes/bulletin-board/style.css
-  │
-  ├─► document.getElementById('theme-active').textContent = css
-  │     └─► Browser immediately repaints with new tokens & overrides
-  │
-  └─► invoke('update_settings', { theme: 'bulletin-board' })
-        └─► Persists choice to SQLite settings table
+  �?
+  �?
+themeStore.applyTheme('wooden')
+  �?
+  ├─�?invoke('read_theme_css', { themeId: 'wooden' })
+  �?    └─�?Backend reads data/themes/wooden/style.css
+  �?
+  ├─�?document.getElementById('theme-active').textContent = css
+  �?    └─�?Browser immediately repaints with new tokens & overrides
+  �?
+  └─�?invoke('update_settings', { theme: 'wooden' })
+        └─�?Persists choice to SQLite settings table
 ```
 
 **Startup flow:**
 ```
 App.svelte onMount
-  │
-  ├─► settingsStore.load()          // reads settings.theme from DB
-  ├─► themeStore.loadThemes()        // discovers available themes
-  └─► themeStore.applyTheme(settings.theme)  // restores active theme
+  �?
+  ├─�?settingsStore.load()          // reads settings.theme from DB
+  ├─�?themeStore.loadThemes()        // discovers available themes
+  └─�?themeStore.applyTheme(settings.theme)  // restores active theme
 ```
 
 ---
 
 ## 6. Component Semantic Class Names
 
-To enable theme CSS to target specific UI regions, 14 semantic class names are added to 7 existing components. These are **additive only** — no existing code is changed.
+To enable theme CSS to target specific UI regions, 14 semantic class names are added to 7 existing components. These are **additive only** �?no existing code is changed.
 
 | Component | New Class | Element | Theme Can Control |
 |-----------|-----------|---------|-------------------|
@@ -239,30 +239,30 @@ To enable theme CSS to target specific UI regions, 14 semantic class names are a
 - Avoid collision with Tailwind utility classes (no `flex`, `text`, `block` etc.)
 - Appended after existing Tailwind classes: `class="flex items-center gap-2 left-nav"`
 - Not used with Svelte `class:` directive (reserved for conditional styles)
-- Do NOT add `!important` in theme CSS — cascade order handles precedence
+- Do NOT add `!important` in theme CSS �?cascade order handles precedence
 
 ---
 
-## 7. Settings Panel — Theme Selector UI
+## 7. Settings Panel �?Theme Selector UI
 
 ### 7.1 Layout
 
 SettingsPanel gains a new "主题" tab in its existing left sidebar navigation. The tab content is a scrollable grid of theme cards.
 
 ```
-┌──────────────────────────────────────────────┐
-│  Settings                    [✕]             │
-├────────┬─────────────────────────────────────┤
-│        │  选择主题                           │
-│ 通用   │  切换后立即生效                      │
-│ ▸主题  │                                     │
-│ 触发   │  ┌──────────┐  ┌──────────────┐   │
-│ 安静   │  │  [preview] │  │  [preview]   │   │
-│ 头像   │  │  默认亮色  │  │  异世界告示板 │   │
-│        │  │  内置  ✓  │  │  内置        │   │
-│        │  └──────────┘  └──────────────┘   │
-│        │                                     │
-└────────┴─────────────────────────────────────┘
+┌──────────────────────────────────────────────�?
+�? Settings                    [✕]             �?
+├────────┬─────────────────────────────────────�?
+�?       �? 选择主题                           �?
+�?通用   �? 切换后立即生�?                     �?
+�?▸主�? �?                                    �?
+�?触发   �? ┌──────────�? ┌──────────────�?  �?
+�?安静   �? �? [preview] �? �? [preview]   �?  �?
+�?头像   �? �? 默认亮色  �? �? 异世界告示板 �?  �?
+�?       �? �? 内置  �? �? �? 内置        �?  �?
+�?       �? └──────────�? └──────────────�?  �?
+�?       �?                                    �?
+└────────┴─────────────────────────────────────�?
 ```
 
 ### 7.2 Behavior
@@ -270,10 +270,10 @@ SettingsPanel gains a new "主题" tab in its existing left sidebar navigation. 
 | Action | Behavior |
 |--------|----------|
 | Click card | Immediately applies theme (no confirmation dialog). Card border turns blue + checkmark appears. |
-| Preview image | `convertFileSrc(preview_path)` resolves to asset URL. Missing preview → gradient placeholder in theme colors. |
+| Preview image | `convertFileSrc(preview_path)` resolves to asset URL. Missing preview �?gradient placeholder in theme colors. |
 | Built-in vs User | "内置" or "用户" label below name. |
 | Close panel | Theme stays applied (already persisted via `update_settings`). |
-| Switching | `textContent` replacement is synchronous — no flicker between themes. |
+| Switching | `textContent` replacement is synchronous �?no flicker between themes. |
 
 ### 7.3 Implementation in SettingsPanel
 
@@ -298,13 +298,13 @@ Existing SettingsPanel has tabs: `general`, `trigger`, `quiet_hours`, `avatar`. 
 
 ---
 
-## 8. Bulletin Board Theme — Visual Design
+## 8. Bulletin Board Theme �?Visual Design
 
 ### 8.1 Physical Scene & Mood
 
 > An adventurer stands before a worn wooden bulletin board in a guild hall. Flickering candlelight warms the oak frame. Parchment notices overlap on the board, each pinned with a small portrait badge of its author. The air smells of old paper and polished wood.
 
-This drives a **warm, light-medium wood tone** palette with 3D depth everywhere — nothing is flat. Shadows create the sense of physical layers: the wall behind, the board surface, and the pinned plaques on top.
+This drives a **warm, light-medium wood tone** palette with 3D depth everywhere �?nothing is flat. Shadows create the sense of physical layers: the wall behind, the board surface, and the pinned plaques on top.
 
 ### 8.2 Color Palette
 
@@ -318,7 +318,7 @@ This drives a **warm, light-medium wood tone** palette with 3D depth everywhere 
 | `--color-primary` | `#b8402e` | Accent / active | Wax seal red |
 | `--color-primary-dark` | `#972e2a` | Hover / pressed | Darker wax seal |
 
-**Strategy: Committed** — warm wood tones carry 40-50% of the visual surface. Wax seal red is ≤8%, used for active states, buttons, and links only.
+**Strategy: Committed** �?warm wood tones carry 40-50% of the visual surface. Wax seal red is �?%, used for active states, buttons, and links only.
 
 ### 8.3 Wood Grain Texture (CSS)
 
@@ -328,7 +328,7 @@ Pure CSS, no image assets. Applied to key backgrounds via a reusable class or in
 /* Base wood background */
 body { background-color: #e8d5b0; }
 
-/* Wood grain pattern — subtle horizontal lines */
+/* Wood grain pattern �?subtle horizontal lines */
 .wood-grain {
   background-image:
     repeating-linear-gradient(
@@ -346,22 +346,22 @@ body { background-color: #e8d5b0; }
 }
 ```
 
-### 8.4 Message Bubbles — Wooden Plaques
+### 8.4 Message Bubbles �?Wooden Plaques
 
 The signature element of this theme. Each message is a raised wooden plaque pinned to the board.
 
 **Structure:**
 ```
-┌─────────────────────────────┐
-│         ●  (nail = avatar)  │  ← ::before pseudo-element
-│ ┌─────────────────────────┐ │
-│ │ Alice                  │ │  ← sender name
-│ │                        │ │
-│ │ Message text in serif  │ │  ← content
-│ │                        │ │
-│ │                 14:33  │ │  ← timestamp
-│ └─────────────────────────┘ │
-└─────────────────────────────┘
+┌─────────────────────────────�?
+�?        �? (nail = avatar)  �? �?::before pseudo-element
+�?┌─────────────────────────�?�?
+�?�?Alice                  �?�? �?sender name
+�?�?                       �?�?
+�?�?Message text in serif  �?�? �?content
+�?�?                       �?�?
+�?�?                14:33  �?�? �?timestamp
+�?└─────────────────────────�?�?
+└─────────────────────────────�?
 ```
 
 **CSS recipe for `.msg-bubble`:**
@@ -429,7 +429,7 @@ The signature element of this theme. Each message is a raised wooden plaque pinn
 
 1. **Everything has depth**: No flat color blocks. Every surface has shadow, gradient, or texture.
 2. **Warm, not dark**: bg is `#e8d5b0` (light oak), not a dark tavern. Readable in normal ambient light.
-3. **Physical metaphor**: Components behave like real objects — buttons press down, panels cast shadows, plaques are pinned.
+3. **Physical metaphor**: Components behave like real objects �?buttons press down, panels cast shadows, plaques are pinned.
 4. **Messy-adjacent, not messy**: Slight irregularities (wood grain, parchment tone variation) but clean execution. No artificial noise or grunge.
 5. **Avatar is the pin**: The sender's identity is literally what holds their message to the board.
 
@@ -445,15 +445,15 @@ The signature element of this theme. Each message is a raised wooden plaque pinn
 | `data/themes/default/theme.json` | Default light theme manifest |
 | `data/themes/default/style.css` | Default light theme CSS (current @theme values) |
 | `data/themes/default/preview.png` | Default theme preview image |
-| `data/themes/bulletin-board/theme.json` | Fantasy bulletin board manifest |
-| `data/themes/bulletin-board/style.css` | Fantasy bulletin board CSS |
-| `data/themes/bulletin-board/preview.png` | Bulletin board preview image |
+| `data/themes/wooden/theme.json` | Fantasy bulletin board manifest |
+| `data/themes/wooden/style.css` | Fantasy bulletin board CSS |
+| `data/themes/wooden/preview.png` | Bulletin board preview image |
 
 ### Modified Files
 | File | Change |
 |------|--------|
 | `src-tauri/src/lib.rs` | Register `list_themes`, `read_theme_css` commands |
-| `src/App.svelte` | `onMount`: load settings → load themes → apply active theme; also apply when settings change |
+| `src/App.svelte` | `onMount`: load settings �?load themes �?apply active theme; also apply when settings change |
 | `src/lib/components/SettingsPanel.svelte` | Add "主题" tab + theme card grid |
 | `src/lib/types.ts` | Add `ThemeInfo` interface |
 | `src/lib/components/LeftNav.svelte` | Add `left-nav`, `nav-tab` classes |
@@ -464,7 +464,7 @@ The signature element of this theme. Each message is a raised wooden plaque pinn
 | `src/lib/components/MessageBubble.svelte` | Add `msg-bubble`, `msg-self`/`msg-other` classes |
 
 ### Unchanged (no modifications needed)
-All other components, stores, backend modules, CSS files — no changes. Components continue using Tailwind utility classes as before; they just gain a semantic class name next to them.
+All other components, stores, backend modules, CSS files �?no changes. Components continue using Tailwind utility classes as before; they just gain a semantic class name next to them.
 
 ---
 
@@ -481,8 +481,8 @@ All other components, stores, backend modules, CSS files — no changes. Compone
 
 ## 11. Verification Checklist
 
-- [ ] Switch theme in SettingsPanel → UI repaints immediately (no flash, no reload)
-- [ ] Restart app → active theme persists
+- [ ] Switch theme in SettingsPanel �?UI repaints immediately (no flash, no reload)
+- [ ] Restart app �?active theme persists
 - [ ] All 6 semantic tokens change correctly (bg, surface, border, text, text-secondary, primary)
 - [ ] Component overrides work (at minimum: left-nav background, msg-bubble border-radius)
 - [ ] Preview thumbnails display correctly
