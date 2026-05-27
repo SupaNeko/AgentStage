@@ -25,9 +25,9 @@
         frequency_penalty: 0.0,
     });
 
-    function handleProviderChange() {
+    function applyProviderDefaults(provider: string) {
         if (!editingConfig) return;
-        const defaults = PROVIDER_DEFAULTS[editingConfig.provider ?? 'custom'] ?? PROVIDER_DEFAULTS.custom;
+        const defaults = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.custom;
         editingConfig.model_name = defaults.modelName;
         editingConfig.base_url = defaults.baseUrl;
     }
@@ -170,8 +170,13 @@
                 <div>
                     <label class="block text-sm font-medium mb-1">提供商 <span class="text-red-500">*</span></label>
                     <select
-                        bind:value={editingConfig.provider}
-                        onchange={handleProviderChange}
+                        value={editingConfig.provider ?? 'custom'}
+                        onchange={(e) => {
+                            if (!editingConfig) return;
+                            const newProvider = e.currentTarget.value;
+                            editingConfig.provider = newProvider;
+                            applyProviderDefaults(newProvider);
+                        }}
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                     >
                         <option value="openai">OpenAI</option>
