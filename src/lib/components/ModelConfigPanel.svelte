@@ -19,10 +19,10 @@
         base_url: PROVIDER_DEFAULTS.openai.baseUrl,
         api_key: '',
         temperature: null,
-        max_tokens: 2048,
-        top_p: 1.0,
-        presence_penalty: 0.0,
-        frequency_penalty: 0.0,
+        max_tokens: null,
+        top_p: null,
+        presence_penalty: null,
+        frequency_penalty: null,
     });
 
     function applyProviderDefaults(provider: string) {
@@ -72,10 +72,10 @@
             base_url: editingConfig.base_url?.trim() || null,
             api_key: editingConfig.api_key.trim(),
             temperature: editingConfig.temperature ?? null,
-            max_tokens: editingConfig.max_tokens ?? 2048,
-            top_p: editingConfig.top_p ?? 1.0,
-            presence_penalty: editingConfig.presence_penalty ?? 0.0,
-            frequency_penalty: editingConfig.frequency_penalty ?? 0.0,
+            max_tokens: editingConfig.max_tokens ?? null,
+            top_p: editingConfig.top_p ?? null,
+            presence_penalty: editingConfig.presence_penalty ?? null,
+            frequency_penalty: editingConfig.frequency_penalty ?? null,
         };
 
         try {
@@ -228,18 +228,6 @@
                         </button>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium mb-1">Temperature</label>
-                    <input
-                        type="number"
-                        bind:value={editingConfig.temperature}
-                        min={0}
-                        max={2}
-                        step={0.1}
-                        placeholder="使用模型默认值"
-                        class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
-                    />
-                </div>
             </div>
 
             <!-- Advanced -->
@@ -259,11 +247,24 @@
                 {#if showAdvanced}
                     <div class="mt-3 grid grid-cols-2 gap-4">
                         <div>
+                            <label class="block text-sm font-medium mb-1">Temperature</label>
+                            <input
+                                type="number"
+                                bind:value={editingConfig.temperature}
+                                min={0}
+                                max={2}
+                                step={0.1}
+                                placeholder="默认"
+                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
+                            />
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium mb-1">Max Tokens</label>
                             <input
                                 type="number"
                                 bind:value={editingConfig.max_tokens}
                                 min={1}
+                                placeholder="默认"
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                             />
                         </div>
@@ -275,6 +276,7 @@
                                 min={0}
                                 max={1}
                                 step={0.01}
+                                placeholder="默认"
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                             />
                         </div>
@@ -286,6 +288,7 @@
                                 min={-2}
                                 max={2}
                                 step={0.1}
+                                placeholder="默认"
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                             />
                         </div>
@@ -297,6 +300,7 @@
                                 min={-2}
                                 max={2}
                                 step={0.1}
+                                placeholder="默认"
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                             />
                         </div>

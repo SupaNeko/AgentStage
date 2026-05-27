@@ -9,10 +9,10 @@ pub struct ModelConfig {
     pub base_url: Option<String>,
     pub api_key_encrypted: Option<Vec<u8>>,
     pub temperature: Option<f64>,
-    pub max_tokens: i32,
-    pub top_p: f64,
-    pub presence_penalty: f64,
-    pub frequency_penalty: f64,
+    pub max_tokens: Option<i32>,
+    pub top_p: Option<f64>,
+    pub presence_penalty: Option<f64>,
+    pub frequency_penalty: Option<f64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -26,10 +26,10 @@ pub struct ModelConfigResponse {
     pub base_url: Option<String>,
     pub api_key: String,
     pub temperature: Option<f64>,
-    pub max_tokens: i32,
-    pub top_p: f64,
-    pub presence_penalty: f64,
-    pub frequency_penalty: f64,
+    pub max_tokens: Option<i32>,
+    pub top_p: Option<f64>,
+    pub presence_penalty: Option<f64>,
+    pub frequency_penalty: Option<f64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -65,8 +65,10 @@ pub struct UpdateModelConfigRequest {
     pub model_name: Option<String>, pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub temperature: Option<Option<f64>>,
-    pub max_tokens: Option<i32>, pub top_p: Option<f64>,
-    pub presence_penalty: Option<f64>, pub frequency_penalty: Option<f64>,
+    pub max_tokens: Option<Option<i32>>,
+    pub top_p: Option<Option<f64>>,
+    pub presence_penalty: Option<Option<f64>>,
+    pub frequency_penalty: Option<Option<f64>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

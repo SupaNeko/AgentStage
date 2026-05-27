@@ -7,7 +7,7 @@ pub struct ModelConfig {
     pub base_url: Option<String>,
     pub api_key: String,
     pub temperature: Option<f64>,
-    pub max_tokens: i32,
+    pub max_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

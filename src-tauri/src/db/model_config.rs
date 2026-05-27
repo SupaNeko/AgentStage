@@ -39,8 +39,8 @@ pub fn create(conn: &Connection, req: &CreateModelConfigRequest) -> Result<Model
         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"#,
         rusqlite::params![
             &id, &req.name, &req.provider, &req.model_name, &req.base_url, &api_key_encrypted,
-            req.temperature, req.max_tokens.unwrap_or(2048), req.top_p.unwrap_or(1.0),
-            req.presence_penalty.unwrap_or(0.0), req.frequency_penalty.unwrap_or(0.0),
+            req.temperature, req.max_tokens, req.top_p,
+            req.presence_penalty, req.frequency_penalty,
             now, now,
         ],
     )?;
@@ -77,18 +77,30 @@ pub fn update(conn: &Connection, req: &UpdateModelConfigRequest) -> Result<Model
         .transpose()
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))) )?;
 
-    // Build the temperature expression
-    let temp_expr = if req.temperature.is_some() {
-        "?7"
-    } else {
-        "temperature"
-    };
+    // Helper: build CASE WHEN expression for nullable fields
+    // When outer Option is Some -> update to inner value (which may be None)
+    // When outer Option is None -> don't update (keep existing)
+    fn nullable_expr(param_idx: usize, field: &str) -> String {
+        format!("CASE WHEN ?{} IS NOT NULL THEN ?{} ELSE {} END", param_idx, param_idx + 1, field)
+    }
 
-    let temp_param: Option<f64> = match req.temperature {
-        Some(Some(v)) => Some(v),
-        Some(None) => None,
-        None => None,
-    };
+    let temp_expr = nullable_expr(7, "temperature");
+    let max_tokens_expr = nullable_expr(9, "max_tokens");
+    let top_p_expr = nullable_expr(11, "top_p");
+    let presence_penalty_expr = nullable_expr(13, "presence_penalty");
+    let frequency_penalty_expr = nullable_expr(15, "frequency_penalty");
+
+    // Flag params (0 or 1) to indicate whether the field was provided
+    let temp_flag: Option<i32> = req.temperature.map(|_| 1);
+    let temp_value: Option<f64> = req.temperature.flatten();
+    let max_tokens_flag: Option<i32> = req.max_tokens.map(|_| 1);
+    let max_tokens_value: Option<i32> = req.max_tokens.flatten();
+    let top_p_flag: Option<i32> = req.top_p.map(|_| 1);
+    let top_p_value: Option<f64> = req.top_p.flatten();
+    let presence_penalty_flag: Option<i32> = req.presence_penalty.map(|_| 1);
+    let presence_penalty_value: Option<f64> = req.presence_penalty.flatten();
+    let frequency_penalty_flag: Option<i32> = req.frequency_penalty.map(|_| 1);
+    let frequency_penalty_value: Option<f64> = req.frequency_penalty.flatten();
 
     conn.execute(
         &format!(
@@ -99,19 +111,22 @@ pub fn update(conn: &Connection, req: &UpdateModelConfigRequest) -> Result<Model
                 base_url = COALESCE(?5, base_url),
                 api_key_encrypted = COALESCE(?6, api_key_encrypted),
                 temperature = {},
-                max_tokens = COALESCE(?8, max_tokens),
-                top_p = COALESCE(?9, top_p),
-                presence_penalty = COALESCE(?10, presence_penalty),
-                frequency_penalty = COALESCE(?11, frequency_penalty),
-                updated_at = ?12
+                max_tokens = {},
+                top_p = {},
+                presence_penalty = {},
+                frequency_penalty = {},
+                updated_at = ?17
             WHERE id = ?1"#,
-            temp_expr
+            temp_expr, max_tokens_expr, top_p_expr, presence_penalty_expr, frequency_penalty_expr
         ),
         rusqlite::params![
             &req.id, &req.name, &req.provider, &req.model_name, &req.base_url,
             &api_key_encrypted,
-            temp_param,
-            req.max_tokens, req.top_p, req.presence_penalty, req.frequency_penalty,
+            temp_flag, temp_value,
+            max_tokens_flag, max_tokens_value,
+            top_p_flag, top_p_value,
+            presence_penalty_flag, presence_penalty_value,
+            frequency_penalty_flag, frequency_penalty_value,
             now,
         ],
     )?;

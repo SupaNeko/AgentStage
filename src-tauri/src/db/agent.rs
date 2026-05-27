@@ -7,7 +7,7 @@ pub struct AgentLlmConfig {
     pub base_url: Option<String>,
     pub model_name: String,
     pub temperature: Option<f64>,
-    pub max_tokens: i32,
+    pub max_tokens: Option<i32>,
 }
 
 pub fn resolve_llm_config(conn: &Connection, agent: &Agent) -> Result<AgentLlmConfig, String> {

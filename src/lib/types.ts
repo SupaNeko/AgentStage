@@ -6,10 +6,10 @@ export interface ModelConfig {
     base_url: string | null;
     api_key: string;
     temperature: number | null;
-    max_tokens: number;
-    top_p: number;
-    presence_penalty: number;
-    frequency_penalty: number;
+    max_tokens: number | null;
+    top_p: number | null;
+    presence_penalty: number | null;
+    frequency_penalty: number | null;
     created_at: number;
     updated_at: number;
 }
