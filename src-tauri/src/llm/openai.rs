@@ -10,7 +10,7 @@ pub struct OpenAiCompatibleProvider {
     api_key: String,
     base_url: String,
     model: String,
-    temperature: f64,
+    temperature: Option<f64>,
     max_tokens: i32,
 }
 
@@ -19,7 +19,7 @@ impl OpenAiCompatibleProvider {
         api_key: String,
         base_url: Option<String>,
         model: String,
-        temperature: f64,
+        temperature: Option<f64>,
         max_tokens: i32,
     ) -> Self {
         let client = reqwest::Client::builder()
@@ -62,9 +62,12 @@ impl LlmProvider for OpenAiCompatibleProvider {
         let mut request_body = serde_json::json!({
             "model": self.model,
             "messages": messages,
-            "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         });
+
+        if let Some(temp) = self.temperature {
+            request_body["temperature"] = serde_json::json!(temp);
+        }
 
         // Some providers (e.g. Minimax) require at least one user message.
         // If there are no user messages, append a dummy user message.

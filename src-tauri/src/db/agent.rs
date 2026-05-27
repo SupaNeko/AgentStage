@@ -6,7 +6,7 @@ pub struct AgentLlmConfig {
     pub api_key: String,
     pub base_url: Option<String>,
     pub model_name: String,
-    pub temperature: f64,
+    pub temperature: Option<f64>,
     pub max_tokens: i32,
 }
 
@@ -26,9 +26,7 @@ pub fn resolve_llm_config(conn: &Connection, agent: &Agent) -> Result<AgentLlmCo
         return Err("API key is empty".to_string());
     }
 
-    let temperature = agent.temperature
-        .or(mc.temperature)
-        .unwrap_or(0.7);
+    let temperature = agent.temperature.or(mc.temperature);
 
     Ok(AgentLlmConfig {
         api_key,

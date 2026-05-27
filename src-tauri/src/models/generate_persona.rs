@@ -6,7 +6,7 @@ pub struct ModelConfig {
     pub model_name: String,
     pub base_url: Option<String>,
     pub api_key: String,
-    pub temperature: f64,
+    pub temperature: Option<f64>,
     pub max_tokens: i32,
 }
 
