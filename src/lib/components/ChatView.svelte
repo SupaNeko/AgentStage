@@ -5,12 +5,14 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
-    import { Send, MessageSquare, User, Settings, Bot, Clock } from 'lucide-svelte';
+    import { Send, MessageSquare, User, Settings, Bot, Clock, Pencil } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import type { GroupMember, SessionConfig, Session, Message } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
     import { historyStore } from '$lib/stores/historyStore.svelte';
+    import { toastStore } from '$lib/stores/toastStore.svelte';
     import { userPersonaStore } from '$lib/stores/userPersonaStore.svelte';
+    import type { ChatPage } from '$lib/types';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
 
     interface Props {
@@ -31,6 +33,49 @@
     let prevMsgCount = $state(0);
     let scrollPositions = $state<Map<string, number>>(new Map());
     let isFirstLoad = $state(false);
+    let editingPageIndex = $state<number | null>(null);
+    let editingName = $state('');
+
+    function startEditPage(page: ChatPage) {
+        editingPageIndex = page.page_index;
+        editingName = page.name;
+    }
+
+    async function savePageName(pageIndex: number) {
+        const trimmed = editingName.trim();
+        const newName = trimmed || '未命名对话';
+        if (!historyStore.selectedSessionId) return;
+        try {
+            await invoke('update_chat_page_name', {
+                req: {
+                    session_id: historyStore.selectedSessionId,
+                    page_index: pageIndex,
+                    name: newName,
+                }
+            });
+            const idx = historyStore.chatPages.findIndex(p => p.page_index === pageIndex);
+            if (idx !== -1) {
+                historyStore.chatPages[idx].name = newName;
+                historyStore.chatPages = [...historyStore.chatPages];
+            }
+        } catch (err) {
+            toastStore.show('保存失败: ' + String(err), 'error', 3000);
+        } finally {
+            editingPageIndex = null;
+        }
+    }
+
+    function cancelEditPage() {
+        editingPageIndex = null;
+    }
+
+    function handleEditKey(e: KeyboardEvent, pageIndex: number) {
+        if (e.key === 'Enter') {
+            savePageName(pageIndex);
+        } else if (e.key === 'Escape') {
+            cancelEditPage();
+        }
+    }
 
     function scrollToBottom() {
         if (messageListEl) {
@@ -541,24 +586,39 @@
                     </div>
                 </div>
                 {#if mode === 'history' && historyStore.chatPages.length > 0}
-                    <div class="absolute left-1/2 -translate-x-1/2">
-                        <select
-                            value={historyStore.selectedPageIndex ?? 0}
-                            onchange={(e) => {
-                                const idx = Number((e.target as HTMLSelectElement).value);
-                                historyStore.selectPage(idx);
-                                if (historyStore.selectedSessionId) {
-                                    messageStore.loadMessages(historyStore.selectedSessionId, idx);
-                                }
-                            }}
-                            class="px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px]"
-                        >
+                    <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+                        <div class="flex items-center gap-1 bg-bg border border-border rounded-lg px-2 py-1">
                             {#each historyStore.chatPages as page (page.page_index)}
-                                <option value={page.page_index}>
-                                    {page.name} #{page.page_index + 1} — {formatTime(page.updated_at)}
-                                </option>
+                                {#if editingPageIndex === page.page_index}
+                                    <input
+                                        bind:value={editingName}
+                                        onkeydown={(e) => handleEditKey(e, page.page_index)}
+                                        onblur={() => savePageName(page.page_index)}
+                                        class="text-sm px-1 py-0.5 bg-bg border border-primary rounded w-32 focus:outline-none"
+                                        autofocus
+                                    />
+                                {:else}
+                                    <button
+                                        class="text-sm px-2 py-0.5 rounded transition-colors {historyStore.selectedPageIndex === page.page_index ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100'}"
+                                        onclick={() => {
+                                            historyStore.selectPage(page.page_index);
+                                            if (historyStore.selectedSessionId) {
+                                                messageStore.loadMessages(historyStore.selectedSessionId, page.page_index);
+                                            }
+                                        }}
+                                    >
+                                        {page.name}
+                                    </button>
+                                    <button
+                                        onclick={() => startEditPage(page)}
+                                        class="p-0.5 text-text-secondary hover:text-text transition-colors"
+                                        title="编辑标题"
+                                    >
+                                        <Pencil size={12} />
+                                    </button>
+                                {/if}
                             {/each}
-                        </select>
+                        </div>
                     </div>
                 {/if}
                 <button
