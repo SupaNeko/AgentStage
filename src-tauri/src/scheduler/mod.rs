@@ -434,6 +434,171 @@ impl Scheduler {
         });
     }
 
+    pub fn spawn_generate_page_title(&self, session_id: String, page_index: i32) {
+        let scheduler = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = scheduler.run_generate_page_title(&session_id, page_index).await {
+                crate::logger::error(&format!("[PageTitle] failed for session={} page={}: {}", session_id, page_index, e));
+            }
+        });
+    }
+
+    async fn run_generate_page_title(&self, session_id: &str, page_index: i32) -> Result<(), String> {
+        crate::logger::debug(&format!("[PageTitle] start session={} page={}", session_id, page_index));
+
+        let conn = self.db_state.0.lock().await;
+
+        // 1. Get messages for this page (up to 50, chronological)
+        let messages: Vec<crate::models::message::Message> = {
+            let mut stmt = conn.prepare(
+                "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
+                        m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
+                        COALESCE(a.name, up.name, CASE WHEN m.sender_type = 'user' THEN '用户' ELSE '未知' END) as sender_name,
+                        m.page_index
+                 FROM messages m
+                 LEFT JOIN agents a ON m.sender_type = 'agent' AND m.sender_id = a.id AND a.is_deleted = 0
+                 LEFT JOIN user_personas up ON m.sender_type = 'user' AND m.sender_id = up.id
+                 WHERE m.session_id = ?1 AND m.page_index = ?2 AND m.is_deleted = 0
+                 ORDER BY m.created_at ASC
+                 LIMIT 50"
+            ).map_err(|e| e.to_string())?;
+
+            let rows = stmt.query_map(
+                rusqlite::params![session_id, page_index],
+                |row| {
+                    Ok(crate::models::message::Message {
+                        id: row.get(0)?,
+                        session_id: row.get(1)?,
+                        sender_type: row.get(2)?,
+                        sender_id: row.get(3)?,
+                        content: row.get(4)?,
+                        created_at: row.get(5)?,
+                        message_type: row.get(6)?,
+                        tool_call_data: row.get(7)?,
+                        generation_info: row.get(8)?,
+                        is_deleted: row.get::<_, i32>(9)? != 0,
+                        sender_name: row.get(10)?,
+                        sender_avatar: None,
+                        page_index: row.get(11)?,
+                    })
+                }
+            ).map_err(|e| e.to_string())?;
+
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        // 2. Skip if no meaningful messages (empty or only system messages)
+        let meaningful_messages: Vec<_> = messages.iter()
+            .filter(|m| m.sender_type != "system")
+            .collect();
+        if meaningful_messages.is_empty() {
+            crate::logger::debug(&format!("[PageTitle] no meaningful messages, skipping"));
+            return Ok(());
+        }
+
+        // 3. Get settings to resolve summary model
+        let settings = match crate::db::settings::get_or_create_settings(&conn) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::logger::warn(&format!("[PageTitle] failed to get settings: {}", e));
+                return Ok(());
+            }
+        };
+
+        let model_config = match crate::db::model_config::resolve_summary_model_config(&conn, &settings) {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                crate::logger::debug(&format!("[PageTitle] no available model config, skipping"));
+                return Ok(());
+            }
+            Err(e) => {
+                crate::logger::warn(&format!("[PageTitle] failed to resolve model config: {}", e));
+                return Ok(());
+            }
+        };
+
+        drop(conn);
+
+        // 4. Build session messages text
+        let mut session_messages_text = String::new();
+        for msg in &messages {
+            let time = crate::llm::prompt::PromptAssembler::format_time(msg.created_at);
+            session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
+        }
+
+        let system_prompt = crate::llm::prompt_templates::PAGE_TITLE_SUMMARY_PROMPT
+            .replace("{session_messages}", &session_messages_text);
+
+        // 5. Decrypt api key
+        let api_key = match model_config.api_key_encrypted {
+            Some(ref encrypted) => match crate::crypto::decrypt(encrypted) {
+                Ok(k) => k,
+                Err(e) => {
+                    crate::logger::error(&format!("[PageTitle] failed to decrypt api key: {}", e));
+                    return Ok(());
+                }
+            },
+            None => {
+                crate::logger::warn(&format!("[PageTitle] model config has no api key"));
+                return Ok(());
+            }
+        };
+
+        // 6. Call LLM
+        crate::logger::debug(&format!("[PageTitle] calling LLM with model={}", model_config.model_name));
+
+        let provider = crate::llm::openai::OpenAiCompatibleProvider::new(
+            api_key,
+            model_config.base_url,
+            model_config.model_name,
+            None, // temperature: use default
+            Some(100), // max_tokens: title should be short
+        );
+
+        let messages_json = vec![serde_json::json!({
+            "role": "user",
+            "content": system_prompt
+        })];
+
+        let response = match provider.chat("", messages_json, vec![]).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                crate::logger::error(&format!("[PageTitle] LLM call failed: {}", e));
+                return Ok(());
+            }
+        };
+
+        // 7. Clean response
+        let mut title = response.content.unwrap_or_default().trim().to_string();
+        // Remove <think>...</think> tags and their content
+        if let Some(start) = title.find("<think>") {
+            if let Some(end) = title.find("</think>") {
+                title = title[..start].to_string() + &title[end + 8..];
+            }
+        }
+        title = title.trim().to_string();
+        // Truncate to 30 chars
+        if title.chars().count() > 30 {
+            title = title.chars().take(30).collect();
+        }
+
+        if title.is_empty() {
+            crate::logger::debug(&format!("[PageTitle] empty title after cleaning, skipping"));
+            return Ok(());
+        }
+
+        // 8. Update chat_pages name
+        let conn = self.db_state.0.lock().await;
+        if let Err(e) = crate::db::chat_page::update_name(&conn, session_id, page_index, &title) {
+            crate::logger::error(&format!("[PageTitle] failed to update name: {}", e));
+        } else {
+            crate::logger::debug(&format!("[PageTitle] updated name to '{}' for session={} page={}", title, session_id, page_index));
+        }
+
+        crate::logger::debug(&format!("[PageTitle] complete session={} page={}", session_id, page_index));
+        Ok(())
+    }
+
     /// 当有新消息到达时调用（用户发送消息或角色发送消息）
     pub async fn on_new_message(
         &self,
