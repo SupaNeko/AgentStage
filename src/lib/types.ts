@@ -178,3 +178,28 @@ export interface ThemeInfo {
     preview_path: string;
     source: 'builtin' | 'user';
 }
+
+export interface AppSettings {
+    global_min_trigger_interval: number;
+    private_message_limit_default: number;
+    group_message_limit_default: number;
+    private_limit_enabled_default: boolean;
+    group_limit_enabled_default: boolean;
+    enter_to_send: boolean;
+    theme: string;
+    font_size: string;
+    language: string;
+    launch_on_startup?: boolean;
+    minimize_to_tray?: boolean;
+    active_persona_id?: string | null;
+    default_avatar_path?: string | null;
+    quiet_hours_start?: number;
+    quiet_hours_end?: number;
+    summary_model_config_id: string | null;
+}
+
+export interface UpdateChatPageNameRequest {
+    session_id: string;
+    page_index: number;
+    name: string;
+}

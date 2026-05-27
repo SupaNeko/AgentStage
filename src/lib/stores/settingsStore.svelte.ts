@@ -16,6 +16,7 @@ export interface AppSettings {
     default_avatar_path?: string | null;
     quiet_hours_start?: number;
     quiet_hours_end?: number;
+    summary_model_config_id: string | null;
 }
 
 class SettingsStore {
@@ -46,6 +47,7 @@ class SettingsStore {
             minimize_to_tray: partial.minimize_to_tray,
             active_persona_id: partial.active_persona_id,
             default_avatar_path: partial.default_avatar_path,
+            summary_model_config_id: partial.summary_model_config_id,
         };
         const updated = await invoke<AppSettings>('update_settings', { req });
         this.settings = updated;
