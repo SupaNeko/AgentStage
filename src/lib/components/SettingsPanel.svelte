@@ -16,7 +16,7 @@
         modelConfigStore.load();
     });
 
-    let draft = $state({ global_min_trigger_interval: 30 });
+    let draft = $state({ global_min_trigger_interval: 30, summary_model_config_id: null as string | null });
     let saving = $state(false);
     let showAvatarModal = $state(false);
     let userAvatar = $state<string | null>(null);
@@ -41,6 +41,7 @@
         if (settingsStore.settings) {
             draft = {
                 global_min_trigger_interval: settingsStore.settings.global_min_trigger_interval,
+                summary_model_config_id: settingsStore.settings.summary_model_config_id,
             };
             quietHoursEnabled = (settingsStore.settings.quiet_hours_start ?? -1) >= 0;
             quietStart = minutesToTime(settingsStore.settings.quiet_hours_start ?? 0);
@@ -53,6 +54,7 @@
         try {
             await settingsStore.update({
                 global_min_trigger_interval: draft.global_min_trigger_interval,
+                summary_model_config_id: draft.summary_model_config_id,
             });
             if (quietHoursEnabled) {
                 await invoke('update_quiet_hours', {
@@ -142,6 +144,24 @@
                 </div>
             {:else if activeTab === 'models'}
                 <ModelConfigPanel />
+                <div class="px-6 pb-6">
+                    <div class="mt-6 pt-6 border-t border-border">
+                        <h4 class="font-medium mb-2">标题总结模型</h4>
+                        <select
+                            value={draft.summary_model_config_id ?? ''}
+                            onchange={(e) => draft.summary_model_config_id = e.currentTarget.value || null}
+                            class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
+                        >
+                            <option value="">自动选择（第一个可用模型）</option>
+                            {#each modelConfigStore.configs as cfg}
+                                <option value={cfg.id}>{cfg.name} ({cfg.model_name})</option>
+                            {/each}
+                        </select>
+                        <p class="text-xs text-text-secondary mt-1">
+                            重置会话时，用于总结聊天记录生成历史页面标题。不选则自动使用第一个配置了 API Key 的模型。
+                        </p>
+                    </div>
+                </div>
             {:else if activeTab === 'appearance'}
                 <div class="p-6">
                     <h3 class="text-lg font-semibold text-text mb-4">选择主题</h3>
