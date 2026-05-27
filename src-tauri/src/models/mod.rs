@@ -3,6 +3,7 @@ pub mod agent_relationship;
 pub mod chat_page;
 pub mod generate_persona;
 pub mod message;
+pub mod model_config;
 pub mod scheduled_task;
 pub mod session;
 pub mod settings;
