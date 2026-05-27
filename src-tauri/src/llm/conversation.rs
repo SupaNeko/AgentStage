@@ -191,16 +191,7 @@ mod tests {
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
-        conn.execute_batch(MIGRATION_V1).unwrap();
-        conn.execute_batch(MIGRATION_V2).unwrap();
-        conn.execute_batch(MIGRATION_V3).unwrap();
-        conn.execute_batch(MIGRATION_V4).unwrap();
-        conn.execute_batch(MIGRATION_V5).unwrap();
-        conn.execute_batch(MIGRATION_V7).unwrap();
-        conn.execute_batch(MIGRATION_V11).unwrap();
-        conn.execute_batch(MIGRATION_V12).unwrap();
-        conn.execute_batch(MIGRATION_V13).unwrap();
-        conn.execute_batch(MIGRATION_V15).unwrap();
+        conn.execute_batch(crate::db::schema::BASE_SCHEMA).unwrap();
         conn
     }
     fn make_db_state(conn: Connection) -> DbState { DbState(Arc::new(TokioMutex::new(conn))) }

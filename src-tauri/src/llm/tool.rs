@@ -860,20 +860,10 @@ mod tests {
     use tokio::sync::Mutex;
     use rusqlite::Connection;
     use crate::db::connection::DbState;
-    use crate::db::schema::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8, MIGRATION_V13};
-
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
-        conn.execute_batch(MIGRATION_V1).unwrap();
-        conn.execute_batch(MIGRATION_V2).unwrap();
-        conn.execute_batch(MIGRATION_V3).unwrap();
-        conn.execute_batch(MIGRATION_V4).unwrap();
-        conn.execute_batch(MIGRATION_V5).unwrap();
-        conn.execute_batch(MIGRATION_V6).unwrap();
-        conn.execute_batch(MIGRATION_V7).unwrap();
-        conn.execute_batch(MIGRATION_V8).unwrap();
-        conn.execute_batch(MIGRATION_V13).unwrap();
+        conn.execute_batch(crate::db::schema::BASE_SCHEMA).unwrap();
         conn
     }
 

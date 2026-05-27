@@ -108,6 +108,31 @@ pub const MIGRATIONS: &[Migration] = &[
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
     conn.execute(super::schema::CREATE_MIGRATIONS_TABLE, [])?;
 
+    let applied_count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM migrations",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_count == 0 {
+        // ========== 全新数据库：快速路径 ==========
+        // 直接执行完整最新 schema，无需逐个 ALTER TABLE
+        conn.execute_batch(super::schema::BASE_SCHEMA)?;
+
+        // 批量标记 V1~V20 已应用
+        let now = chrono::Utc::now().timestamp_millis();
+        let tx = conn.transaction()?;
+        for migration in MIGRATIONS {
+            tx.execute(
+                "INSERT INTO migrations (version, name, applied_at) VALUES (?1, ?2, ?3)",
+                (migration.version, migration.name, now),
+            )?;
+        }
+        tx.commit()?;
+        return Ok(());
+    }
+
+    // ========== 旧数据库：标准增量路径 ==========
     let applied_versions: HashSet<i32> = {
         let mut stmt = conn.prepare("SELECT version FROM migrations")?;
         let rows = stmt.query_map([], |row| row.get(0))?;

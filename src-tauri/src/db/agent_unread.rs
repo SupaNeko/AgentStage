@@ -54,12 +54,10 @@ pub fn get_agents_with_unread(conn: &Connection, session_id: &str) -> Result<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::schema::MIGRATION_V6;
-
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
-        conn.execute_batch(MIGRATION_V6).unwrap();
+        conn.execute_batch(crate::db::schema::BASE_SCHEMA).unwrap();
         conn
     }
 

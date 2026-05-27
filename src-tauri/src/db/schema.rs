@@ -608,3 +608,283 @@ pub const MIGRATION_V20: &str = r#"
 ALTER TABLE app_settings ADD COLUMN summary_model_config_id TEXT;
 "#;
 
+/// Latest consolidated schema for fresh databases.
+/// Creates all tables and indexes directly at the current version (V20).
+/// Table order respects foreign key dependencies.
+pub const BASE_SCHEMA: &str = r#"
+-- ========== 1. model_configs (referenced by agents) ==========
+CREATE TABLE model_configs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    base_url TEXT,
+    api_key_encrypted BLOB,
+    temperature REAL,
+    max_tokens INTEGER DEFAULT 2048,
+    top_p REAL DEFAULT 1.0,
+    presence_penalty REAL DEFAULT 0.0,
+    frequency_penalty REAL DEFAULT 0.0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- ========== 2. agents ==========
+CREATE TABLE agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    avatar_path TEXT,
+    detailed_persona TEXT NOT NULL,
+    simplified_persona TEXT NOT NULL,
+    personality TEXT,
+    scenario TEXT,
+    example_messages TEXT,
+    first_message TEXT,
+    creator_notes TEXT,
+    tags TEXT,
+    temperature REAL DEFAULT 0.7,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    model_config_id TEXT REFERENCES model_configs(id),
+    agent_temperature REAL,
+    long_term_memory TEXT DEFAULT '',
+    memory_enabled INTEGER DEFAULT 1 CHECK(memory_enabled IN (0, 1)),
+    proactive_enabled INTEGER DEFAULT 0,
+    proactive_min_minutes INTEGER DEFAULT 90,
+    proactive_max_minutes INTEGER DEFAULT 180
+);
+
+-- ========== 3. sessions ==========
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    session_type TEXT NOT NULL CHECK(session_type IN ('private', 'group')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_message_at INTEGER,
+    unread_count INTEGER DEFAULT 0,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER
+);
+
+-- ========== 4. private_sessions ==========
+CREATE TABLE private_sessions (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    participant_1_type TEXT NOT NULL CHECK(participant_1_type IN ('user', 'agent')),
+    participant_1_id TEXT NOT NULL,
+    participant_2_type TEXT NOT NULL CHECK(participant_2_type IN ('user', 'agent')),
+    participant_2_id TEXT NOT NULL,
+    message_limit INTEGER,
+    message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    agent_message_count INTEGER DEFAULT 0,
+    last_reset_at INTEGER DEFAULT 0,
+    current_chat_page INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    UNIQUE(participant_1_type, participant_1_id, participant_2_type, participant_2_id)
+);
+
+-- ========== 5. group_sessions ==========
+CREATE TABLE group_sessions (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    avatar_path TEXT,
+    mute_enabled INTEGER DEFAULT 1 CHECK(mute_enabled IN (0, 1)),
+    message_limit INTEGER,
+    message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    agent_message_count INTEGER DEFAULT 0,
+    last_reset_at INTEGER DEFAULT 0,
+    current_chat_page INTEGER DEFAULT 0,
+    is_dissolved INTEGER DEFAULT 0 CHECK(is_dissolved IN (0, 1)),
+    created_at INTEGER NOT NULL
+);
+
+-- ========== 6. group_members ==========
+CREATE TABLE group_members (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
+    participant_id TEXT NOT NULL,
+    joined_at INTEGER NOT NULL,
+    talkness REAL DEFAULT 0.5 CHECK(talkness >= 0 AND talkness <= 1),
+    is_active INTEGER DEFAULT 1 CHECK(is_active IN (0, 1)),
+    user_persona_id TEXT,
+    PRIMARY KEY (session_id, participant_id, participant_type)
+);
+
+-- ========== 7. messages ==========
+CREATE TABLE messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    sender_type TEXT NOT NULL CHECK(sender_type IN ('user', 'agent', 'system')),
+    sender_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    message_type TEXT DEFAULT 'text' CHECK(message_type IN ('text', 'image', 'file', 'tool_call', 'system_notice')),
+    tool_call_data TEXT,
+    generation_info TEXT,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    extra TEXT DEFAULT '{}',
+    page_index INTEGER DEFAULT 0
+);
+
+-- ========== 8. friendships ==========
+CREATE TABLE friendships (
+    id TEXT PRIMARY KEY,
+    agent_id_1 TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    agent_id_2 TEXT REFERENCES agents(id) ON DELETE CASCADE,
+    participant_type_2 TEXT DEFAULT 'agent' CHECK(participant_type_2 IN ('agent', 'user')),
+    created_at INTEGER NOT NULL,
+    source_session_id TEXT REFERENCES sessions(id)
+);
+
+-- ========== 9. trigger_states ==========
+CREATE TABLE trigger_states (
+    agent_id TEXT PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    last_trigger_time INTEGER DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    is_triggering INTEGER DEFAULT 0
+);
+
+-- ========== 10. app_settings (singleton) ==========
+CREATE TABLE app_settings (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    global_min_trigger_interval INTEGER DEFAULT 30,
+    private_message_limit_default INTEGER DEFAULT 20,
+    group_message_limit_default INTEGER DEFAULT 30,
+    private_limit_enabled_default INTEGER DEFAULT 1,
+    group_limit_enabled_default INTEGER DEFAULT 1,
+    theme TEXT DEFAULT 'default',
+    font_size TEXT DEFAULT 'medium' CHECK(font_size IN ('small', 'medium', 'large')),
+    language TEXT DEFAULT 'zh-CN',
+    enter_to_send INTEGER DEFAULT 1 CHECK(enter_to_send IN (0, 1)),
+    launch_on_startup INTEGER DEFAULT 0,
+    minimize_to_tray INTEGER DEFAULT 1,
+    active_persona_id TEXT,
+    default_avatar_path TEXT,
+    quiet_hours_start INTEGER DEFAULT 0,
+    quiet_hours_end INTEGER DEFAULT 480,
+    summary_model_config_id TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+-- ========== 11. user_personas ==========
+CREATE TABLE user_personas (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    avatar_path TEXT,
+    is_default INTEGER DEFAULT 0 CHECK(is_default IN (0, 1)),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- ========== 12. agent_message_views ==========
+CREATE TABLE agent_message_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    is_visible INTEGER DEFAULT 1 CHECK(is_visible IN (0, 1)),
+    viewed_at INTEGER,
+    created_at INTEGER NOT NULL
+);
+
+-- ========== 13. chat_pages ==========
+CREATE TABLE chat_pages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    page_index INTEGER NOT NULL DEFAULT 0,
+    name TEXT,
+    is_active INTEGER DEFAULT 1 CHECK(is_active IN (0, 1)),
+    message_count INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(session_id, page_index)
+);
+
+-- ========== 14. session_settings ==========
+CREATE TABLE session_settings (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    history_limit INTEGER,
+    message_limit INTEGER,
+    message_limit_enabled INTEGER DEFAULT 1 CHECK(message_limit_enabled IN (0, 1)),
+    mute_enabled INTEGER DEFAULT 0 CHECK(mute_enabled IN (0, 1)),
+    overflow_summary_threshold INTEGER DEFAULT 50,
+    last_overflow_summary_index INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- ========== 15. session_frozen_states ==========
+CREATE TABLE session_frozen_states (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    is_frozen INTEGER DEFAULT 0 CHECK(is_frozen IN (0, 1)),
+    frozen_at INTEGER,
+    updated_at INTEGER
+);
+
+-- ========== 16. agent_unread_queue ==========
+CREATE TABLE agent_unread_queue (
+    session_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (session_id, agent_id, message_id)
+);
+
+-- ========== 17. agent_relationships ==========
+CREATE TABLE agent_relationships (
+    observer_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('agent', 'user_persona')),
+    relationship_text TEXT NOT NULL DEFAULT '',
+    memory_text TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (observer_id, target_id, target_type),
+    FOREIGN KEY (observer_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+-- ========== 18. scheduled_tasks ==========
+CREATE TABLE scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    trigger_mode TEXT,
+    after_minutes INTEGER,
+    year INTEGER,
+    month INTEGER,
+    day INTEGER,
+    hour INTEGER,
+    minute INTEGER,
+    interval_minutes INTEGER,
+    next_trigger_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    target_session_id TEXT,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+-- ========== Indexes ==========
+CREATE INDEX idx_messages_session_time ON messages(session_id, created_at DESC);
+CREATE INDEX idx_messages_session_sender_time ON messages(session_id, sender_type, sender_id, created_at);
+CREATE INDEX idx_messages_system ON messages(sender_type, created_at) WHERE sender_type = 'system';
+CREATE INDEX idx_sessions_last_message ON sessions(last_message_at DESC) WHERE is_deleted = 0;
+CREATE INDEX idx_sessions_type ON sessions(session_type, last_message_at DESC) WHERE is_deleted = 0;
+CREATE INDEX idx_sessions_deleted ON sessions(deleted_at DESC) WHERE is_deleted = 1;
+CREATE INDEX idx_private_sessions_p1 ON private_sessions(participant_1_type, participant_1_id);
+CREATE INDEX idx_private_sessions_p2 ON private_sessions(participant_2_type, participant_2_id);
+CREATE INDEX idx_group_members_session ON group_members(session_id);
+CREATE INDEX idx_group_members_agent ON group_members(participant_id, participant_type);
+CREATE INDEX idx_friendships_a1 ON friendships(agent_id_1);
+CREATE INDEX idx_friendships_a2 ON friendships(agent_id_2);
+CREATE INDEX idx_friendships_type ON friendships(participant_type_2);
+CREATE INDEX idx_agent_views_agent_session ON agent_message_views(agent_id, session_id, created_at DESC);
+CREATE INDEX idx_agent_views_message ON agent_message_views(message_id);
+CREATE INDEX idx_chat_pages_session ON chat_pages(session_id);
+CREATE INDEX idx_agent_unread_session_agent ON agent_unread_queue(session_id, agent_id);
+CREATE INDEX idx_agent_unread_agent ON agent_unread_queue(agent_id);
+CREATE INDEX idx_agent_relationships_observer ON agent_relationships(observer_id);
+CREATE INDEX idx_agent_relationships_target ON agent_relationships(target_id, target_type);
+CREATE INDEX idx_scheduled_tasks_next_trigger ON scheduled_tasks(next_trigger_at) WHERE is_active = 1;
+"#;

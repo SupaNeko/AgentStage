@@ -237,24 +237,7 @@ mod tests {
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V1).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V2).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V3).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V4).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V5).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V6).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V7).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V8).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V9).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V11).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V12).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V14).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V15).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V16).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V17).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V18).unwrap();
-        conn.execute_batch(crate::db::schema::MIGRATION_V19).unwrap();
+        conn.execute_batch(crate::db::schema::BASE_SCHEMA).unwrap();
         conn
     }
 
