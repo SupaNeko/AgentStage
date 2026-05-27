@@ -36,9 +36,12 @@
     let editingPageIndex = $state<number | null>(null);
     let editingName = $state('');
 
-    function startEditPage(page: ChatPage) {
-        editingPageIndex = page.page_index;
-        editingName = page.name;
+    function startEditPage() {
+        const page = historyStore.chatPages.find(p => p.page_index === historyStore.selectedPageIndex);
+        if (page) {
+            editingPageIndex = page.page_index;
+            editingName = page.name;
+        }
     }
 
     async function savePageName(pageIndex: number) {
@@ -587,38 +590,40 @@
                 </div>
                 {#if mode === 'history' && historyStore.chatPages.length > 0}
                     <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                        <div class="flex items-center gap-1 bg-bg border border-border rounded-lg px-2 py-1">
-                            {#each historyStore.chatPages as page (page.page_index)}
-                                {#if editingPageIndex === page.page_index}
-                                    <input
-                                        bind:value={editingName}
-                                        onkeydown={(e) => handleEditKey(e, page.page_index)}
-                                        onblur={() => savePageName(page.page_index)}
-                                        class="text-sm px-1 py-0.5 bg-bg border border-primary rounded w-32 focus:outline-none"
-                                        autofocus
-                                    />
-                                {:else}
-                                    <button
-                                        class="text-sm px-2 py-0.5 rounded transition-colors {historyStore.selectedPageIndex === page.page_index ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-gray-100'}"
-                                        onclick={() => {
-                                            historyStore.selectPage(page.page_index);
-                                            if (historyStore.selectedSessionId) {
-                                                messageStore.loadMessages(historyStore.selectedSessionId, page.page_index);
-                                            }
-                                        }}
-                                    >
-                                        {page.name}
-                                    </button>
-                                    <button
-                                        onclick={() => startEditPage(page)}
-                                        class="p-0.5 text-text-secondary hover:text-text transition-colors"
-                                        title="编辑标题"
-                                    >
-                                        <Pencil size={12} />
-                                    </button>
-                                {/if}
-                            {/each}
-                        </div>
+                        {#if editingPageIndex !== null}
+                            <input
+                                bind:value={editingName}
+                                onkeydown={(e) => handleEditKey(e, editingPageIndex!)}
+                                onblur={() => savePageName(editingPageIndex!)}
+                                class="text-sm px-2 py-1 bg-bg border border-primary rounded-lg w-40 focus:outline-none"
+                                autofocus
+                            />
+                        {:else}
+                            <select
+                                value={historyStore.selectedPageIndex ?? 0}
+                                onchange={(e) => {
+                                    const idx = Number((e.target as HTMLSelectElement).value);
+                                    historyStore.selectPage(idx);
+                                    if (historyStore.selectedSessionId) {
+                                        messageStore.loadMessages(historyStore.selectedSessionId, idx);
+                                    }
+                                }}
+                                class="px-3 py-1.5 bg-bg border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px]"
+                            >
+                                {#each historyStore.chatPages as page (page.page_index)}
+                                    <option value={page.page_index}>
+                                        {page.name} #{page.page_index + 1} — {formatTime(page.updated_at)}
+                                    </option>
+                                {/each}
+                            </select>
+                            <button
+                                onclick={startEditPage}
+                                class="p-1.5 text-text-secondary hover:text-text hover:bg-bg rounded-lg transition-colors"
+                                title="编辑标题"
+                            >
+                                <Pencil size={14} />
+                            </button>
+                        {/if}
                     </div>
                 {/if}
                 <button
