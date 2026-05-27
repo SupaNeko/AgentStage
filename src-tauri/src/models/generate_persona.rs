@@ -13,7 +13,7 @@ pub struct ModelConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct GeneratePersonaRequest {
     pub agent_id: Option<String>,
-    pub model_config: Option<ModelConfig>,
+    pub model_config_id: Option<String>,
     pub reference_character: Option<String>,
     pub supplement: Option<String>,
 }

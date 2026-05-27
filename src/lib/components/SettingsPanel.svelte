@@ -5,12 +5,15 @@
     import { X, User } from 'lucide-svelte';
     import { resolveAvatarUrl } from '$lib/utils';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
+    import ModelConfigPanel from './ModelConfigPanel.svelte';
     import { themeStore } from '$lib/stores/themeStore.svelte';
+    import { modelConfigStore } from '$lib/stores/modelConfigStore.svelte';
     import { convertFileSrc } from '@tauri-apps/api/core';
     import { onMount } from 'svelte';
 
     onMount(() => {
         themeStore.loadThemes();
+        modelConfigStore.load();
     });
 
     let draft = $state({ global_min_trigger_interval: 30 });
@@ -89,6 +92,7 @@
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'general' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'general'}>通用</button>
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'trigger' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'trigger'}>触发设置</button>
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'appearance' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'appearance'}>主题</button>
+            <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'models' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'models'}>模型</button>
         </div>
         <div class="flex-1 overflow-y-auto">
             {#if activeTab === 'general'}
@@ -136,6 +140,8 @@
                         {/if}
                     </div>
                 </div>
+            {:else if activeTab === 'models'}
+                <ModelConfigPanel />
             {:else if activeTab === 'appearance'}
                 <div class="p-6">
                     <h3 class="text-lg font-semibold text-text mb-4">选择主题</h3>

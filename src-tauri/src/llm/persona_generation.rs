@@ -183,9 +183,9 @@ pub async fn generate(
 ) -> Result<GeneratePersonaResponse, String> {
     // 1. Parameter validation
     let has_agent = req.agent_id.is_some();
-    let has_model = req.model_config.is_some();
-    if has_agent == has_model {
-        return Err("必须且只能传 agent_id 或 model_config 中的一个".to_string());
+    let has_model_id = req.model_config_id.is_some();
+    if has_agent == has_model_id {
+        return Err("必须且只能传 agent_id 或 model_config_id 中的一个".to_string());
     }
     let has_reference = req.reference_character.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
     let has_supplement = req.supplement.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
@@ -202,15 +202,32 @@ pub async fn generate(
         let llm_config = crate::db::agent::resolve_llm_config(&conn, &agent)
             .map_err(|e| format!("该角色未配置模型信息: {}", e))?;
         ModelConfig {
-            model_provider: "openai".to_string(), // provider info now comes from model_config but not needed by OpenAiCompatibleProvider
+            model_provider: "openai".to_string(),
             model_name: llm_config.model_name,
             base_url: llm_config.base_url,
             api_key: llm_config.api_key,
             temperature: llm_config.temperature,
             max_tokens: llm_config.max_tokens,
         }
+    } else if let Some(ref mc_id) = req.model_config_id {
+        let conn = db_state.0.lock().await;
+        let mc = crate::db::model_config::get_by_id(&conn, mc_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "模型配置不存在".to_string())?;
+        let api_key = mc.api_key_encrypted
+            .as_ref()
+            .and_then(|enc| crate::crypto::decrypt(enc).ok())
+            .ok_or("解密 API Key 失败")?;
+        ModelConfig {
+            model_provider: mc.provider,
+            model_name: mc.model_name,
+            base_url: mc.base_url,
+            api_key,
+            temperature: mc.temperature,
+            max_tokens: mc.max_tokens,
+        }
     } else {
-        req.model_config.clone().unwrap()
+        return Err("必须提供 agent_id 或 model_config_id".to_string());
     };
 
     let provider = provider_from_config(&model_config);

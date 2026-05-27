@@ -1,18 +1,17 @@
 <script lang="ts">
     import { invoke } from '@tauri-apps/api/core';
-    import { Bot, Trash2, Save, Loader2, MessageSquare, Sparkles, Wifi, Import, Eye, EyeOff } from 'lucide-svelte';
+    import { Bot, Trash2, Save, Loader2, MessageSquare, Sparkles } from 'lucide-svelte';
     import { appState } from '$lib/stores/appState.svelte';
     import { agentStore } from '$lib/stores/agentStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
+    import { modelConfigStore } from '$lib/stores/modelConfigStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
     import { resolveAvatarUrl } from '$lib/utils';
-    import { PROVIDER_DEFAULTS } from '$lib/modelConfig';
     import type { Agent } from '$lib/types';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import PersonaGenerateModal from './PersonaGenerateModal.svelte';
     import AgentRelationshipPanel from './AgentRelationshipPanel.svelte';
-    import ImportModelConfigModal from './ImportModelConfigModal.svelte';
     import AgentMemoryPanel from './AgentMemoryPanel.svelte';
     import AgentTimerPanel from './AgentTimerPanel.svelte';
 
@@ -23,10 +22,6 @@
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
     let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer'>('config');
-    let testingApi = $state(false);
-    let testResult = $state<{ success: boolean; latencyMs: number; message: string } | null>(null);
-    let showImportModal = $state(false);
-    let apiKeyVisible = $state(false);
 
     // Proactive session state
     let proactiveEnabled = $state(false);
@@ -38,56 +33,11 @@
         name: '',
         detailed_persona: '',
         simplified_persona: '',
-        model_provider: 'openai',
-        model_name: '',
-        base_url: '',
-        api_key: '',
-        temperature: 0.7,
-        max_tokens: 2048,
-        thinking_mode: false,
+        model_config_id: null as string | null,
+        temperature: null as number | null,
         long_term_memory: '',
         memory_enabled: true,
     });
-
-    function handleProviderChange() {
-        const defaults = PROVIDER_DEFAULTS[form.model_provider] ?? PROVIDER_DEFAULTS.custom;
-        form.model_name = defaults.modelName;
-        form.base_url = defaults.baseUrl;
-        testResult = null;
-    }
-
-    async function handleTestApi() {
-        if (!form.api_key) {
-            toastStore.show('请先填写 API Key', 'error', 3000);
-            return;
-        }
-        if (!form.model_name) {
-            toastStore.show('请先填写模型名称', 'error', 3000);
-            return;
-        }
-        testingApi = true;
-        testResult = null;
-        try {
-            const result = await invoke<{ success: boolean; latency_ms: number; message: string }>('test_api_connection', {
-                req: {
-                    model_provider: form.model_provider,
-                    model_name: form.model_name,
-                    base_url: form.base_url || null,
-                    api_key: form.api_key,
-                }
-            });
-            testResult = { success: result.success, latencyMs: result.latency_ms, message: result.message };
-            if (result.success) {
-                toastStore.show(`连接成功 (${result.latency_ms}ms)`, 'success', 3000);
-            } else {
-                toastStore.show(`连接失败: ${result.message}`, 'error', 5000);
-            }
-        } catch (err: any) {
-            toastStore.show('测试失败: ' + String(err), 'error', 5000);
-        } finally {
-            testingApi = false;
-        }
-    }
 
     async function loadAgent(id: string) {
         logger.debug('[DEBUG AgentDetail.loadAgent]', { id });
@@ -98,19 +48,12 @@
             agent = result;
             logger.debug('[DEBUG AgentDetail.loadAgent] success', { id });
             if (result) {
-                const provider = result.model_provider || 'openai';
-                const defaults = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.custom;
                 form = {
                     name: result.name,
                     detailed_persona: result.detailed_persona,
                     simplified_persona: result.simplified_persona,
-                    model_provider: provider,
-                    model_name: result.model_name || defaults.modelName,
-                    base_url: result.base_url || defaults.baseUrl,
-                    api_key: result.api_key || '',
+                    model_config_id: result.model_config_id,
                     temperature: result.temperature,
-                    max_tokens: result.max_tokens,
-                    thinking_mode: result.thinking_mode ?? false,
                     long_term_memory: result.long_term_memory || '',
                     memory_enabled: result.memory_enabled ?? true,
                 };
@@ -138,13 +81,8 @@
                 name: form.name,
                 detailed_persona: form.detailed_persona,
                 simplified_persona: form.simplified_persona,
-                model_provider: form.model_provider,
-                model_name: form.model_name,
-                base_url: form.base_url || null,
+                modelConfigId: form.model_config_id,
                 temperature: form.temperature,
-                max_tokens: form.max_tokens,
-                thinking_mode: form.thinking_mode,
-                api_key: form.api_key,
             };
             const updated = await invoke<Agent>('update_agent', { req: updateReq });
             agent = updated;
@@ -178,18 +116,6 @@
             logger.error('Failed to delete agent:', err);
             error = '删除失败: ' + String(err);
         }
-    }
-
-    function handleImportModelConfig(sourceAgent: Agent) {
-        form.model_provider = sourceAgent.model_provider || 'openai';
-        form.model_name = sourceAgent.model_name || '';
-        form.base_url = sourceAgent.base_url || '';
-        form.api_key = sourceAgent.api_key || '';
-        form.temperature = sourceAgent.temperature;
-        form.max_tokens = sourceAgent.max_tokens;
-        form.thinking_mode = sourceAgent.thinking_mode ?? false;
-        testResult = null;
-        toastStore.show(`已导入 "${sourceAgent.name}" 的模型配置`, 'success', 2000);
     }
 
     async function handleStartChat() {
@@ -334,102 +260,42 @@
 
                     <!-- Model Config -->
                     <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wide">模型配置</h3>
-                            <button
-                                type="button"
-                                onclick={() => showImportModal = true}
-                                class="flex items-center gap-1.5 text-xs text-primary hover:text-primary-dark transition-colors"
-                            >
-                                <Import size={13} />
-                                <span>从其他角色导入</span>
-                            </button>
-                        </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium mb-1">模型提供商 <span class="text-red-500">*</span></label>
-                            <select bind:value={form.model_provider} onchange={handleProviderChange}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field">
-                                <option value="openai">OpenAI</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="google">Google</option>
-                                <option value="kimi">Kimi (Moonshot)</option>
-                                <option value="minimax">MiniMax</option>
-                                <option value="custom">自定义</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">模型名称 <span class="text-red-500">*</span></label>
-                            <input type="text" bind:value={form.model_name}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
-                                placeholder="gpt-4o, claude-3-sonnet, kimi-k2..." />
-                        </div>
-                        <div class="col-span-2">
-                            <label class="block text-sm font-medium mb-1">Base URL</label>
-                            <input type="text" bind:value={form.base_url}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
-                                placeholder="可选，默认使用官方地址" />
-                        </div>
-                        <div class="col-span-2 flex gap-3 items-end">
-                            <div class="flex-1">
-                                <label class="block text-sm font-medium mb-1">API Key</label>
-                                <div class="relative">
-                                    <input type={apiKeyVisible ? 'text' : 'password'} bind:value={form.api_key}
-                                        class="w-full px-3 py-2 pr-10 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
-                                    <button type="button"
-                                        onclick={() => apiKeyVisible = !apiKeyVisible}
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary transition-colors"
-                                        title={apiKeyVisible ? '隐藏' : '显示'}>
-                                        {#if apiKeyVisible}
-                                            <EyeOff size={16} />
-                                        {:else}
-                                            <Eye size={16} />
-                                        {/if}
-                                    </button>
-                                </div>
-                            </div>
-                            <button type="button" onclick={handleTestApi} disabled={testingApi}
-                                class="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border text-text-primary rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm whitespace-nowrap">
-                                {#if testingApi}
-                                    <Loader2 size={14} class="animate-spin" />
-                                    <span>测试中...</span>
-                                {:else}
-                                    <Wifi size={14} />
-                                    <span>测试连接</span>
-                                {/if}
-                            </button>
-                        </div>
-                        {#if testResult}
-                            <div class="col-span-2">
-                                {#if testResult.success}
-                                    <div class="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">
-                                        <span>✅</span>
-                                        <span>连接成功 ({testResult.latencyMs}ms)</span>
-                                    </div>
-                                {:else}
-                                    <div class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                                        <span>❌</span>
-                                        <span>{testResult.message}</span>
-                                    </div>
+                        <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">模型配置</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">选择模型 <span class="text-red-500">*</span></label>
+                                <select
+                                    bind:value={form.model_config_id}
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
+                                >
+                                    <option value={null}>请选择模型配置</option>
+                                    {#each modelConfigStore.configs as config}
+                                        <option value={config.id}>{config.name} ({config.provider} / {config.model_name})</option>
+                                    {/each}
+                                </select>
+                                {#if modelConfigStore.configs.length === 0 && !modelConfigStore.loading}
+                                    <p class="text-xs text-text-secondary mt-1">
+                                        暂无模型配置，请先在设置-模型中添加
+                                    </p>
                                 {/if}
                             </div>
-                        {/if}
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Temperature</label>
-                            <input type="number" bind:value={form.temperature} min={0} max={2} step={0.1}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
+                            <div>
+                                <label class="block text-sm font-medium mb-1">Temperature</label>
+                                <input
+                                    type="number"
+                                    value={form.temperature ?? ''}
+                                    oninput={(e) => {
+                                        const val = (e.target as HTMLInputElement).value;
+                                        form.temperature = val === '' ? null : parseFloat(val);
+                                    }}
+                                    min={0}
+                                    max={2}
+                                    step={0.1}
+                                    placeholder="使用模型默认值"
+                                    class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium mb-1">Max Tokens</label>
-                            <input type="number" bind:value={form.max_tokens} min={1} max={32768}
-                                class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface input-field" />
-                        </div>
-                        <div class="col-span-2 flex items-center gap-2">
-                            <input id="ad-thinking" type="checkbox" bind:checked={form.thinking_mode}
-                                class="w-4 h-4 rounded border-border text-primary focus:ring-primary" />
-                            <label for="ad-thinking" class="text-sm">启用思考模式（如模型支持）</label>
-                        </div>
-                    </div>
                     </div>
 
                     <!-- Proactive Session -->
@@ -521,13 +387,5 @@
             form.detailed_persona = result.detailed_persona;
             form.simplified_persona = result.simplified_persona;
         }}
-    />
-{/if}
-
-{#if agent}
-    <ImportModelConfigModal
-        open={showImportModal}
-        currentAgentId={agent.id}
-        onImport={handleImportModelConfig}
     />
 {/if}

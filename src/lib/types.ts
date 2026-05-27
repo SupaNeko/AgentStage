@@ -1,3 +1,19 @@
+export interface ModelConfig {
+    id: string;
+    name: string;
+    provider: string;
+    model_name: string;
+    base_url: string | null;
+    api_key: string;
+    temperature: number | null;
+    max_tokens: number;
+    top_p: number;
+    presence_penalty: number;
+    frequency_penalty: number;
+    created_at: number;
+    updated_at: number;
+}
+
 export interface Agent {
     id: string;
     name: string;
@@ -10,18 +26,11 @@ export interface Agent {
     first_message: string | null;
     creator_notes: string | null;
     tags: string | null;
-    model_provider: string | null;
+    model_config_id: string | null;
     model_name: string | null;
-    base_url: string | null;
-    temperature: number;
-    max_tokens: number;
-    top_p: number;
-    presence_penalty: number;
-    frequency_penalty: number;
-    api_key: string;
+    temperature: number | null;
     long_term_memory?: string;
     memory_enabled?: boolean;
-    thinking_mode?: boolean;
     proactive_enabled?: number;
     proactive_min_minutes?: number;
     proactive_max_minutes?: number;
