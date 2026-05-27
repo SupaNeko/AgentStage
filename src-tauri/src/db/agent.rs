@@ -39,6 +39,8 @@ pub fn resolve_llm_config(conn: &Connection, agent: &Agent) -> Result<AgentLlmCo
 
 const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_config_id, agent_temperature, long_term_memory, memory_enabled, proactive_enabled, proactive_min_minutes, proactive_max_minutes, is_deleted, deleted_at, created_at, updated_at";
 
+const SELECT_COLUMNS_PREFIXED: &str = "a.id, a.name, a.avatar_path, a.detailed_persona, a.simplified_persona, a.personality, a.scenario, a.example_messages, a.first_message, a.creator_notes, a.tags, a.model_config_id, a.agent_temperature, a.long_term_memory, a.memory_enabled, a.proactive_enabled, a.proactive_min_minutes, a.proactive_max_minutes, a.is_deleted, a.deleted_at, a.created_at, a.updated_at";
+
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
         id: row.get(0)?,
@@ -211,7 +213,7 @@ fn row_to_agent_response(row: &Row) -> Result<AgentResponse> {
 pub fn list_all_with_model_name(conn: &Connection) -> Result<Vec<AgentResponse>> {
     let sql = format!(
         "SELECT {}, mc.model_name as mc_model_name FROM agents a LEFT JOIN model_configs mc ON a.model_config_id = mc.id WHERE a.is_deleted = 0 ORDER BY a.created_at DESC",
-        SELECT_COLUMNS
+        SELECT_COLUMNS_PREFIXED
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_agent_response)?;
@@ -221,7 +223,7 @@ pub fn list_all_with_model_name(conn: &Connection) -> Result<Vec<AgentResponse>>
 pub fn get_by_id_with_model_name(conn: &Connection, id: &str) -> Result<Option<AgentResponse>> {
     let sql = format!(
         "SELECT {}, mc.model_name as mc_model_name FROM agents a LEFT JOIN model_configs mc ON a.model_config_id = mc.id WHERE a.id = ?1 AND a.is_deleted = 0",
-        SELECT_COLUMNS
+        SELECT_COLUMNS_PREFIXED
     );
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query_map([id], row_to_agent_response)?;
