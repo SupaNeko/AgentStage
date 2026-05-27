@@ -13,18 +13,10 @@ pub struct Agent {
     pub first_message: Option<String>,
     pub creator_notes: Option<String>,
     pub tags: Option<String>,
-    pub model_provider: Option<String>,
-    pub model_name: Option<String>,
-    pub base_url: Option<String>,
-    pub temperature: f64,
-    pub max_tokens: i32,
-    pub top_p: f64,
-    pub presence_penalty: f64,
-    pub frequency_penalty: f64,
+    pub model_config_id: Option<String>,
+    pub temperature: Option<f64>,
     pub long_term_memory: Option<String>,
     pub memory_enabled: bool,
-    pub api_key_encrypted: Option<Vec<u8>>,
-    pub thinking_mode: bool,
     pub proactive_enabled: bool,
     pub proactive_min_minutes: i32,
     pub proactive_max_minutes: i32,
@@ -47,18 +39,11 @@ pub struct AgentResponse {
     pub first_message: Option<String>,
     pub creator_notes: Option<String>,
     pub tags: Option<String>,
-    pub model_provider: Option<String>,
+    pub model_config_id: Option<String>,
     pub model_name: Option<String>,
-    pub base_url: Option<String>,
-    pub temperature: f64,
-    pub max_tokens: i32,
-    pub top_p: f64,
-    pub presence_penalty: f64,
-    pub frequency_penalty: f64,
+    pub temperature: Option<f64>,
     pub long_term_memory: Option<String>,
     pub memory_enabled: bool,
-    pub api_key: String,
-    pub thinking_mode: bool,
     pub proactive_enabled: bool,
     pub proactive_min_minutes: i32,
     pub proactive_max_minutes: i32,
@@ -70,10 +55,6 @@ pub struct AgentResponse {
 
 impl From<Agent> for AgentResponse {
     fn from(agent: Agent) -> Self {
-        let api_key = agent.api_key_encrypted
-            .as_ref()
-            .and_then(|enc| crate::crypto::decrypt(enc).ok())
-            .unwrap_or_default();
         Self {
             id: agent.id,
             name: agent.name,
@@ -86,18 +67,11 @@ impl From<Agent> for AgentResponse {
             first_message: agent.first_message,
             creator_notes: agent.creator_notes,
             tags: agent.tags,
-            model_provider: agent.model_provider,
-            model_name: agent.model_name,
-            base_url: agent.base_url,
+            model_config_id: agent.model_config_id,
+            model_name: None,
             temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            top_p: agent.top_p,
-            presence_penalty: agent.presence_penalty,
-            frequency_penalty: agent.frequency_penalty,
             long_term_memory: agent.long_term_memory,
             memory_enabled: agent.memory_enabled,
-            api_key,
-            thinking_mode: agent.thinking_mode,
             proactive_enabled: agent.proactive_enabled,
             proactive_min_minutes: agent.proactive_min_minutes,
             proactive_max_minutes: agent.proactive_max_minutes,
@@ -121,13 +95,8 @@ pub struct CreateAgentRequest {
     pub first_message: Option<String>,
     pub creator_notes: Option<String>,
     pub tags: Option<String>,
-    pub model_provider: String,
-    pub model_name: String,
-    pub base_url: Option<String>,
-    pub api_key: String,
+    pub model_config_id: String,
     pub temperature: Option<f64>,
-    pub max_tokens: Option<i32>,
-    pub thinking_mode: Option<bool>,
     pub long_term_memory: Option<String>,
     pub memory_enabled: Option<bool>,
 }
@@ -145,13 +114,8 @@ pub struct UpdateAgentRequest {
     pub first_message: Option<String>,
     pub creator_notes: Option<String>,
     pub tags: Option<String>,
-    pub model_provider: Option<String>,
-    pub model_name: Option<String>,
-    pub base_url: Option<String>,
-    pub api_key: Option<String>,
-    pub temperature: Option<f64>,
-    pub max_tokens: Option<i32>,
-    pub thinking_mode: Option<bool>,
+    pub model_config_id: Option<String>,
+    pub temperature: Option<Option<f64>>,
     pub long_term_memory: Option<String>,
     pub memory_enabled: Option<bool>,
 }
@@ -159,19 +123,4 @@ pub struct UpdateAgentRequest {
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeleteAgentRequest {
     pub id: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct TestApiConnectionRequest {
-    pub model_provider: String,
-    pub model_name: String,
-    pub base_url: Option<String>,
-    pub api_key: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct TestApiConnectionResponse {
-    pub success: bool,
-    pub latency_ms: u64,
-    pub message: String,
 }
