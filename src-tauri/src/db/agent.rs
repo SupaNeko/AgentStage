@@ -251,6 +251,10 @@ mod tests {
         conn.execute_batch(crate::db::schema::MIGRATION_V13).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V14).unwrap();
         conn.execute_batch(crate::db::schema::MIGRATION_V15).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V16).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V17).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V18).unwrap();
+        conn.execute_batch(crate::db::schema::MIGRATION_V19).unwrap();
         conn
     }
 

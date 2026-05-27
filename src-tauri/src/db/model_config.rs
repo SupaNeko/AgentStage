@@ -137,7 +137,7 @@ pub fn delete(conn: &Connection, id: &str) -> Result<bool> {
 
 pub fn count_referencing_agents(conn: &Connection, id: &str) -> Result<i32> {
     let mut stmt = conn.prepare(
-        "SELECT COUNT(*) FROM agents WHERE model_config_id = ?1 AND is_deleted = 0"
+        "SELECT COUNT(*) FROM agents WHERE model_config_id = ?1"
     )?;
     let count: i32 = stmt.query_row([id], |row| row.get(0))?;
     Ok(count)
