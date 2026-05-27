@@ -3,7 +3,7 @@ use crate::db::connection::{get_db, DbState};
 use crate::db::agent as agent_repo;
 use crate::db::agent_relationship;
 use crate::db::user_persona as user_persona_repo;
-use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest, DeleteAgentRequest, TestApiConnectionRequest, TestApiConnectionResponse};
+use crate::models::agent::{AgentResponse, CreateAgentRequest, UpdateAgentRequest, DeleteAgentRequest};
 
 #[tauri::command]
 pub async fn create_agent(state: State<'_, DbState>, req: CreateAgentRequest) -> Result<AgentResponse, String> {
@@ -25,23 +25,23 @@ pub async fn get_agent(state: State<'_, DbState>, id: String) -> Result<Option<A
     crate::logger::debug(&format!("[DEBUG get_agent] id={}", id));
 
     let conn = get_db(&state).await?;
-    let agent = agent_repo::get_by_id(&conn, &id).map_err(|e| e.to_string())?;
+    let agent = agent_repo::get_by_id_with_model_name(&conn, &id).map_err(|e| e.to_string())?;
     if let Some(ref a) = agent {
         crate::logger::debug(&format!(
             "[DEBUG get_agent] id={}, proactive_enabled={}, min={}, max={}",
             a.id, a.proactive_enabled, a.proactive_min_minutes, a.proactive_max_minutes
         ));
     }
-    Ok(agent.map(AgentResponse::from))
+    Ok(agent)
 }
 
 #[tauri::command]
 pub async fn list_agents(state: State<'_, DbState>) -> Result<Vec<AgentResponse>, String> {
     let conn = get_db(&state).await?;
-    let agents = agent_repo::list_all(&conn).map_err(|e| e.to_string())?;
+    let agents = agent_repo::list_all_with_model_name(&conn).map_err(|e| e.to_string())?;
 
     crate::logger::debug(&format!("[DEBUG list_agents] returned {} agents", agents.len()));
-    Ok(agents.into_iter().map(AgentResponse::from).collect())
+    Ok(agents)
 }
 
 #[tauri::command]
@@ -88,71 +88,4 @@ pub async fn reset_agent_memory(
 
     crate::logger::debug(&format!("[DEBUG reset_agent_memory] success agent_id={}", agent_id));
     Ok(())
-}
-
-#[tauri::command]
-pub async fn test_api_connection(req: TestApiConnectionRequest) -> Result<TestApiConnectionResponse, String> {
-    crate::logger::debug(&format!("[DEBUG test_api_connection] provider={} model={}", req.model_provider, req.model_name));
-
-    let start = std::time::Instant::now();
-
-    let base_url = req.base_url.unwrap_or_else(|| match req.model_provider.as_str() {
-        "openai" => "https://api.openai.com/v1".to_string(),
-        "anthropic" => "https://api.anthropic.com/v1".to_string(),
-        "google" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
-        "kimi" => "https://api.moonshot.cn/v1".to_string(),
-        "minimax" => "https://api.minimax.chat/v1".to_string(),
-        _ => "https://api.openai.com/v1".to_string(),
-    });
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
-
-    let body = serde_json::json!({
-        "model": req.model_name,
-        "messages": [{"role": "user", "content": "hi"}],
-        "max_tokens": 1
-    });
-
-    let url = format!("{}/chat/completions", base_url);
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", req.api_key))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
-
-    let latency_ms = start.elapsed().as_millis() as u64;
-    let status = response.status();
-
-    if status.is_success() {
-        crate::logger::debug(&format!("[DEBUG test_api_connection] success latency={}ms", latency_ms));
-        Ok(TestApiConnectionResponse {
-            success: true,
-            latency_ms,
-            message: "连接成功".to_string(),
-        })
-    } else {
-        let text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        let err_msg = if status.as_u16() == 401 {
-            "API Key 无效或已过期".to_string()
-        } else if status.as_u16() == 404 {
-            "模型不存在，请检查模型名称".to_string()
-        } else if status.as_u16() == 429 {
-            "请求过于频繁，请稍后再试".to_string()
-        } else {
-            format!("HTTP {}: {}", status, text)
-        };
-        crate::logger::debug(&format!("[DEBUG test_api_connection] failed status={} msg={}", status, err_msg));
-        Ok(TestApiConnectionResponse {
-            success: false,
-            latency_ms,
-            message: err_msg,
-        })
-    }
 }
