@@ -18,6 +18,7 @@ pub struct AppSettings {
     pub default_avatar_path: Option<String>,
     pub quiet_hours_start: i32,
     pub quiet_hours_end: i32,
+    pub summary_model_config_id: Option<String>,
     pub updated_at: i64,
 }
 
@@ -38,6 +39,7 @@ pub struct SettingsResponse {
     pub default_avatar_path: Option<String>,
     pub quiet_hours_start: i32,
     pub quiet_hours_end: i32,
+    pub summary_model_config_id: Option<String>,
 }
 
 impl From<AppSettings> for SettingsResponse {
@@ -58,6 +60,7 @@ impl From<AppSettings> for SettingsResponse {
             default_avatar_path: s.default_avatar_path,
             quiet_hours_start: s.quiet_hours_start,
             quiet_hours_end: s.quiet_hours_end,
+            summary_model_config_id: s.summary_model_config_id,
         }
     }
 }
@@ -77,4 +80,5 @@ pub struct UpdateAppSettingsRequest {
     pub minimize_to_tray: Option<bool>,
     pub active_persona_id: Option<String>,
     pub default_avatar_path: Option<String>,
+    pub summary_model_config_id: Option<String>,
 }

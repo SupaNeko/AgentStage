@@ -16,3 +16,10 @@ pub struct ChatPage {
 pub struct ListChatPagesRequest {
     pub session_id: String,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateChatPageNameRequest {
+    pub session_id: String,
+    pub page_index: i32,
+    pub name: String,
+}

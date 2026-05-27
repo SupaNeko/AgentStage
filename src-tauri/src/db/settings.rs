@@ -7,7 +7,7 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 group_message_limit_default, private_limit_enabled_default, \
                 group_limit_enabled_default, theme, font_size, language, \
                 enter_to_send, launch_on_startup, minimize_to_tray, \
-                active_persona_id, default_avatar_path, quiet_hours_start, quiet_hours_end, updated_at \
+                active_persona_id, default_avatar_path, quiet_hours_start, quiet_hours_end, summary_model_config_id, updated_at \
          FROM app_settings WHERE id = 1",
         [],
         |row| {
@@ -28,7 +28,8 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 default_avatar_path: row.get(13).ok(),
                 quiet_hours_start: row.get(14)?,
                 quiet_hours_end: row.get(15)?,
-                updated_at: row.get(16)?,
+                summary_model_config_id: row.get(16).ok(),
+                updated_at: row.get(17)?,
             })
         },
     );
@@ -57,7 +58,7 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
             group_limit_enabled_default = ?5, theme = ?6, font_size = ?7,
             language = ?8, enter_to_send = ?9, launch_on_startup = ?10,
             minimize_to_tray = ?11, active_persona_id = ?12,
-            default_avatar_path = ?13, quiet_hours_start = ?14, quiet_hours_end = ?15, updated_at = ?16 WHERE id = 1",
+            default_avatar_path = ?13, quiet_hours_start = ?14, quiet_hours_end = ?15, summary_model_config_id = ?16, updated_at = ?17 WHERE id = 1",
         rusqlite::params![
             req.global_min_trigger_interval.unwrap_or(current.global_min_trigger_interval),
             req.private_message_limit_default.unwrap_or(current.private_message_limit_default),
@@ -74,6 +75,7 @@ pub fn update_settings(conn: &Connection, req: &crate::models::settings::UpdateA
             req.default_avatar_path.as_deref().or(current.default_avatar_path.as_deref()),
             current.quiet_hours_start,
             current.quiet_hours_end,
+            req.summary_model_config_id.as_deref().or(current.summary_model_config_id.as_deref()),
             now,
         ],
     )?;
@@ -137,6 +139,7 @@ mod tests {
             minimize_to_tray: None,
             active_persona_id: None,
             default_avatar_path: None,
+            summary_model_config_id: None,
         };
         update_settings(&conn, &req).unwrap();
 
