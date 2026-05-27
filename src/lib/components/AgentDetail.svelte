@@ -81,7 +81,7 @@
                 name: form.name,
                 detailed_persona: form.detailed_persona,
                 simplified_persona: form.simplified_persona,
-                modelConfigId: form.model_config_id,
+                model_config_id: form.model_config_id,
                 temperature: form.temperature,
             };
             const updated = await invoke<Agent>('update_agent', { req: updateReq });

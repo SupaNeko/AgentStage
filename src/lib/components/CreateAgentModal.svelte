@@ -89,7 +89,7 @@
                 scenario: form.scenario || null,
                 example_messages: form.example_messages || null,
                 creator_notes: form.creator_notes || null,
-                modelConfigId: form.model_config_id,
+                model_config_id: form.model_config_id,
                 temperature: form.temperature,
             };
             await invoke('create_agent', { req });
