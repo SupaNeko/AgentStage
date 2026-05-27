@@ -571,3 +571,35 @@ CREATE TABLE app_settings (
 INSERT INTO app_settings (id, updated_at) VALUES (1, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
 "#;
 
+pub const MIGRATION_V19: &str = r#"
+-- V19: Global model config refactor
+CREATE TABLE model_configs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    base_url TEXT,
+    api_key_encrypted BLOB,
+    temperature REAL,
+    max_tokens INTEGER DEFAULT 2048,
+    top_p REAL DEFAULT 1.0,
+    presence_penalty REAL DEFAULT 0.0,
+    frequency_penalty REAL DEFAULT 0.0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+ALTER TABLE agents ADD COLUMN model_config_id TEXT REFERENCES model_configs(id);
+ALTER TABLE agents ADD COLUMN agent_temperature REAL;
+
+ALTER TABLE agents DROP COLUMN model_provider;
+ALTER TABLE agents DROP COLUMN model_name;
+ALTER TABLE agents DROP COLUMN base_url;
+ALTER TABLE agents DROP COLUMN api_key_encrypted;
+ALTER TABLE agents DROP COLUMN max_tokens;
+ALTER TABLE agents DROP COLUMN top_p;
+ALTER TABLE agents DROP COLUMN presence_penalty;
+ALTER TABLE agents DROP COLUMN frequency_penalty;
+ALTER TABLE agents DROP COLUMN thinking_mode;
+"#;
+
