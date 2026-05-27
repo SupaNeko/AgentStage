@@ -5,6 +5,7 @@ pub mod chat_page;
 pub mod connection;
 pub mod frozen_state;
 pub mod migration;
+pub mod model_config;
 pub mod schema;
 pub mod scheduled_task;
 pub mod session;
