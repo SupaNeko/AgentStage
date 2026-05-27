@@ -1,8 +1,45 @@
 use rusqlite::{Connection, Result, Row};
-use crate::models::agent::{Agent, CreateAgentRequest, UpdateAgentRequest};
+use crate::models::agent::{Agent, AgentResponse, CreateAgentRequest, UpdateAgentRequest};
 use uuid::Uuid;
 
-const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_provider, model_name, base_url, temperature, max_tokens, top_p, presence_penalty, frequency_penalty, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, proactive_enabled, proactive_min_minutes, proactive_max_minutes, is_deleted, deleted_at, created_at, updated_at";
+pub struct AgentLlmConfig {
+    pub api_key: String,
+    pub base_url: Option<String>,
+    pub model_name: String,
+    pub temperature: f64,
+    pub max_tokens: i32,
+}
+
+pub fn resolve_llm_config(conn: &Connection, agent: &Agent) -> Result<AgentLlmConfig, String> {
+    let model_config_id = agent.model_config_id.as_ref()
+        .ok_or_else(|| "Agent has no model config".to_string())?;
+    let mc = crate::db::model_config::get_by_id(conn, model_config_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Model config not found".to_string())?;
+
+    let api_key = mc.api_key_encrypted
+        .as_ref()
+        .and_then(|enc| crate::crypto::decrypt(enc).ok())
+        .unwrap_or_default();
+
+    if api_key.is_empty() {
+        return Err("API key is empty".to_string());
+    }
+
+    let temperature = agent.temperature
+        .or(mc.temperature)
+        .unwrap_or(0.7);
+
+    Ok(AgentLlmConfig {
+        api_key,
+        base_url: mc.base_url,
+        model_name: mc.model_name,
+        temperature,
+        max_tokens: mc.max_tokens,
+    })
+}
+
+const SELECT_COLUMNS: &str = "id, name, avatar_path, detailed_persona, simplified_persona, personality, scenario, example_messages, first_message, creator_notes, tags, model_config_id, agent_temperature, long_term_memory, memory_enabled, proactive_enabled, proactive_min_minutes, proactive_max_minutes, is_deleted, deleted_at, created_at, updated_at";
 
 fn row_to_agent(row: &Row) -> Result<Agent> {
     Ok(Agent {
@@ -17,51 +54,39 @@ fn row_to_agent(row: &Row) -> Result<Agent> {
         first_message: row.get(8)?,
         creator_notes: row.get(9)?,
         tags: row.get(10)?,
-        model_provider: row.get(11)?,
-        model_name: row.get(12)?,
-        base_url: row.get(13)?,
-        temperature: row.get(14)?,
-        max_tokens: row.get(15)?,
-        top_p: row.get(16)?,
-        presence_penalty: row.get(17)?,
-        frequency_penalty: row.get(18)?,
-        long_term_memory: row.get(19)?,
-        memory_enabled: row.get::<_, i32>(20)? != 0,
-        api_key_encrypted: row.get(21)?,
-        thinking_mode: row.get::<_, i32>(22)? != 0,
-        proactive_enabled: row.get::<_, i32>(23)? != 0,
-        proactive_min_minutes: row.get(24)?,
-        proactive_max_minutes: row.get(25)?,
-        is_deleted: row.get::<_, i32>(26)? != 0,
-        deleted_at: row.get(27)?,
-        created_at: row.get(28)?,
-        updated_at: row.get(29)?,
+        model_config_id: row.get(11)?,
+        temperature: row.get(12)?,
+        long_term_memory: row.get(13)?,
+        memory_enabled: row.get::<_, i32>(14)? != 0,
+        proactive_enabled: row.get::<_, i32>(15)? != 0,
+        proactive_min_minutes: row.get(16)?,
+        proactive_max_minutes: row.get(17)?,
+        is_deleted: row.get::<_, i32>(18)? != 0,
+        deleted_at: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
     })
 }
 
 pub fn create(conn: &Connection, req: &CreateAgentRequest) -> Result<Agent> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    let api_key_encrypted = crate::crypto::encrypt(&req.api_key)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
-    
+
     conn.execute(
         r#"INSERT INTO agents (
             id, name, avatar_path, detailed_persona, simplified_persona,
             personality, scenario, example_messages, first_message, creator_notes, tags,
-            model_provider, model_name, base_url,
-            temperature, max_tokens, long_term_memory, memory_enabled, api_key_encrypted, thinking_mode, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)"#,
+            model_config_id, agent_temperature, long_term_memory, memory_enabled, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)"#,
         rusqlite::params![
             &id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
-            &req.tags, &req.model_provider, &req.model_name, &req.base_url,
-            req.temperature.unwrap_or(0.7), req.max_tokens.unwrap_or(2048),
+            &req.tags, &req.model_config_id, req.temperature,
             &req.long_term_memory, req.memory_enabled.unwrap_or(true) as i32,
-            &api_key_encrypted, req.thinking_mode.unwrap_or(false) as i32, now, now,
+            now, now,
         ],
     )?;
-    
+
     get_by_id(conn, &id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
@@ -83,11 +108,10 @@ pub fn list_all(conn: &Connection) -> Result<Vec<Agent>> {
 
 pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
     let now = chrono::Utc::now().timestamp_millis();
-    let api_key_encrypted = req.api_key.as_ref()
-        .map(|k| crate::crypto::encrypt(k))
-        .transpose()
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))))?;
-    
+
+    let temp_flag: Option<i32> = req.temperature.as_ref().map(|_| 1);
+    let temp_value: Option<f64> = req.temperature.flatten();
+
     conn.execute(
         r#"UPDATE agents SET
             name = COALESCE(?2, name),
@@ -100,29 +124,22 @@ pub fn update(conn: &Connection, req: &UpdateAgentRequest) -> Result<Agent> {
             first_message = COALESCE(?9, first_message),
             creator_notes = COALESCE(?10, creator_notes),
             tags = COALESCE(?11, tags),
-            model_provider = COALESCE(?12, model_provider),
-            model_name = COALESCE(?13, model_name),
-            base_url = COALESCE(?14, base_url),
-            temperature = COALESCE(?15, temperature),
-            max_tokens = COALESCE(?16, max_tokens),
-            long_term_memory = COALESCE(?17, long_term_memory),
-            memory_enabled = COALESCE(?18, memory_enabled),
-            api_key_encrypted = COALESCE(?19, api_key_encrypted),
-            thinking_mode = COALESCE(?20, thinking_mode),
-            updated_at = ?21
+            model_config_id = COALESCE(?12, model_config_id),
+            agent_temperature = CASE WHEN ?13 IS NOT NULL THEN ?14 ELSE agent_temperature END,
+            long_term_memory = COALESCE(?15, long_term_memory),
+            memory_enabled = COALESCE(?16, memory_enabled),
+            updated_at = ?17
         WHERE id = ?1 AND is_deleted = 0"#,
         rusqlite::params![
             &req.id, &req.name, &req.avatar_path, &req.detailed_persona, &req.simplified_persona,
             &req.personality, &req.scenario, &req.example_messages, &req.first_message, &req.creator_notes,
-            &req.tags, &req.model_provider, &req.model_name, &req.base_url,
-            req.temperature, req.max_tokens,
+            &req.tags, &req.model_config_id,
+            temp_flag, temp_value,
             req.long_term_memory, req.memory_enabled.map(|v| v as i32),
-            api_key_encrypted,
-            req.thinking_mode.map(|v| v as i32),
             now,
         ],
     )?;
-    
+
     get_by_id(conn, &req.id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
@@ -165,6 +182,54 @@ pub fn get_agent_by_name(conn: &Connection, name: &str) -> Result<Option<Agent>>
     rows.next().transpose()
 }
 
+fn row_to_agent_response(row: &Row) -> Result<AgentResponse> {
+    Ok(AgentResponse {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        avatar_path: crate::db::resolve_avatar_path(row.get(2)?),
+        detailed_persona: row.get(3)?,
+        simplified_persona: row.get(4)?,
+        personality: row.get(5)?,
+        scenario: row.get(6)?,
+        example_messages: row.get(7)?,
+        first_message: row.get(8)?,
+        creator_notes: row.get(9)?,
+        tags: row.get(10)?,
+        model_config_id: row.get(11)?,
+        model_name: row.get(22)?,
+        temperature: row.get(12)?,
+        long_term_memory: row.get(13)?,
+        memory_enabled: row.get::<_, i32>(14)? != 0,
+        proactive_enabled: row.get::<_, i32>(15)? != 0,
+        proactive_min_minutes: row.get(16)?,
+        proactive_max_minutes: row.get(17)?,
+        is_deleted: row.get::<_, i32>(18)? != 0,
+        deleted_at: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
+    })
+}
+
+pub fn list_all_with_model_name(conn: &Connection) -> Result<Vec<AgentResponse>> {
+    let sql = format!(
+        "SELECT {}, mc.model_name as mc_model_name FROM agents a LEFT JOIN model_configs mc ON a.model_config_id = mc.id WHERE a.is_deleted = 0 ORDER BY a.created_at DESC",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_to_agent_response)?;
+    rows.collect()
+}
+
+pub fn get_by_id_with_model_name(conn: &Connection, id: &str) -> Result<Option<AgentResponse>> {
+    let sql = format!(
+        "SELECT {}, mc.model_name as mc_model_name FROM agents a LEFT JOIN model_configs mc ON a.model_config_id = mc.id WHERE a.id = ?1 AND a.is_deleted = 0",
+        SELECT_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query_map([id], row_to_agent_response)?;
+    rows.next().transpose()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,13 +268,8 @@ mod tests {
             first_message: None,
             creator_notes: None,
             tags: None,
-            model_provider: "openai".to_string(),
-            model_name: "gpt-4".to_string(),
-            base_url: None,
-            api_key: "test-key".to_string(),
+            model_config_id: "test-config-id".to_string(),
             temperature: None,
-            max_tokens: None,
-            thinking_mode: None,
             long_term_memory: None,
             memory_enabled: None,
         };
