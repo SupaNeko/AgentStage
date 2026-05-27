@@ -603,3 +603,8 @@ ALTER TABLE agents DROP COLUMN frequency_penalty;
 ALTER TABLE agents DROP COLUMN thinking_mode;
 "#;
 
+pub const MIGRATION_V20: &str = r#"
+-- V20: Session page title summary model config
+ALTER TABLE app_settings ADD COLUMN summary_model_config_id TEXT;
+"#;
+

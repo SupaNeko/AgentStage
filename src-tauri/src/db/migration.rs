@@ -98,6 +98,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "global_model_config_refactor",
         sql: super::schema::MIGRATION_V19,
     },
+    Migration {
+        version: 20,
+        name: "session_page_title_summary",
+        sql: super::schema::MIGRATION_V20,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
