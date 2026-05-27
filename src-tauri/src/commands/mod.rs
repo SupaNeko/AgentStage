@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod agent_relationship;
+pub mod chat_page;
 pub mod generate_persona;
 pub mod log;
 pub mod message;

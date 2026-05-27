@@ -115,6 +115,7 @@ pub async fn reset_session(
     if new_page_index > 0 {
         let old_page_index = new_page_index - 1;
         scheduler.spawn_session_summary(req.session_id.clone(), old_page_index);
+        scheduler.spawn_generate_page_title(req.session_id.clone(), old_page_index);
     }
 
     Ok(page_id)
