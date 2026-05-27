@@ -157,3 +157,25 @@ pub fn count_referencing_agents(conn: &Connection, id: &str) -> Result<i32> {
     let count: i32 = stmt.query_row([id], |row| row.get(0))?;
     Ok(count)
 }
+
+pub fn resolve_summary_model_config(conn: &Connection, settings: &crate::models::settings::AppSettings) -> Result<Option<ModelConfig>, String> {
+    // 1. Try the configured summary model first
+    if let Some(ref config_id) = settings.summary_model_config_id {
+        if let Ok(Some(config)) = get_by_id(conn, config_id) {
+            if config.api_key_encrypted.is_some() {
+                return Ok(Some(config));
+            }
+        }
+    }
+
+    // 2. Fallback: first model_config with api_key_encrypted present
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM model_configs WHERE api_key_encrypted IS NOT NULL ORDER BY created_at DESC LIMIT 1", SELECT_COLUMNS)
+    ).map_err(|e| e.to_string())?;
+    let mut rows = stmt.query_map([], row_to_model_config).map_err(|e| e.to_string())?;
+    if let Some(Ok(config)) = rows.next() {
+        return Ok(Some(config));
+    }
+
+    Ok(None)
+}

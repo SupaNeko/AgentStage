@@ -39,3 +39,11 @@ pub fn list_chat_pages(conn: &Connection, session_id: &str) -> Result<Vec<ChatPa
     
     rows.collect()
 }
+
+pub fn update_name(conn: &Connection, session_id: &str, page_index: i32, name: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE chat_pages SET name = ?1 WHERE session_id = ?2 AND page_index = ?3",
+        rusqlite::params![name, session_id, page_index],
+    )?;
+    Ok(())
+}
