@@ -775,12 +775,15 @@ impl Scheduler {
 
         // === 阶段 3：读取 agent 配置和 prompt ===
         let prompt_start = chrono::Utc::now().timestamp_millis();
-        let (agent, prompt) = {
+        let (_agent, llm_config, prompt) = {
             let conn = self.db_state.0.lock().await;
 
             let agent = agent_repo::get_by_id(&conn, agent_id)
                 .map_err(|e| e.to_string())?
                 .ok_or("Agent not found")?;
+
+            let llm_config = agent_repo::resolve_llm_config(&conn, &agent)
+                .map_err(|e| format!("Agent LLM config error: {}", e))?;
 
             let messages_for_prompt: Vec<Message> = pending
                 .iter()
@@ -821,10 +824,10 @@ impl Scheduler {
 
             crate::logger::debug(&format!(
                 "[DEBUG trigger_agent_inner] agent_id={}, system_len={}, user_len={}, model={:?}, base_url={:?}",
-                agent_id, parts.system.len(), parts.user.len(), agent.model_name, agent.base_url
+                agent_id, parts.system.len(), parts.user.len(), llm_config.model_name, llm_config.base_url
             ));
 
-            (agent, parts)
+            (agent, llm_config, parts)
         };
         let prompt_elapsed = chrono::Utc::now().timestamp_millis() - prompt_start;
         crate::logger::debug(&format!(
@@ -833,23 +836,12 @@ impl Scheduler {
         ));
 
         // === 阶段 4：LLM 调用（无锁）===
-        let api_key = if let Some(encrypted) = agent.api_key_encrypted {
-            crate::crypto::decrypt(&encrypted)
-                .map_err(|e| format!("Failed to decrypt API key: {}", e))?
-        } else {
-            crate::logger::error(&format!(
-                "[DEBUG trigger_agent_inner] agent_id={}, no API key configured", agent_id
-            ));
-            self.restore_pending(agent_id, pending).await;
-            return Err("Agent has no API key configured".to_string());
-        };
-
         let provider = OpenAiCompatibleProvider::new(
-            api_key,
-            agent.base_url,
-            agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
-            agent.temperature,
-            agent.max_tokens,
+            llm_config.api_key,
+            llm_config.base_url,
+            llm_config.model_name,
+            llm_config.temperature,
+            llm_config.max_tokens,
         );
 
         self.emit(
@@ -1159,30 +1151,22 @@ impl Scheduler {
         }
 
         // 2. Get agent and provider
-        let agent = {
+        let (_agent, llm_config) = {
             let conn = self.db_state.0.lock().await;
-            agent_repo::get_by_id(&conn, agent_id)
+            let agent = agent_repo::get_by_id(&conn, agent_id)
                 .map_err(|e| e.to_string())?
-                .ok_or("Agent not found")?
-        };
-
-        let api_key = if let Some(encrypted) = agent.api_key_encrypted {
-            crate::crypto::decrypt(&encrypted)
-                .map_err(|e| format!("Failed to decrypt API key: {}", e))?
-        } else {
-            crate::logger::error(&format!(
-                "[trigger_special] agent_id={}, no API key configured", agent_id
-            ));
-            self.clear_triggering_flag(agent_id).await?;
-            return Err("Agent has no API key configured".to_string());
+                .ok_or("Agent not found")?;
+            let llm_config = agent_repo::resolve_llm_config(&conn, &agent)
+                .map_err(|e| format!("Agent LLM config error: {}", e))?;
+            (agent, llm_config)
         };
 
         let provider = OpenAiCompatibleProvider::new(
-            api_key,
-            agent.base_url,
-            agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
-            agent.temperature,
-            agent.max_tokens,
+            llm_config.api_key,
+            llm_config.base_url,
+            llm_config.model_name,
+            llm_config.temperature,
+            llm_config.max_tokens,
         );
 
         // 3. Build base prompt using PromptAssembler
@@ -1514,10 +1498,13 @@ impl Scheduler {
             }
 
             // Check agent has valid LLM config
-            if agent.model_provider.is_none() || agent.model_name.is_none() || agent.api_key_encrypted.is_none() {
-                crate::logger::warn(&format!("[SessionSummary] agent={} missing LLM config, skipping", agent_id));
-                continue;
-            }
+            let llm_config = match agent_repo::resolve_llm_config(&conn, &agent) {
+                Ok(c) => c,
+                Err(e) => {
+                    crate::logger::warn(&format!("[SessionSummary] agent={} missing LLM config: {}, skipping", agent_id, e));
+                    continue;
+                }
+            };
 
             // Get history limit for this session
             let history_limit: i32 = conn.query_row(
@@ -1610,21 +1597,12 @@ impl Scheduler {
                 .replace("{participants}", &participants_text)
                 .replace("{session_messages}", &session_messages_text);
 
-            // Call LLM
-            let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
-                Ok(k) => k,
-                Err(e) => {
-                    crate::logger::error(&format!("[SessionSummary] agent={} decrypt failed: {}", agent_id, e));
-                    continue;
-                }
-            };
-
             let provider = OpenAiCompatibleProvider::new(
-                api_key,
-                agent.base_url,
-                agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
-                agent.temperature,
-                agent.max_tokens,
+                llm_config.api_key,
+                llm_config.base_url,
+                llm_config.model_name,
+                llm_config.temperature,
+                llm_config.max_tokens,
             );
 
             let tools = vec![
@@ -1810,7 +1788,10 @@ impl Scheduler {
                 _ => continue,
             };
             if !agent.memory_enabled { continue; }
-            if agent.model_provider.is_none() || agent.model_name.is_none() || agent.api_key_encrypted.is_none() { continue; }
+            let llm_config = match agent_repo::resolve_llm_config(&conn, &agent) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
 
             let participants = PromptAssembler::get_participants(&conn, &agent_id)
                 .map_err(|e| e.to_string())?;
@@ -1830,17 +1811,12 @@ impl Scheduler {
             let long_term_memory = agent.long_term_memory.as_deref().unwrap_or("");
             let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-            let api_key = match crate::crypto::decrypt(agent.api_key_encrypted.as_ref().unwrap()) {
-                Ok(k) => k,
-                Err(_) => continue,
-            };
-
             let provider = OpenAiCompatibleProvider::new(
-                api_key,
-                agent.base_url,
-                agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
-                agent.temperature,
-                agent.max_tokens,
+                llm_config.api_key,
+                llm_config.base_url,
+                llm_config.model_name,
+                llm_config.temperature,
+                llm_config.max_tokens,
             );
 
             use crate::llm::conversation::LlmConversation;

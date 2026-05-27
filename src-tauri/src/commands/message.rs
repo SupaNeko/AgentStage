@@ -201,30 +201,22 @@ pub async fn send_history_message(
             }
         };
 
-        let api_key = match agent.api_key_encrypted {
-            Some(enc) => match crate::crypto::decrypt(&enc) {
-                Ok(k) => k,
-                Err(e) => {
-                    crate::logger::error(&format!(
-                        "[DEBUG send_history_message] Failed to decrypt API key for agent {}: {}", agent_id, e
-                    ));
-                    continue;
-                }
-            },
-            None => {
+        let llm_config = match crate::db::agent::resolve_llm_config(&conn, &agent) {
+            Ok(c) => c,
+            Err(e) => {
                 crate::logger::warn(&format!(
-                    "[DEBUG send_history_message] Agent {} has no API key", agent_id
+                    "[DEBUG send_history_message] Agent {} has invalid LLM config: {}", agent_id, e
                 ));
                 continue;
             }
         };
 
         let provider = crate::llm::openai::OpenAiCompatibleProvider::new(
-            api_key,
-            agent.base_url,
-            agent.model_name.unwrap_or_else(|| "gpt-4o".to_string()),
-            agent.temperature,
-            agent.max_tokens,
+            llm_config.api_key,
+            llm_config.base_url,
+            llm_config.model_name,
+            llm_config.temperature,
+            llm_config.max_tokens,
         );
 
         // 调用 LLM（History 模式也要求使用 send_message 工具回复，避免模型输出自由文本携带 think 标签）

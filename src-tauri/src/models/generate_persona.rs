@@ -8,7 +8,6 @@ pub struct ModelConfig {
     pub api_key: String,
     pub temperature: f64,
     pub max_tokens: i32,
-    pub thinking_mode: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

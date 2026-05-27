@@ -199,20 +199,15 @@ pub async fn generate(
         let agent = crate::db::agent::get_by_id(&conn, id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "角色不存在".to_string())?;
-        if agent.model_name.is_none() || agent.model_provider.is_none() {
-            return Err("该角色未配置模型信息".to_string());
-        }
-        let api_key_encrypted = agent.api_key_encrypted.ok_or("该角色未配置 API Key")?;
-        let api_key = crate::crypto::decrypt(&api_key_encrypted)
-            .map_err(|e| format!("解密 API Key 失败: {}", e))?;
+        let llm_config = crate::db::agent::resolve_llm_config(&conn, &agent)
+            .map_err(|e| format!("该角色未配置模型信息: {}", e))?;
         ModelConfig {
-            model_provider: agent.model_provider.unwrap(),
-            model_name: agent.model_name.unwrap(),
-            base_url: agent.base_url,
-            api_key,
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            thinking_mode: agent.thinking_mode,
+            model_provider: "openai".to_string(), // provider info now comes from model_config but not needed by OpenAiCompatibleProvider
+            model_name: llm_config.model_name,
+            base_url: llm_config.base_url,
+            api_key: llm_config.api_key,
+            temperature: llm_config.temperature,
+            max_tokens: llm_config.max_tokens,
         }
     } else {
         req.model_config.clone().unwrap()
