@@ -1,0 +1,260 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+KuaiLe&display=swap');
+
+@theme {
+    /* 物理场景：午后阳光透过纱帘洒在榻榻米上，
+       一只橘猫蜷在膝头打盹，旁边是温热的焦糖拿铁
+       和一盘猫咪形状的曲奇。 */
+    --color-bg:             #faf3e8;
+    --color-surface:        #fffaf3;
+    --color-border:         #f0ddd0;
+    --color-text:           #5c4b3e;
+    --color-text-secondary: #c4a898;
+    --color-primary:        #e8998a;
+    --color-primary-dark:   #d4786a;
+}
+
+/* ─── 全局基础 ─── */
+html, body {
+    font-family: 'ZCOOL KuaiLe', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.6;
+}
+
+/* ─── 猫爪脚印素材（脚趾分开，32%透明度淡色） ─── */
+:root {
+    --paw-peach:    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTUiPjxnIGZpbGw9IiNlOGEwOTAiIGZpbGwtb3BhY2l0eT0iMC4zMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIyOCIgcj0iOSIvPjxjaXJjbGUgY3g9IjM4IiBjeT0iMTYiIHI9IjkiLz48Y2lyY2xlIGN4PSI2MiIgY3k9IjE2IiByPSI5Ii8+PGNpcmNsZSBjeD0iODQiIGN5PSIyOCIgcj0iOSIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzAiIHJ5PSIyNCIvPjwvZz48L3N2Zz4=");
+    --paw-cream:    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTUiPjxnIGZpbGw9IiNmMGM4OTgiIGZpbGwtb3BhY2l0eT0iMC4zMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIyOCIgcj0iOSIvPjxjaXJjbGUgY3g9IjM4IiBjeT0iMTYiIHI9IjkiLz48Y2lyY2xlIGN4PSI2MiIgY3k9IjE2IiByPSI5Ii8+PGNpcmNsZSBjeD0iODQiIGN5PSIyOCIgcj0iOSIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzAiIHJ5PSIyNCIvPjwvZz48L3N2Zz4=");
+    --paw-lavender: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTUiPjxnIGZpbGw9IiNkOGM4ZTAiIGZpbGwtb3BhY2l0eT0iMC4zMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIyOCIgcj0iOSIvPjxjaXJjbGUgY3g9IjM4IiBjeT0iMTYiIHI9IjkiLz48Y2lyY2xlIGN4PSI2MiIgY3k9IjE2IiByPSI5Ii8+PGNpcmNsZSBjeD0iODQiIGN5PSIyOCIgcj0iOSIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzAiIHJ5PSIyNCIvPjwvZz48L3N2Zz4=");
+    --paw-mint:     url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTUiPjxnIGZpbGw9IiNiOGQ4YzgiIGZpbGwtb3BhY2l0eT0iMC4zMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIyOCIgcj0iOSIvPjxjaXJjbGUgY3g9IjM4IiBjeT0iMTYiIHI9IjkiLz48Y2lyY2xlIGN4PSI2MiIgY3k9IjE2IiByPSI5Ii8+PGNpcmNsZSBjeD0iODQiIGN5PSIyOCIgcj0iOSIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzAiIHJ5PSIyNCIvPjwvZz48L3N2Zz4=");
+    --paw-almond:   url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgOTUiPjxnIGZpbGw9IiNmMGQwYjgiIGZpbGwtb3BhY2l0eT0iMC4zMiI+PGNpcmNsZSBjeD0iMTYiIGN5PSIyOCIgcj0iOSIvPjxjaXJjbGUgY3g9IjM4IiBjeT0iMTYiIHI9IjkiLz48Y2lyY2xlIGN4PSI2MiIgY3k9IjE2IiByPSI5Ii8+PGNpcmNsZSBjeD0iODQiIGN5PSIyOCIgcj0iOSIvPjxlbGxpcHNlIGN4PSI1MCIgY3k9IjY4IiByeD0iMzAiIHJ5PSIyNCIvPjwvZz48L3N2Zz4=");
+}
+
+/* ─── 左侧导航：底部一左一右三个小脚印 ─── */
+.left-nav {
+    background-color: #f5ebe0;
+    border-right: 1px solid #f0ddd0;
+    position: relative;
+}
+
+.left-nav::after {
+    content: '';
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 72px;
+    height: 148px;
+    background-image: var(--paw-peach), var(--paw-cream), var(--paw-lavender);
+    background-size: 34px, 34px, 34px;
+    background-position: 2px 112px, 30px 58px, 2px 4px;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.nav-tab {
+    border-radius: 14px;
+    transition: all 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+    color: #c4a898;
+}
+
+.nav-tab:hover {
+    background-color: rgba(232, 153, 138, 0.10);
+    color: #e8998a;
+}
+
+/* ─── 中间列表面板：右侧一左一右三个脚印 ─── */
+.mid-panel {
+    background-color: #fffaf3;
+    border-right: 1px solid #f0ddd0;
+    position: relative;
+}
+
+.mid-panel::before {
+    content: '';
+    position: absolute;
+    top: 160px;
+    right: 4px;
+    width: 66px;
+    height: 148px;
+    background-image: var(--paw-peach), var(--paw-mint), var(--paw-almond);
+    background-size: 30px, 30px, 30px;
+    background-position: 2px 112px, 30px 58px, 2px 4px;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ─── 列表项 ─── */
+.bboard-item {
+    transition: background-color 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+    border-left-color: transparent !important;
+    border-radius: 12px;
+}
+
+.bboard-item:hover {
+    background-color: #faf3e8;
+}
+
+.bboard-item.bg-primary\/5 {
+    background-color: rgba(232, 153, 138, 0.10) !important;
+    border-radius: 12px;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+/* ─── 聊天区域 ─── */
+.chat-view {
+    background-color: #faf3e8;
+}
+
+/* ─── 聊天标题栏 ─── */
+.chat-header {
+    background-color: #fffaf3;
+    border-bottom: 1px solid #f0ddd0;
+}
+
+.chat-input-area {
+    background-color: #fffaf3;
+    border-top: 1px solid #f0ddd0;
+}
+
+/* ─── 消息气泡：超大圆角，扁平无阴影 ─── */
+.msg-bubble {
+    border-radius: 20px;
+    line-height: 1.6;
+}
+
+/* 自己消息：淡蜜桃 */
+.msg-self {
+    background-color: #fce4e1 !important;
+    color: #5c4b3e !important;
+    border-radius: 20px 20px 4px 20px;
+}
+
+/* 对方消息：奶油白 */
+.msg-other {
+    background-color: #fffaf3 !important;
+    color: #5c4b3e !important;
+    border: 1px solid #f0ddd0;
+    border-radius: 20px 20px 20px 4px;
+}
+
+/* ─── 按钮：扁平，圆润 ─── */
+.btn-primary {
+    background-color: #e8998a;
+    color: #fffaf3;
+    border-radius: 12px;
+    transition: all 0.12s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.btn-primary:hover {
+    background-color: #d4786a;
+}
+
+.btn-primary:active {
+    transform: translateY(1px);
+}
+
+/* ─── 输入框 ─── */
+.input-field {
+    border: 1px solid #f0ddd0;
+    border-radius: 12px;
+    background-color: #fffaf3;
+    transition: all 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.input-field:focus {
+    border-color: #e8998a;
+    box-shadow: 0 0 0 3px rgba(232, 153, 138, 0.12);
+    outline: none;
+}
+
+/* ─── 弹窗 ─── */
+.modal-overlay {
+    background-color: rgba(92, 75, 62, 0.25);
+}
+
+.modal-card {
+    background-color: #fffaf3;
+    border-radius: 20px;
+    position: relative;
+}
+
+/* 弹窗右下角两个小脚印 */
+.modal-card::before {
+    content: '';
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 80px;
+    height: 80px;
+    background-image: var(--paw-peach), var(--paw-cream);
+    background-size: 28px, 28px;
+    background-position: 4px 44px, 40px 12px;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ─── 详情面板与侧边栏 ─── */
+.detail-panel {
+    background-color: #faf3e8;
+}
+
+.profile-sidebar {
+    background-color: #fffaf3;
+    border-right: 1px solid #f0ddd0;
+}
+
+/* ─── 覆盖硬编码灰色类：全部转为暖米调 ─── */
+.bg-gray-50,
+.hover\:bg-gray-50:hover {
+    background-color: #f5ebe0 !important;
+}
+
+.bg-gray-100,
+.hover\:bg-gray-100:hover {
+    background-color: #ede3d6 !important;
+}
+
+.bg-gray-200 {
+    background-color: #e0d4c8 !important;
+}
+
+.bg-gray-300 {
+    background-color: #d4c8bc !important;
+}
+
+.text-gray-400,
+.text-gray-500 {
+    color: #c4a898 !important;
+}
+
+/* ─── 状态色微调 ─── */
+.bg-red-50,
+.hover\:bg-red-50:hover {
+    background-color: #fdf2f0 !important;
+}
+
+.bg-green-50 {
+    background-color: #f0f7f2 !important;
+}
+
+/* ─── 滚动条：暖调 ─── */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #e0d4c8;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #d4c8bc;
+}
