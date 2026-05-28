@@ -1,0 +1,203 @@
+@theme {
+    /* 物理场景：清晨阳光透过白纱帘洒在桌面上，一杯温热的奶咖旁
+       放着一盆薄荷。界面像新鲜出炉的黄油曲奇，温暖、明亮、蓬松。 */
+    --color-bg:             #fdf8f0;
+    --color-surface:        #fffefb;
+    --color-border:         #f0e6d6;
+    --color-text:           #3d3028;
+    --color-text-secondary: #b8a898;
+    --color-primary:        #5a9e6c;
+    --color-primary-dark:   #4a8560;
+}
+
+/* ─── 全局基础 ─── */
+html, body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+}
+
+/* ─── 左侧导航：奶油色层次，非冷灰 ─── */
+.left-nav {
+    background: linear-gradient(180deg, #f5efe6, #efe8dd);
+    border-right: 1px solid #e8ddd0;
+}
+
+.nav-tab {
+    border-radius: 10px;
+    transition: all 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+    color: #b8a898;
+}
+
+.nav-tab:hover {
+    background-color: rgba(90, 158, 108, 0.07);
+    color: #5a9e6c;
+}
+
+/* ─── 中间列表面板 ─── */
+.mid-panel {
+    background-color: #fffefb;
+    border-right: 1px solid #f0e6d6;
+}
+
+/* ─── 列表项：消除侧边条纹，改用背景高亮 ─── */
+.bboard-item {
+    transition: background-color 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+    border-left-color: transparent !important;
+}
+
+.bboard-item:hover {
+    background-color: #fdf8f0;
+}
+
+.bboard-item.bg-primary\/5 {
+    background-color: rgba(90, 158, 108, 0.08) !important;
+    border-radius: 6px;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+/* ─── 聊天区域 ─── */
+.chat-view {
+    background-color: #fdf8f0;
+}
+
+.chat-header {
+    background-color: #fffefb;
+    border-bottom: 1px solid #f0e6d6;
+    box-shadow: 0 1px 4px rgba(61, 48, 40, 0.04);
+}
+
+.chat-input-area {
+    background-color: #fffefb;
+    border-top: 1px solid #f0e6d6;
+}
+
+/* ─── 消息气泡 ─── */
+.msg-bubble {
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(61, 48, 40, 0.05);
+    line-height: 1.55;
+}
+
+/* 自己消息：薄荷绿 */
+.msg-self {
+    background-color: #d4edda !important;
+    color: #3d3028 !important;
+    border-radius: 14px 14px 4px 14px;
+}
+
+/* 对方消息：奶油白 */
+.msg-other {
+    background-color: #fffefb !important;
+    color: #3d3028 !important;
+    border: 1px solid #f0e6d6;
+    border-radius: 14px 14px 14px 4px;
+}
+
+/* ─── 按钮 ─── */
+.btn-primary {
+    background-color: #5a9e6c;
+    color: #fffefb;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(90, 158, 108, 0.25);
+    transition: all 0.12s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.btn-primary:hover {
+    background-color: #4a8560;
+    box-shadow: 0 3px 8px rgba(90, 158, 108, 0.30);
+}
+
+.btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 2px rgba(90, 158, 108, 0.20);
+}
+
+/* ─── 输入框 ─── */
+.input-field {
+    border: 1px solid #e8ddd0;
+    border-radius: 10px;
+    background-color: #faf5ed;
+    transition: all 0.15s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.input-field:focus {
+    border-color: #5a9e6c;
+    box-shadow: 0 0 0 3px rgba(90, 158, 108, 0.12);
+    outline: none;
+}
+
+/* ─── 弹窗 ─── */
+.modal-overlay {
+    background-color: rgba(61, 48, 40, 0.30);
+    backdrop-filter: blur(4px);
+}
+
+.modal-card {
+    background-color: #fffefb;
+    border-radius: 14px;
+    box-shadow: 0 20px 40px -10px rgba(61, 48, 40, 0.10);
+}
+
+/* ─── 详情面板与侧边栏 ─── */
+.detail-panel {
+    background-color: #fdf8f0;
+}
+
+.profile-sidebar {
+    background-color: #fffefb;
+    border-right: 1px solid #f0e6d6;
+}
+
+/* ─── 覆盖硬编码灰色类：全部转为暖奶油调 ─── */
+.bg-gray-50,
+.hover\:bg-gray-50:hover {
+    background-color: #faf5ed !important;
+}
+
+.bg-gray-100,
+.hover\:bg-gray-100:hover {
+    background-color: #f5efe6 !important;
+}
+
+.bg-gray-200 {
+    background-color: #ebe3d6 !important;
+}
+
+.bg-gray-300 {
+    background-color: #ddd5c8 !important;
+}
+
+.text-gray-400,
+.text-gray-500 {
+    color: #b8a898 !important;
+}
+
+/* ─── 状态色微调 ─── */
+.bg-red-50,
+.hover\:bg-red-50:hover {
+    background-color: #fdf2f0 !important;
+}
+
+.bg-green-50 {
+    background-color: #f0f7f2 !important;
+}
+
+/* ─── 滚动条：暖调 ─── */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #ddd5c8;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #c8bfb0;
+}
