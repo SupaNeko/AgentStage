@@ -14,9 +14,9 @@
 
     const emptyConfig = (): Omit<ModelConfig, 'id' | 'created_at' | 'updated_at'> => ({
         name: '',
-        provider: 'openai',
-        model_name: PROVIDER_DEFAULTS.openai.modelName,
-        base_url: PROVIDER_DEFAULTS.openai.baseUrl,
+        provider: 'deepseek',
+        model_name: PROVIDER_DEFAULTS.deepseek.modelName,
+        base_url: PROVIDER_DEFAULTS.deepseek.baseUrl,
         api_key: '',
         temperature: null,
         max_tokens: null,
@@ -67,7 +67,7 @@
 
         const payload = {
             name: editingConfig.name.trim(),
-            provider: editingConfig.provider ?? 'openai',
+            provider: editingConfig.provider ?? 'deepseek',
             model_name: editingConfig.model_name.trim(),
             base_url: editingConfig.base_url?.trim() || null,
             api_key: editingConfig.api_key.trim(),
@@ -135,10 +135,7 @@
 
     function formatProviderLabel(provider: string): string {
         const labels: Record<string, string> = {
-            openai: 'OpenAI',
-            anthropic: 'Anthropic',
-            google: 'Google',
-            kimi: 'Kimi (Moonshot)',
+            deepseek: 'DeepSeek',
             minimax: 'MiniMax',
             custom: '自定义',
         };
@@ -179,10 +176,7 @@
                         }}
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-bg input-field"
                     >
-                        <option value="openai">OpenAI</option>
-                        <option value="anthropic">Anthropic</option>
-                        <option value="google">Google</option>
-                        <option value="kimi">Kimi (Moonshot)</option>
+                        <option value="deepseek">DeepSeek</option>
                         <option value="minimax">MiniMax</option>
                         <option value="custom">自定义</option>
                     </select>
