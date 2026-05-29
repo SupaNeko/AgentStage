@@ -103,7 +103,7 @@
 | CHAT-35 | 发送消息后切会话防覆盖 | 用户在会话 A 发送消息后切到会话 B，A 的 AI 回复到达时不应覆盖 B 的聊天内容；后台静默更新并在会话列表显示未读 | P0 | ✅ 已实现 | `handleSend` 发送成功后检查当前选中会话，已切走则跳过 `loadMessages`；`new_message` 防御检查生效 |
 | CHAT-36 | 记忆功能 — 长期任务维护 | 为每个角色维护跨会话的长期记忆，支持记录和追踪长期任务目标、关键事实和关系演变 | P0 | ✅ 已实现 | 拆分为 AGT-18（数据模型）、CHAT-39-ext（Prompt注入）、CHAT-37-ext（update_memory工具）、CHAT-37（重置总结）、CHAT-40（溢出总结）、CHAT-41（定时任务）、CHAT-42（主动会话） |
 | CHAT-37 | 重置会话时AI总结记忆 | 每次重置会话（私聊/群聊）时，调用相关角色的AI总结当前page中的可用信息，更新该角色的长期记忆 | P1 | ✅ 已实现 | Scheduler spawn_session_summary + SUMMARY_SYSTEM_PROMPT |
-| CHAT-38 | 禁言逻辑优化 | 优化群聊禁言的实现逻辑，确保禁言状态下所有角色触发机制被完全阻断，包括边缘场景（如定时任务、系统通知触发等） | P0 | ⬜ 待实现 | 高优先级：当前禁言可能存在绕过漏洞 |
+| CHAT-38 | 禁言逻辑优化 | 优化群聊禁言的实现逻辑，确保禁言状态下所有角色触发机制被完全阻断，包括边缘场景（如定时任务、系统通知触发等） | P0 | ✅ 已实现 | trigger_agent_inner 过滤 muted sessions；trigger_special Timer 入口检查禁言；execute_send_message 阻止发送到禁言会话 |
 | CHAT-39 | 重构提示词拼接方案 | 将当前PromptAssembler的拼接逻辑重构为标准的 System Prompt + User Message 结构，替代现有的多层混合拼接，提升兼容性和可维护性 | P1 | ✅ 已实现 | CHAT-39-ext: 复用 list_relationships_by_observer + 结构化参与者格式 + 记忆/关系分层注入 |
 | CHAT-40 | 超长消息批量处理 | 当会话消息超出阈值时，自动触发AI批量总结，更新角色长期记忆 | P1 | ✅ 已实现 | overflow_summary_threshold + last_overflow_summary_index + 消息插入时触发 |
 | CHAT-41 | 定时任务工具 | 角色可通过 create_timer/delete_timer 工具设定定时任务（单次/循环），到时间后无视CD触发一次调用 | P1 | ✅ 已实现 | Migration V15 + scheduled_tasks表 + LLM工具 + 前端定时任务面板 |
