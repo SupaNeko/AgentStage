@@ -6,11 +6,11 @@ export interface ProviderDefaultConfig {
 export const PROVIDER_DEFAULTS: Record<string, ProviderDefaultConfig> = {
     deepseek: {
         baseUrl: 'https://api.deepseek.com',
-        modelName: 'deepseek-chat',
+        modelName: 'DeepSeek V4 Flash',
     },
     minimax: {
         baseUrl: 'https://api.minimax.chat/v1',
-        modelName: 'abab6.5-chat',
+        modelName: 'MiniMax-M2.7',
     },
     custom: {
         baseUrl: '',
