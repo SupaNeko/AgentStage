@@ -1266,6 +1266,27 @@ impl Scheduler {
         agent_id: &str,
         context: SpecialTriggerContext,
     ) -> Result<(), String> {
+        // === 禁言检查（在设置 is_triggering 之前） ===
+        {
+            let conn = self.db_state.0.lock().await;
+            if let SpecialTriggerContext::Timer { target_session_id, .. } = &context {
+                if let Some(ref sid) = target_session_id {
+                    let muted: bool = conn.query_row(
+                        "SELECT COALESCE(mute_enabled, 0) FROM session_settings WHERE session_id = ?1",
+                        [sid],
+                        |row| Ok(row.get::<_, i32>(0)? != 0),
+                    ).unwrap_or(false);
+                    if muted {
+                        crate::logger::info(&format!(
+                            "[trigger_special] agent_id={}, timer target session={} is muted, skipping",
+                            agent_id, sid
+                        ));
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         // 0. Check if already triggering (with stale timeout)
         {
             let conn = self.db_state.0.lock().await;

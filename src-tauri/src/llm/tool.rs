@@ -236,6 +236,7 @@ pub enum ToolError {
     EmptyContent,
     TargetNotFound(String),
     DatabaseError(String),
+    SessionMuted(String),
 }
 
 impl std::fmt::Display for ToolError {
@@ -245,6 +246,7 @@ impl std::fmt::Display for ToolError {
             ToolError::EmptyContent => write!(f, "工具调用内容为空"),
             ToolError::TargetNotFound(s) => write!(f, "找不到目标会话: {}", s),
             ToolError::DatabaseError(s) => write!(f, "保存消息失败: {}", s),
+            ToolError::SessionMuted(s) => write!(f, "会话已禁言: {}", s),
         }
     }
 }
@@ -325,6 +327,23 @@ impl ToolExecutor {
         crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_send_message] resolved target_id={}", target_id
         ));
+
+        // 检查目标会话是否禁言
+        {
+            let conn = self.db_state.0.lock().await;
+            let muted: bool = conn.query_row(
+                "SELECT COALESCE(mute_enabled, 0) FROM session_settings WHERE session_id = ?1",
+                [&target_id],
+                |row| Ok(row.get::<_, i32>(0)? != 0),
+            ).unwrap_or(false);
+            if muted {
+                crate::logger::warn(&format!(
+                    "[execute_send_message] target session={} is muted, blocking message from agent={}",
+                    target_id, agent_id
+                ));
+                return Err(ToolError::SessionMuted(target_id.clone()));
+            }
+        }
 
         // 使用触发时绑定的 page_index，避免 reset 后的页面漂移
         let bound_page = session_pages.get(&target_id).copied();
