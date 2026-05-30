@@ -217,3 +217,28 @@ pub async fn list_chat_pages(
         .map_err(|e| e.to_string())?;
     Ok(pages)
 }
+
+#[tauri::command]
+pub async fn reset_all_sessions(
+    state: State<'_, DbState>,
+    scheduler: State<'_, Scheduler>,
+) -> Result<Vec<String>, String> {
+    let conn = get_db(&state).await?;
+    let sessions = session_repo::list_sessions(&conn).map_err(|e| e.to_string())?;
+    let mut page_ids = Vec::new();
+        for session in &sessions {
+            if session.is_dissolved {
+                continue;
+            }
+        let (page_id, new_page_index) = session_repo::reset_session(&conn, &session.id)
+            .map_err(|e| e.to_string())?;
+        scheduler.cancel_session(&session.id).await;
+        if new_page_index > 0 {
+            let old_page_index = new_page_index - 1;
+            scheduler.spawn_session_summary(session.id.clone(), old_page_index);
+            scheduler.spawn_generate_page_title(session.id.clone(), old_page_index);
+        }
+        page_ids.push(page_id);
+    }
+    Ok(page_ids)
+}

@@ -2,6 +2,7 @@
     import { userPersonaStore } from '$lib/stores/userPersonaStore.svelte';
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
+    import SwitchPersonaConfirmModal from './SwitchPersonaConfirmModal.svelte';
     import { resolveAvatarUrl } from '$lib/utils';
     import type { UserPersona } from '$lib/stores/userPersonaStore.svelte';
     import { ChevronDown, ChevronUp, User } from 'lucide-svelte';
@@ -19,6 +20,7 @@
     let draftName = $state('');
     let draftDesc = $state('');
     let avatarUploadOpen = $state(false);
+    let showConfirmModal = $state(false);
     let saving = $state(false);
 
     function toggleExpand() {
@@ -29,9 +31,15 @@
         }
     }
 
-    async function handleActivate() {
+    function handleActivate() {
+        showConfirmModal = true;
+    }
+
+    async function handleConfirmSwitch(reset: boolean) {
+        showConfirmModal = false;
         try {
             await userPersonaStore.activatePersona(persona.id);
+            toastStore.show(`已切换到 "${persona.name}"`, 'success');
         } catch (e) {
             toastStore.show('启用失败: ' + String(e), 'error');
         }
@@ -95,6 +103,14 @@
         targetId={persona.id}
         onUploaded={handleAvatarUploaded}
         onClose={() => avatarUploadOpen = false}
+    />
+{/if}
+
+{#if showConfirmModal}
+    <SwitchPersonaConfirmModal
+        personaName={persona.name}
+        onConfirm={handleConfirmSwitch}
+        onClose={() => showConfirmModal = false}
     />
 {/if}
 
