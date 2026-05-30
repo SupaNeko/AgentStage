@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Result};
 use crate::models::session::{SessionResponse, SessionParticipant};
+use crate::db::chat_page_participant;
 use uuid::Uuid;
 
 fn resolve_participant(
@@ -520,6 +521,61 @@ pub fn reset_session(conn: &Connection, session_id: &str) -> Result<(String, i32
          VALUES (?1, ?2, ?3, '续开', 1, 0, ?4, ?4)",
         rusqlite::params![&page_id, session_id, new_page_index, now],
     )?;
+
+    // Insert participant snapshot for the old page (max_page)
+    if let Ok(Some(old_page_id)) = chat_page_participant::get_chat_page_id(conn, session_id, max_page) {
+        // Private session
+        if let Ok((p1_type, p1_id, p2_type, p2_id)) = conn.query_row(
+            "SELECT participant_1_type, participant_1_id, participant_2_type, participant_2_id FROM private_sessions WHERE session_id = ?1",
+            [session_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
+        ) {
+            for (ptype, pid) in [(p1_type, p1_id), (p2_type, p2_id)] {
+                let (name, avatar, persona): (String, Option<String>, Option<String>) = if ptype == "agent" {
+                    conn.query_row(
+                        "SELECT name, avatar_path, simplified_persona FROM agents WHERE id = ?1",
+                        [&pid],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    ).unwrap_or_else(|_| ("未知角色".to_string(), None, None))
+                } else {
+                    let (n, a): (String, Option<String>) = conn.query_row(
+                        "SELECT COALESCE(up.name, '用户'), up.avatar_path FROM app_settings LEFT JOIN user_personas up ON up.id = app_settings.active_persona_id WHERE app_settings.id = 1",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    ).unwrap_or_else(|_| ("用户".to_string(), None));
+                    (n, a, None)
+                };
+                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref(), persona.as_deref());
+            }
+        }
+
+        // Group session
+        let mut stmt = conn.prepare(
+            "SELECT participant_type, participant_id FROM group_members WHERE session_id = ?1"
+        )?;
+        let rows = stmt.query_map([session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            if let Ok((ptype, pid)) = row {
+                let (name, avatar, persona): (String, Option<String>, Option<String>) = if ptype == "agent" {
+                    conn.query_row(
+                        "SELECT name, avatar_path, simplified_persona FROM agents WHERE id = ?1",
+                        [&pid],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    ).unwrap_or_else(|_| ("未知角色".to_string(), None, None))
+                } else {
+                    let (n, a): (String, Option<String>) = conn.query_row(
+                        "SELECT COALESCE(up.name, '用户'), up.avatar_path FROM app_settings LEFT JOIN user_personas up ON up.id = app_settings.active_persona_id WHERE app_settings.id = 1",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    ).unwrap_or_else(|_| ("用户".to_string(), None));
+                    (n, a, None)
+                };
+                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref(), persona.as_deref());
+            }
+        }
+    }
 
     let session_type: String = conn.query_row(
         "SELECT session_type FROM sessions WHERE id = ?1",
