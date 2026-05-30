@@ -279,8 +279,8 @@ impl ToolExecutor {
         match tool_call.name.as_str() {
             "send_message" => self.execute_send_message(agent_id, &tool_call.arguments, session_pages).await,
             "start_private_chat" => self.execute_start_private_chat(agent_id, &tool_call.arguments, session_pages).await,
-            "update_relationship" => { self.execute_update_relationship(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
-            "update_memory" => { self.execute_update_memory(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
+            "update_relationship" => { self.execute_update_relationship(agent_id, &tool_call.arguments, session_pages).await?; Ok(vec![]) }
+            "update_memory" => { self.execute_update_memory(agent_id, &tool_call.arguments, session_pages).await?; Ok(vec![]) }
             "create_timer" => { self.execute_create_timer(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
             "delete_timer" => { self.execute_delete_timer(agent_id, &tool_call.arguments).await?; Ok(vec![]) }
             _ => Err(ToolError::InvalidArguments(format!("未知工具: {}", tool_call.name))),
@@ -299,6 +299,43 @@ impl ToolExecutor {
             results.extend(msgs);
         }
         Ok(results)
+    }
+
+    /// 根据 session_pages 中的快照解析当时使用的 user_persona_id。
+    /// 如果 session_pages 包含有效会话，查询 chat_page_participants 快照获取 user 类型的 participant_id。
+    /// 否则 fallback 到当前 active_persona_id。
+    fn resolve_user_persona_id(
+        &self,
+        conn: &rusqlite::Connection,
+        session_pages: &HashMap<String, i32>,
+    ) -> Result<Option<String>, rusqlite::Error> {
+        if let Some((session_id, page_index)) = session_pages.iter().next() {
+            if let Ok(Some(chat_page_id)) = crate::db::chat_page_participant::get_chat_page_id(conn, session_id, *page_index) {
+                let mut stmt = conn.prepare(
+                    "SELECT participant_id FROM chat_page_participants WHERE chat_page_id = ?1 AND participant_type = 'user'"
+                )?;
+                let rows = stmt.query_map([&chat_page_id], |row| {
+                    row.get::<_, String>(0)
+                })?;
+                for row in rows {
+                    if let Ok(pid) = row {
+                        crate::logger::debug(&format!(
+                            "[DEBUG ToolExecutor::resolve_user_persona_id] resolved from snapshot: session={}, page={}, persona_id={}",
+                            session_id, page_index, pid
+                        ));
+                        return Ok(Some(pid));
+                    }
+                }
+            }
+        }
+        // Fallback: current active persona
+        let active_id: Option<String> = conn.query_row(
+            "SELECT active_persona_id FROM app_settings WHERE id = 1", [], |row| row.get(0),
+        ).ok().flatten();
+        crate::logger::debug(&format!(
+            "[DEBUG ToolExecutor::resolve_user_persona_id] fallback to active_persona_id={:?}", active_id
+        ));
+        Ok(active_id)
     }
 
     async fn execute_send_message(
@@ -483,6 +520,7 @@ impl ToolExecutor {
         &self,
         agent_id: &str,
         arguments: &str,
+        session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
         crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_relationship] START agent_id={}, args_raw={}",
@@ -524,11 +562,10 @@ impl ToolExecutor {
             ));
             (agent.id, "agent".to_string())
         } else {
-            // 尝试查找当前激活的用户人设
-            let active_id: Option<String> = conn.query_row(
-                "SELECT active_persona_id FROM app_settings WHERE id = 1", [], |row| row.get(0),
-            ).ok().flatten();
-            if let Some(pid) = active_id {
+            // 尝试从快照或当前激活人设解析用户人设
+            let persona_id = self.resolve_user_persona_id(&conn, session_pages)
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            if let Some(pid) = persona_id {
                 if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
                     if persona.name == target_name {
                         crate::logger::debug(&format!(
@@ -537,7 +574,7 @@ impl ToolExecutor {
                         (pid, "user_persona".to_string())
                     } else {
                         crate::logger::warn(&format!(
-                            "[DEBUG ToolExecutor::execute_update_relationship] active persona name '{}' does not match target_name '{}'", persona.name, target_name
+                            "[DEBUG ToolExecutor::execute_update_relationship] persona name '{}' does not match target_name '{}'", persona.name, target_name
                         ));
                         return Err(ToolError::InvalidArguments(format!(
                             "找不到目标参与者 '{}'", target_name
@@ -589,6 +626,7 @@ impl ToolExecutor {
         &self,
         agent_id: &str,
         arguments: &str,
+        session_pages: &HashMap<String, i32>,
     ) -> Result<Vec<Message>, ToolError> {
         crate::logger::debug(&format!(
             "[DEBUG ToolExecutor::execute_update_memory] START agent_id={}, args_raw={}",
@@ -677,11 +715,10 @@ impl ToolExecutor {
                     ));
                     (agent.id, "agent".to_string())
                 } else {
-                    // 尝试查找当前激活的用户人设
-                    let active_id: Option<String> = conn.query_row(
-                        "SELECT active_persona_id FROM app_settings WHERE id = 1", [], |row| row.get(0),
-                    ).ok().flatten();
-                    if let Some(pid) = active_id {
+                    // 尝试从快照或当前激活人设解析用户人设
+                    let persona_id = self.resolve_user_persona_id(&conn, session_pages)
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+                    if let Some(pid) = persona_id {
                         if let Ok(persona) = crate::db::user_persona::get_user_persona_by_id(&conn, &pid) {
                             if persona.name == target_name {
                                 crate::logger::debug(&format!(
@@ -690,7 +727,7 @@ impl ToolExecutor {
                                 (pid, "user_persona".to_string())
                             } else {
                                 crate::logger::warn(&format!(
-                                    "[DEBUG ToolExecutor::execute_update_memory] active persona name '{}' does not match target_name '{}'", persona.name, target_name
+                                    "[DEBUG ToolExecutor::execute_update_memory] persona name '{}' does not match target_name '{}'", persona.name, target_name
                                 ));
                                 return Err(ToolError::InvalidArguments(format!(
                                     "找不到目标参与者 '{}'", target_name
@@ -1240,5 +1277,77 @@ mod tests {
         };
         let result = executor.execute("agent-2", vec![tc_delete], &HashMap::new()).await;
         assert!(matches!(result, Err(ToolError::InvalidArguments(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_memory_other_uses_snapshot_user_persona() {
+        let conn = init_test_db();
+        create_test_agent(&conn, "agent-1", "Alice");
+        create_test_agent(&conn, "agent-2", "Bob");
+        // Insert two user personas
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, avatar_path, created_at, updated_at) VALUES ('up-old', 'Old User', '', NULL, 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, avatar_path, created_at, updated_at) VALUES ('up-new', 'New User', '', NULL, 0, 0)",
+            [],
+        ).unwrap();
+        // Set active persona to "up-new"
+        conn.execute(
+            "INSERT INTO app_settings (id, active_persona_id, created_at, updated_at) VALUES (1, 'up-new', 0, 0)",
+            [],
+        ).unwrap();
+        // Insert session and chat_page
+        conn.execute(
+            "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES ('sess-1', 'private', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES ('sess-1', 'user', 'user', 'agent', 'agent-2', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chat_pages (id, session_id, page_index, name, is_active, message_count, created_at, updated_at) VALUES ('cp-0', 'sess-1', 0, 'Page 0', 1, 0, 0, 0)",
+            [],
+        ).unwrap();
+        // Insert snapshot with user persona = up-old
+        conn.execute(
+            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona) VALUES ('cp-0', 'up-old', 'user', 'Old User', NULL, NULL)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona) VALUES ('cp-0', 'agent-2', 'agent', 'Bob', NULL, NULL)",
+            [],
+        ).unwrap();
+
+        let db_state = make_db_state(conn);
+        let scheduler = crate::scheduler::Scheduler::new(db_state.clone());
+        let executor = ToolExecutor::new(db_state, scheduler);
+
+        let mut session_pages = HashMap::new();
+        session_pages.insert("sess-1".to_string(), 0);
+
+        let tc = ToolCall {
+            id: "tc-1".to_string(),
+            name: "update_memory".to_string(),
+            arguments: r#"{"memory_type":"other","target_name":"Old User","old_text":"","new_text":"他喜欢喝茶"}"#.to_string(),
+        };
+        let result = executor.execute("agent-1", vec![tc], &session_pages).await;
+        assert!(result.is_ok(), "Expected success but got: {:?}", result);
+
+        let conn_guard = executor.db_state.0.lock().await;
+        let memory: String = conn_guard.query_row(
+            "SELECT memory_text FROM agent_relationships WHERE observer_id = 'agent-1' AND target_id = 'up-old' AND target_type = 'user_persona'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(memory, "他喜欢喝茶");
+
+        // Ensure memory was NOT attached to up-new (current active)
+        let count_new: i32 = conn_guard.query_row(
+            "SELECT COUNT(*) FROM agent_relationships WHERE observer_id = 'agent-1' AND target_id = 'up-new'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count_new, 0, "Memory should not be attached to current active persona up-new");
     }
 }
