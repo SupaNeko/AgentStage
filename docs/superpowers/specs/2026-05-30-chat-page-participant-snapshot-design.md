@@ -23,6 +23,7 @@ CREATE TABLE chat_page_participants (
     participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
     participant_name TEXT NOT NULL,
     participant_avatar TEXT,
+    participant_simplified_persona TEXT,
     PRIMARY KEY (chat_page_id, participant_id, participant_type),
     FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
 );
@@ -37,6 +38,7 @@ CREATE TABLE chat_page_participants (
     participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
     participant_name TEXT NOT NULL,
     participant_avatar TEXT,
+    participant_simplified_persona TEXT,
     PRIMARY KEY (chat_page_id, participant_id, participant_type),
     FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
 );
@@ -52,8 +54,8 @@ reset_session(session_id)
   ├─ 查询 session 当前成员
   │    ├─ 私聊: private_sessions (participant_1, participant_2)
   │    └─ 群聊: group_members
-  ├─ 查询成员名称/头像
-  │    ├─ agent: agents.name, agents.avatar_path
+  ├─ 查询成员名称/头像/人设摘要
+  │    ├─ agent: agents.name, agents.avatar_path, agents.simplified_persona
   │    └─ user: user_personas.name, user_personas.avatar_path
   ├─ 插入 chat_page_participants 快照
   └─ 触发 spawn_session_summary / spawn_generate_page_title
@@ -127,13 +129,14 @@ fn get_participants(conn, agent_id) {
 **新逻辑（历史模式）：**
 ```rust
 fn get_participants_for_page(conn, agent_id, chat_page_id) {
-    // 1. 查快照中的所有参与者
-    SELECT participant_id, participant_type, participant_name
+    // 1. 查快照中的所有参与者（名称、头像、人设摘要）
+    SELECT participant_id, participant_type, participant_name, participant_simplified_persona
     FROM chat_page_participants
     WHERE chat_page_id = ?
     
-    // 2. 对 agent 类型的参与者，查 relationship_text / memory_text
+    // 2. 对 agent 类型的参与者，查 relationship_text / memory_text（实时）
     // 3. 对 user 类型的参与者，使用快照中的 participant_name
+    // 4. 标签（好友/群友）实时推导
 }
 ```
 

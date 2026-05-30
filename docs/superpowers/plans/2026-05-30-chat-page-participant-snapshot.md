@@ -52,6 +52,7 @@ CREATE TABLE chat_page_participants (
     participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
     participant_name TEXT NOT NULL,
     participant_avatar TEXT,
+    participant_simplified_persona TEXT,
     PRIMARY KEY (chat_page_id, participant_id, participant_type),
     FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
 );
@@ -68,6 +69,7 @@ CREATE TABLE chat_page_participants (
     participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
     participant_name TEXT NOT NULL,
     participant_avatar TEXT,
+    participant_simplified_persona TEXT,
     PRIMARY KEY (chat_page_id, participant_id, participant_type),
     FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
 );
@@ -110,6 +112,7 @@ pub struct ChatPageParticipant {
     pub participant_type: String,
     pub participant_name: String,
     pub participant_avatar: Option<String>,
+    pub participant_simplified_persona: Option<String>,
 }
 
 pub fn insert_snapshot(
@@ -119,11 +122,12 @@ pub fn insert_snapshot(
     participant_type: &str,
     participant_name: &str,
     participant_avatar: Option<&str>,
+    participant_simplified_persona: Option<&str>,
 ) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![chat_page_id, participant_id, participant_type, participant_name, participant_avatar],
+        "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona],
     )?;
     Ok(())
 }
@@ -133,7 +137,7 @@ pub fn list_by_chat_page(
     chat_page_id: &str,
 ) -> Result<Vec<ChatPageParticipant>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT chat_page_id, participant_id, participant_type, participant_name, participant_avatar
+        "SELECT chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona
          FROM chat_page_participants
          WHERE chat_page_id = ?1"
     )?;
@@ -144,6 +148,7 @@ pub fn list_by_chat_page(
             participant_type: row.get(2)?,
             participant_name: row.get(3)?,
             participant_avatar: row.get(4)?,
+            participant_simplified_persona: row.get(5)?,
         })
     })?;
     rows.collect()
@@ -209,20 +214,21 @@ Insert the following block **after** the new `chat_page` INSERT and **before** t
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
         ) {
             for (ptype, pid) in [(p1_type, p1_id), (p2_type, p2_id)] {
-                let (name, avatar): (String, Option<String>) = if ptype == "agent" {
+                let (name, avatar, persona): (String, Option<String>, Option<String>) = if ptype == "agent" {
                     conn.query_row(
-                        "SELECT name, avatar_path FROM agents WHERE id = ?1",
+                        "SELECT name, avatar_path, simplified_persona FROM agents WHERE id = ?1",
                         [&pid],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    ).unwrap_or_else(|_| ("未知角色".to_string(), None))
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    ).unwrap_or_else(|_| ("未知角色".to_string(), None, None))
                 } else {
-                    conn.query_row(
+                    let (n, a): (String, Option<String>) = conn.query_row(
                         "SELECT COALESCE(up.name, '用户'), up.avatar_path FROM app_settings LEFT JOIN user_personas up ON up.id = app_settings.active_persona_id WHERE app_settings.id = 1",
                         [],
                         |row| Ok((row.get(0)?, row.get(1)?)),
-                    ).unwrap_or_else(|_| ("用户".to_string(), None))
+                    ).unwrap_or_else(|_| ("用户".to_string(), None));
+                    (n, a, None)
                 };
-                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref());
+                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref(), persona.as_deref());
             }
         }
 
@@ -235,20 +241,21 @@ Insert the following block **after** the new `chat_page` INSERT and **before** t
         })?;
         for row in rows {
             if let Ok((ptype, pid)) = row {
-                let (name, avatar): (String, Option<String>) = if ptype == "agent" {
+                let (name, avatar, persona): (String, Option<String>, Option<String>) = if ptype == "agent" {
                     conn.query_row(
-                        "SELECT name, avatar_path FROM agents WHERE id = ?1",
+                        "SELECT name, avatar_path, simplified_persona FROM agents WHERE id = ?1",
                         [&pid],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    ).unwrap_or_else(|_| ("未知角色".to_string(), None))
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    ).unwrap_or_else(|_| ("未知角色".to_string(), None, None))
                 } else {
-                    conn.query_row(
+                    let (n, a): (String, Option<String>) = conn.query_row(
                         "SELECT COALESCE(up.name, '用户'), up.avatar_path FROM app_settings LEFT JOIN user_personas up ON up.id = app_settings.active_persona_id WHERE app_settings.id = 1",
                         [],
                         |row| Ok((row.get(0)?, row.get(1)?)),
-                    ).unwrap_or_else(|_| ("用户".to_string(), None))
+                    ).unwrap_or_else(|_| ("用户".to_string(), None));
+                    (n, a, None)
                 };
-                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref());
+                let _ = chat_page_participant::insert_snapshot(conn, &old_page_id, &pid, &ptype, &name, avatar.as_deref(), persona.as_deref());
             }
         }
     }
@@ -410,11 +417,22 @@ Replace the existing `assemble` method body with the following. The key changes 
             if p.participant_id == agent_id && p.participant_type == "agent" {
                 continue; // 跳过当前 agent 自身
             }
-            participants_text.push_str(&format!("- {}：{}", p.participant_name, 
-                if p.participant_type == "agent" { "角色" } else { "用户" }));
+            // 标签实时推导：优先查 friendships（好友），否则群友/用户
+            let label = if p.participant_type == "agent" {
+                let is_friend: bool = conn.query_row(
+                    "SELECT 1 FROM friendships WHERE agent_id_1 = ?1 AND agent_id_2 = ?2 AND participant_type_2 = 'agent'",
+                    (agent_id, &p.participant_id),
+                    |_| Ok(true),
+                ).unwrap_or(false);
+                if is_friend { "好友" } else { "群友" }
+            } else {
+                "用户"
+            };
+            let persona = p.participant_simplified_persona.as_deref().unwrap_or("");
+            participants_text.push_str(&format!("- {}（{}）：{}\n", p.participant_name, label, persona));
             
             if p.participant_type == "agent" {
-                // 查询 relationship_text 和 memory_text
+                // 查询 relationship_text 和 memory_text（实时）
                 let (rel_text, mem_text): (String, String) = conn.query_row(
                     "SELECT COALESCE(relationship_text, ''), COALESCE(memory_text, '') 
                      FROM agent_relationships 
@@ -424,13 +442,12 @@ Replace the existing `assemble` method body with the following. The key changes 
                 ).unwrap_or_default();
                 
                 if !rel_text.is_empty() {
-                    participants_text.push_str(&format!("\n  [印象]：{}", rel_text));
+                    participants_text.push_str(&format!("  [印象]：{}\n", rel_text));
                 }
                 if agent.memory_enabled && !mem_text.is_empty() {
-                    participants_text.push_str(&format!("\n  [记忆]：{}", mem_text));
+                    participants_text.push_str(&format!("  [记忆]：{}\n", mem_text));
                 }
             }
-            participants_text.push('\n');
         }
 
         // 4. 格式化当前 session + page 的消息历史（反转使旧消息在上，新消息在下）
@@ -505,11 +522,11 @@ However, add a new test that verifies snapshot-based participant introduction:
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar) VALUES ('cp-0', 'agent2', 'agent', 'Snapshot Bob', NULL)",
+            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona) VALUES ('cp-0', 'agent2', 'agent', 'Snapshot Bob', NULL, 'Bob snapshot persona')",
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar) VALUES ('cp-0', 'user-1', 'user', 'Snapshot User', NULL)",
+            "INSERT INTO chat_page_participants (chat_page_id, participant_id, participant_type, participant_name, participant_avatar, participant_simplified_persona) VALUES ('cp-0', 'user-1', 'user', 'Snapshot User', NULL, NULL)",
             [],
         ).unwrap();
 
@@ -584,7 +601,7 @@ async fn setup_test_session(db: &DbState) -> String {
     // Insert agent
     conn.execute(
         "INSERT INTO agents (id, name, detailed_persona, simplified_persona, model_config_id, created_at, updated_at)
-         VALUES ('agent-1', 'Test Agent', 'detailed', 'simple', 'model-1', 1000, 1000)",
+         VALUES ('agent-1', 'Test Agent', 'detailed', 'A helpful test agent', 'model-1', 1000, 1000)",
         [],
     ).unwrap();
     // Insert model config
@@ -630,9 +647,11 @@ async fn test_reset_session_creates_snapshot() {
     let agent = participants.iter().find(|p| p.participant_type == "agent").unwrap();
     assert_eq!(agent.participant_id, "agent-1");
     assert_eq!(agent.participant_name, "Test Agent");
+    assert_eq!(agent.participant_simplified_persona.as_deref(), Some("A helpful test agent"));
 
     let user = participants.iter().find(|p| p.participant_type == "user").unwrap();
     assert_eq!(user.participant_id, "user-1");
+    assert_eq!(user.participant_simplified_persona, None);
 }
 
 #[tokio::test]
@@ -706,6 +725,7 @@ pub struct ChatPageParticipantResponse {
     pub participant_type: String,
     pub participant_name: String,
     pub participant_avatar: Option<String>,
+    pub participant_simplified_persona: Option<String>,
 }
 
 #[tauri::command]
@@ -732,6 +752,7 @@ pub async fn list_chat_page_participants(
         participant_type: p.participant_type,
         participant_name: p.participant_name,
         participant_avatar: p.participant_avatar,
+        participant_simplified_persona: p.participant_simplified_persona,
     }).collect())
 }
 ```
@@ -754,13 +775,13 @@ The final `generate_handler!` block should include the two new commands alongsid
 In `src/lib/stores/sessionStore.svelte.ts`, add to the `SessionStore` class:
 
 ```typescript
-    pageParticipants = $state<Map<string, Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null}>>>(new Map());
+    pageParticipants = $state<Map<string, Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null, participantSimplifiedPersona: string | null}>>>(new Map());
 
     async loadPageParticipants(sessionId: string, pageIndex: number) {
         try {
             const chatPageId = await invoke<string | null>('get_chat_page_id', { sessionId, pageIndex });
             if (!chatPageId) return;
-            const participants = await invoke<Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null}>>('list_chat_page_participants', { chatPageId });
+            const participants = await invoke<Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null, participantSimplifiedPersona: string | null}>>('list_chat_page_participants', { chatPageId });
             this.pageParticipants.set(chatPageId, participants);
         } catch (e) {
             console.error('Failed to load page participants:', e);
@@ -980,7 +1001,7 @@ git commit --allow-empty -m "chore: final verification complete"
 | Repository layer | Task 2 | Added typed `ChatPageParticipantResponse` for Tauri command |
 | `reset_session` snapshot | Task 3 | Uses existing `max_page` variable; clarified variable source |
 | `resolve_history_target_agents` snapshot query | Task 4 | |
-| `HistoryPromptAssembler` snapshot (full participant injection) | Task 5 | **Fixed:** Now includes both sender name resolution AND participant introduction layer with relationship_text / memory_text |
+| `HistoryPromptAssembler` snapshot (full participant injection) | Task 5 | **Fixed:** Participant introduction layer uses snapshot `participant_name` + `participant_simplified_persona`; label and relationship_text / memory_text are live queries |
 | Backend tests | Task 6 | **Fixed:** Added actual assertions to `test_deleted_agent_not_in_history_targets`; added fallback test |
 | Frontend store + Tauri commands | Task 7 | **Fixed:** Added `ChatPageParticipantResponse` struct; added `generate_handler!` registration details |
 | Frontend rendering | Task 8 | **Fixed:** Complete code for `snapshotAvatar` and `currentChatPageId`; backward-compatible fallback |
