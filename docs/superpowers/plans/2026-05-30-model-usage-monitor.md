@@ -24,7 +24,7 @@
 | `src/llm/conversation.rs` | Modify | Collect usage per round into `ConversationResult` |
 | `src/scheduler/mod.rs` | Modify | Write usage records after `conversation.run()` in trigger paths |
 | `src/llm/persona_generation.rs` | Modify | Write usage records after each LLM call |
-| `src/commands/usage.rs` | Create | 10 Tauri Commands for usage queries |
+| `src/commands/usage.rs` | Create | 11 Tauri Commands for usage queries |
 | `src/lib.rs` | Modify | Register usage commands in `generate_handler!` |
 
 ### Frontend (Svelte/TS)
@@ -289,6 +289,24 @@ pub struct TriggerUsageItem {
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub total_tokens: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelAgentUsageItem {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub calls: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageFilters {
+    pub agent_id: Option<String>,
+    pub model_config_id: Option<String>,
+    pub session_id: Option<String>,
+    pub trigger_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -754,22 +772,86 @@ pub async fn get_usage_by_trigger(
     Ok(items)
 }
 
+pub async fn get_model_agent_breakdown(
+    db: &DbState,
+    model_config_id: &str,
+    time_range: &TimeRange,
+) -> Result<Vec<ModelAgentUsageItem>, String> {
+    let conn = db.0.lock().await;
+    let mut stmt = conn.prepare(
+        "SELECT
+            a.id as agent_id,
+            a.name as agent_name,
+            COUNT(*) as calls,
+            SUM(lur.prompt_tokens) as prompt_tokens,
+            SUM(lur.completion_tokens) as completion_tokens,
+            SUM(lur.total_tokens) as total_tokens
+         FROM llm_usage_records lur
+         JOIN agents a ON lur.agent_id = a.id
+         WHERE lur.model_config_id = ?1 AND lur.created_at >= ?2 AND lur.created_at <= ?3
+         GROUP BY a.id, a.name
+         ORDER BY total_tokens DESC"
+    ).map_err(|e| e.to_string())?;
+
+    let items = stmt.query_map(
+        params![model_config_id, time_range.start_time, time_range.end_time],
+        |row| {
+            Ok(ModelAgentUsageItem {
+                agent_id: row.get(0)?,
+                agent_name: row.get(1)?,
+                calls: row.get(2)?,
+                prompt_tokens: row.get(3)?,
+                completion_tokens: row.get(4)?,
+                total_tokens: row.get(5)?,
+            })
+        }
+    ).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
 pub async fn get_usage_records(
     db: &DbState,
     time_range: &TimeRange,
     page: i32,
     page_size: i32,
+    filters: &UsageFilters,
 ) -> Result<PaginatedUsageRecords, String> {
     let conn = db.0.lock().await;
     let offset = (page - 1) * page_size;
 
+    let mut where_clauses = vec!["lur.created_at >= ?1", "lur.created_at <= ?2"];
+    let mut query_params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+        Box::new(time_range.start_time),
+        Box::new(time_range.end_time),
+    ];
+
+    if let Some(ref agent_id) = filters.agent_id {
+        where_clauses.push("lur.agent_id = ?");
+        query_params.push(Box::new(agent_id.clone()));
+    }
+    if let Some(ref model_id) = filters.model_config_id {
+        where_clauses.push("lur.model_config_id = ?");
+        query_params.push(Box::new(model_id.clone()));
+    }
+    if let Some(ref session_id) = filters.session_id {
+        where_clauses.push("lur.session_id = ?");
+        query_params.push(Box::new(session_id.clone()));
+    }
+    if let Some(ref trigger) = filters.trigger_type {
+        where_clauses.push("lur.trigger_type = ?");
+        query_params.push(Box::new(trigger.clone()));
+    }
+
+    let where_sql = where_clauses.join(" AND ");
+
     let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM llm_usage_records WHERE created_at >= ?1 AND created_at <= ?2",
-        params![time_range.start_time, time_range.end_time],
+        &format!("SELECT COUNT(*) FROM llm_usage_records lur WHERE {}", where_sql),
+        rusqlite::params_from_iter(query_params.iter()),
         |row| row.get(0),
     ).map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT
             lur.id,
             a.name as agent_name,
@@ -787,13 +869,16 @@ pub async fn get_usage_records(
          LEFT JOIN sessions s ON lur.session_id = s.id
          LEFT JOIN group_sessions gs ON s.id = gs.session_id
          LEFT JOIN private_sessions ps ON s.id = ps.session_id
-         WHERE lur.created_at >= ?1 AND lur.created_at <= ?2
+         WHERE {}
          ORDER BY lur.created_at DESC
-         LIMIT ?3 OFFSET ?4"
-    ).map_err(|e| e.to_string())?;
+         LIMIT ? OFFSET ?",
+        where_sql
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let records = stmt.query_map(
-        params![time_range.start_time, time_range.end_time, page_size, offset],
+        rusqlite::params_from_iter(query_params.iter().chain([&page_size as &dyn rusqlite::ToSql, &offset as &dyn rusqlite::ToSql])),
         |row| {
             Ok(UsageRecordDetail {
                 id: row.get(0)?,
@@ -965,7 +1050,7 @@ async fn write_usage_records(
 
     let now = chrono::Utc::now().timestamp_millis();
     for usage in usage_records {
-        let id = format!("usage_{}_{}", now, rand::random::<u32>());
+        let id = format!("usage_{}_{}_{}", agent_id, now, uuid::Uuid::new_v4());
         conn.execute(
             "INSERT INTO llm_usage_records (
                 id, agent_id, model_config_id, session_id, trigger_type,
@@ -993,39 +1078,69 @@ async fn write_usage_records(
 
 Add `use rand::Rng;` at the top of `scheduler/mod.rs` if not already present.
 
-### Step 2: Modify trigger_agent_inner
+### Step 2: Refactor trigger_agent_inner signature
 
-Find where `conversation.run()` is called in `trigger_agent_inner`. After the conversation completes and the final message is inserted, call the helper:
-
+`trigger_agent_inner` currently has this signature:
 ```rust
-// After inserting the agent message and getting message_id:
-if let Some(ref content) = result.final_content {
-    // ... existing message insertion code ...
-    // After getting message_id:
-    let _ = self.write_usage_records(
-        agent_id,
-        Some(session_id),
-        "user_message", // or determine based on context
-        Some(&message_id),
-        &result.usage_records,
-    ).await;
-}
+async fn trigger_agent_inner(
+    &self,
+    agent_id: &str,
+    pending: Vec<PendingMessage>,
+    session_pages: HashMap<String, i32>,
+    _snapshot_pages: HashMap<String, i32>,
+) -> Result<(), String> {
 ```
 
-Wait - `trigger_agent_inner` handles both `user_message` and `background_scan`. Need to pass the correct trigger_type. The trigger_type should be determined by the caller context. In `on_new_message`, it's `user_message`. In `try_trigger_agent` (background scan), it's `background_scan`.
-
-Refactor: pass `trigger_type` as a parameter to `trigger_agent_inner`.
-
-Change `trigger_agent_inner` signature:
+Add `trigger_type: &str` as the 2nd parameter:
 ```rust
 async fn trigger_agent_inner(
     &self,
     agent_id: &str,
     trigger_type: &str,
+    pending: Vec<PendingMessage>,
+    session_pages: HashMap<String, i32>,
+    _snapshot_pages: HashMap<String, i32>,
 ) -> Result<(), String> {
 ```
 
-Update all call sites to pass the trigger type.
+Then find where `conversation.run()` returns `ConversationResult`. After the final message is inserted and `message_id` is obtained, call the usage writer:
+
+```rust
+// After message insertion succeeds and message_id is available:
+let _ = self.write_usage_records(
+    agent_id,
+    Some(session_id),
+    trigger_type,
+    Some(&message_id),
+    &result.usage_records,
+).await;
+```
+
+**Update all call sites:**
+
+1. `on_new_message` (around line 420):
+```rust
+self.trigger_agent_inner(
+    &agent_id,
+    "user_message",
+    pending,
+    session_pages,
+    snapshot_pages,
+).await;
+```
+
+2. `try_trigger_agent` (around line 520, inside `catch_async_panic`):
+```rust
+self.trigger_agent_inner(
+    agent_id,
+    "background_scan",
+    vec![],
+    HashMap::new(),
+    HashMap::new(),
+).await;
+```
+
+3. Any other call sites inside `scheduler/mod.rs` that call `trigger_agent_inner`.
 
 ### Step 3: Modify trigger_special
 
@@ -1073,6 +1188,8 @@ git commit -m "feat(scheduler): write usage records after LLM triggers"
 
 In `src-tauri/src/llm/persona_generation.rs`, after each `provider.chat()` call, extract usage and write to DB.
 
+The `generate` function already receives `db_state: DbState`, `agent_id: &str`, and `model_config_id: &str` (after V19 refactor, the function signature includes these). Verify the current signature — if `model_config_id` is not directly available, query it from the agent record using `db_state`.
+
 After Step1 response:
 ```rust
 let response1 = provider.chat(SYSTEM_PROMPT_STEP1, step1_messages, tools).await?;
@@ -1082,12 +1199,11 @@ if let Some(ref usage_json) = response1.usage {
     let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
     let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
     let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
-    // Write to db using usage repository
     let now = chrono::Utc::now().timestamp_millis();
     let record = crate::models::usage::LlmUsageRecord {
-        id: format!("usage_{}_{}", now, rand::random::<u32>()),
+        id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
         agent_id: agent_id.to_string(),
-        model_config_id: model_config_id.clone(),
+        model_config_id: model_config_id.to_string(),
         session_id: None,
         trigger_type: "persona_generation".to_string(),
         call_round: 1,
@@ -1097,13 +1213,19 @@ if let Some(ref usage_json) = response1.usage {
         message_id: None,
         created_at: now,
     };
-    let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
+    let _ = crate::db::usage::insert_usage_record(&db_state, &record).await;
 }
 ```
 
 Do the same for Step2 with `call_round: 2`.
 
-Note: `persona_generation.rs` needs access to `agent_id` and `model_config_id`. These may need to be passed in or extracted from existing variables.
+Fields:
+- `agent_id` = 正在生成的角色 ID
+- `model_config_id` = 生成时使用的配置（从函数参数或 agents 表查询）
+- `session_id` = null
+- `trigger_type` = `persona_generation`
+- `message_id` = null
+- `call_round` = 1（Step1）/ 2（Step2）
 
 ### Step 2: Verify compilation
 
@@ -1154,6 +1276,7 @@ fn parse_time_range(range: &str) -> TimeRange {
                 .unwrap()
                 .timestamp_millis()
         }
+        "all" => 0,
         _ => 0,
     };
     TimeRange {
@@ -1239,6 +1362,16 @@ pub async fn get_session_agent_model_breakdown(
 }
 
 #[tauri::command]
+pub async fn get_model_agent_breakdown(
+    db: State<'_, DbState>,
+    model_config_id: String,
+    time_range: String,
+) -> Result<Vec<ModelAgentUsageItem>, String> {
+    let range = parse_time_range(&time_range);
+    usage_repo::get_model_agent_breakdown(&db, &model_config_id, &range).await
+}
+
+#[tauri::command]
 pub async fn get_usage_by_trigger(
     db: State<'_, DbState>,
     time_range: String,
@@ -1253,9 +1386,16 @@ pub async fn get_usage_records(
     time_range: String,
     page: i32,
     page_size: i32,
+    filters: Option<UsageFilters>,
 ) -> Result<PaginatedUsageRecords, String> {
     let range = parse_time_range(&time_range);
-    usage_repo::get_usage_records(&db, &range, page, page_size).await
+    let filters = filters.unwrap_or(UsageFilters {
+        agent_id: None,
+        model_config_id: None,
+        session_id: None,
+        trigger_type: None,
+    });
+    usage_repo::get_usage_records(&db, &range, page, page_size, &filters).await
 }
 ```
 
@@ -1268,6 +1408,7 @@ In `src-tauri/src/lib.rs`, add to `generate_handler!`:
 .get_usage_by_model,
 .get_usage_by_agent,
 .get_agent_model_breakdown,
+.get_model_agent_breakdown,
 .get_usage_by_session,
 .get_session_agent_breakdown,
 .get_session_model_breakdown,
@@ -1444,11 +1585,16 @@ class UsageStore {
     bySession = $state<SessionUsageItem[]>([]);
     byTrigger = $state<TriggerUsageItem[]>([]);
     records = $state<PaginatedUsageRecords | null>(null);
-    loading = $state(false);
+    loadingOverview = $state(false);
+    loadingModel = $state(false);
+    loadingAgent = $state(false);
+    loadingSession = $state(false);
+    loadingTrigger = $state(false);
+    loadingRecords = $state(false);
     error = $state<string | null>(null);
 
     async loadOverview() {
-        this.loading = true;
+        this.loadingOverview = true;
         try {
             this.overview = await invoke<UsageOverview>('get_usage_overview', {
                 timeRange: this.timeRange,
@@ -1456,12 +1602,12 @@ class UsageStore {
         } catch (e) {
             this.error = String(e);
         } finally {
-            this.loading = false;
+            this.loadingOverview = false;
         }
     }
 
     async loadByModel() {
-        this.loading = true;
+        this.loadingModel = true;
         try {
             this.byModel = await invoke<ModelUsageItem[]>('get_usage_by_model', {
                 timeRange: this.timeRange,
@@ -1469,12 +1615,12 @@ class UsageStore {
         } catch (e) {
             this.error = String(e);
         } finally {
-            this.loading = false;
+            this.loadingModel = false;
         }
     }
 
     async loadByAgent() {
-        this.loading = true;
+        this.loadingAgent = true;
         try {
             this.byAgent = await invoke<AgentUsageItem[]>('get_usage_by_agent', {
                 timeRange: this.timeRange,
@@ -1482,7 +1628,7 @@ class UsageStore {
         } catch (e) {
             this.error = String(e);
         } finally {
-            this.loading = false;
+            this.loadingAgent = false;
         }
     }
 
@@ -1493,8 +1639,15 @@ class UsageStore {
         });
     }
 
+    async loadModelAgentBreakdown(modelConfigId: string) {
+        return await invoke<ModelAgentUsageItem[]>('get_model_agent_breakdown', {
+            modelConfigId,
+            timeRange: this.timeRange,
+        });
+    }
+
     async loadBySession() {
-        this.loading = true;
+        this.loadingSession = true;
         try {
             this.bySession = await invoke<SessionUsageItem[]>('get_usage_by_session', {
                 timeRange: this.timeRange,
@@ -1528,7 +1681,7 @@ class UsageStore {
     }
 
     async loadByTrigger() {
-        this.loading = true;
+        this.loadingTrigger = true;
         try {
             this.byTrigger = await invoke<TriggerUsageItem[]>('get_usage_by_trigger', {
                 timeRange: this.timeRange,
@@ -1536,22 +1689,23 @@ class UsageStore {
         } catch (e) {
             this.error = String(e);
         } finally {
-            this.loading = false;
+            this.loadingTrigger = false;
         }
     }
 
-    async loadRecords(page: number = 1, pageSize: number = 50) {
-        this.loading = true;
+    async loadRecords(page: number = 1, pageSize: number = 50, filters?: { agentId?: string; modelConfigId?: string; sessionId?: string; triggerType?: string }) {
+        this.loadingRecords = true;
         try {
             this.records = await invoke<PaginatedUsageRecords>('get_usage_records', {
                 timeRange: this.timeRange,
                 page,
                 pageSize,
+                filters,
             });
         } catch (e) {
             this.error = String(e);
         } finally {
-            this.loading = false;
+            this.loadingRecords = false;
         }
     }
 
@@ -1794,11 +1948,11 @@ git commit -m "feat(frontend): add UsageMonitor main container"
                 <div class="text-2xl font-bold text-text">{formatNumber(o.total_calls)}</div>
             </div>
             <div class="bg-surface rounded-xl p-4 border border-border">
-                <div class="text-sm text-text-secondary mb-1">Prompt Tokens</div>
+                <div class="text-sm text-text-secondary mb-1">Prompt 消耗</div>
                 <div class="text-2xl font-bold text-text">{formatNumber(o.total_prompt_tokens)}</div>
             </div>
             <div class="bg-surface rounded-xl p-4 border border-border">
-                <div class="text-sm text-text-secondary mb-1">Completion Tokens</div>
+                <div class="text-sm text-text-secondary mb-1">Completion 消耗</div>
                 <div class="text-2xl font-bold text-text">{formatNumber(o.total_completion_tokens)}</div>
             </div>
             <div class="bg-surface rounded-xl p-4 border border-border">
@@ -1872,8 +2026,10 @@ git commit -m "feat(frontend): add UsageOverview sub-page"
     import { usageStore } from '$lib/stores/usageStore.svelte';
     import type { ModelUsageItem } from '$lib/types/usage';
 
+    import type { ModelAgentUsageItem } from '$lib/types/usage';
+
     let expandedModelId = $state<string | null>(null);
-    let modelAgentBreakdown = $state<Record<string, any[]>>({});
+    let modelAgentBreakdown = $state<ModelAgentUsageItem[]>([]);
 
     function formatNumber(n: number): string {
         return n.toLocaleString('zh-CN');
@@ -1885,6 +2041,7 @@ git commit -m "feat(frontend): add UsageOverview sub-page"
             return;
         }
         expandedModelId = model.model_config_id;
+        modelAgentBreakdown = await usageStore.loadModelAgentBreakdown(model.model_config_id);
     }
 </script>
 
@@ -1917,8 +2074,28 @@ git commit -m "feat(frontend): add UsageOverview sub-page"
                         <tr class="bg-gray-50">
                             <td colspan="6" class="px-4 py-3">
                                 <div class="text-xs text-text-secondary mb-2">该模型下各角色用量</div>
-                                <!-- Agent breakdown would go here - needs backend command for model->agent breakdown -->
-                                <div class="text-xs text-text-secondary">（下钻数据待实现）</div>
+                                <table class="w-full text-xs">
+                                    <thead class="border-b border-border">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left font-medium text-text-secondary">角色</th>
+                                            <th class="px-2 py-1 text-right font-medium text-text-secondary">调用次数</th>
+                                            <th class="px-2 py-1 text-right font-medium text-text-secondary">Prompt</th>
+                                            <th class="px-2 py-1 text-right font-medium text-text-secondary">Completion</th>
+                                            <th class="px-2 py-1 text-right font-medium text-text-secondary">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each modelAgentBreakdown as item}
+                                            <tr class="border-b border-border/50">
+                                                <td class="px-2 py-1 text-text">{item.agent_name}</td>
+                                                <td class="px-2 py-1 text-right text-text">{formatNumber(item.calls)}</td>
+                                                <td class="px-2 py-1 text-right text-text">{formatNumber(item.prompt_tokens)}</td>
+                                                <td class="px-2 py-1 text-right text-text">{formatNumber(item.completion_tokens)}</td>
+                                                <td class="px-2 py-1 text-right text-text font-medium">{formatNumber(item.total_tokens)}</td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
                             </td>
                         </tr>
                     {/if}
@@ -2283,39 +2460,81 @@ git commit -m "feat(frontend): add UsageBySession sub-page"
 
 {#if usageStore.byTrigger.length > 0}
     {@const totalTokens = usageStore.byTrigger.reduce((sum, t) => sum + t.total_tokens, 0)}
+    {@const totalCalls = usageStore.byTrigger.reduce((sum, t) => sum + t.calls, 0)}
     <div class="space-y-6">
-        <!-- Pie chart (simple SVG) -->
+        <!-- Pie charts -->
         <div class="bg-surface rounded-xl p-4 border border-border">
-            <h3 class="text-sm font-semibold text-text mb-4">用量占比</h3>
-            <div class="flex items-center gap-8">
-                <svg viewBox="0 0 100 100" class="w-40 h-40">
-                    {#each usageStore.byTrigger as trigger, i}
-                        {@const prevTotal = usageStore.byTrigger.slice(0, i).reduce((s, t) => s + t.total_tokens, 0)}
-                        {@const startAngle = (prevTotal / totalTokens) * 360}
-                        {@const endAngle = ((prevTotal + trigger.total_tokens) / totalTokens) * 360}
-                        {@const startRad = (startAngle - 90) * Math.PI / 180}
-                        {@const endRad = (endAngle - 90) * Math.PI / 180}
-                        {@const x1 = 50 + 40 * Math.cos(startRad)}
-                        {@const y1 = 50 + 40 * Math.sin(startRad)}
-                        {@const x2 = 50 + 40 * Math.cos(endRad)}
-                        {@const y2 = 50 + 40 * Math.sin(endRad)}
-                        {@const largeArc = endAngle - startAngle > 180 ? 1 : 0}
-                        <path
-                            d="M 50 50 L {x1} {y1} A 40 40 0 {largeArc} 1 {x2} {y2} Z"
-                            fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}
-                            stroke="white"
-                            stroke-width="1"
-                        />
-                    {/each}
-                </svg>
-                <div class="space-y-2">
-                    {#each usageStore.byTrigger as trigger, i}
-                        <div class="flex items-center gap-2 text-sm">
-                            <div class="w-3 h-3 rounded-full" style="background: {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}"></div>
-                            <span class="text-text">{TRIGGER_TYPE_LABELS[trigger.trigger_type] || trigger.trigger_type}</span>
-                            <span class="text-text-secondary">{formatNumber(trigger.total_tokens)} tokens</span>
+            <div class="flex gap-8">
+                <!-- Calls pie -->
+                <div class="flex-1">
+                    <h3 class="text-sm font-semibold text-text mb-4 text-center">调用次数占比</h3>
+                    <div class="flex items-center gap-6">
+                        <svg viewBox="0 0 100 100" class="w-32 h-32 shrink-0">
+                            {#each usageStore.byTrigger as trigger, i}
+                                {@const prevTotal = usageStore.byTrigger.slice(0, i).reduce((s, t) => s + t.calls, 0)}
+                                {@const startAngle = totalCalls > 0 ? (prevTotal / totalCalls) * 360 : 0}
+                                {@const endAngle = totalCalls > 0 ? ((prevTotal + trigger.calls) / totalCalls) * 360 : 0}
+                                {@const startRad = (startAngle - 90) * Math.PI / 180}
+                                {@const endRad = (endAngle - 90) * Math.PI / 180}
+                                {@const x1 = 50 + 35 * Math.cos(startRad)}
+                                {@const y1 = 50 + 35 * Math.sin(startRad)}
+                                {@const x2 = 50 + 35 * Math.cos(endRad)}
+                                {@const y2 = 50 + 35 * Math.sin(endRad)}
+                                {@const largeArc = endAngle - startAngle > 180 ? 1 : 0}
+                                <path
+                                    d="M 50 50 L {x1} {y1} A 35 35 0 {largeArc} 1 {x2} {y2} Z"
+                                    fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}
+                                    stroke="white"
+                                    stroke-width="1"
+                                />
+                            {/each}
+                        </svg>
+                        <div class="space-y-1.5">
+                            {#each usageStore.byTrigger as trigger, i}
+                                <div class="flex items-center gap-2 text-xs">
+                                    <div class="w-2.5 h-2.5 rounded-full" style="background: {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}"></div>
+                                    <span class="text-text">{TRIGGER_TYPE_LABELS[trigger.trigger_type] || trigger.trigger_type}</span>
+                                    <span class="text-text-secondary">{formatNumber(trigger.calls)} 次 ({getPercentage(trigger.calls, totalCalls)})</span>
+                                </div>
+                            {/each}
                         </div>
-                    {/each}
+                    </div>
+                </div>
+
+                <!-- Tokens pie -->
+                <div class="flex-1">
+                    <h3 class="text-sm font-semibold text-text mb-4 text-center">Token 消耗占比</h3>
+                    <div class="flex items-center gap-6">
+                        <svg viewBox="0 0 100 100" class="w-32 h-32 shrink-0">
+                            {#each usageStore.byTrigger as trigger, i}
+                                {@const prevTotal = usageStore.byTrigger.slice(0, i).reduce((s, t) => s + t.total_tokens, 0)}
+                                {@const startAngle = totalTokens > 0 ? (prevTotal / totalTokens) * 360 : 0}
+                                {@const endAngle = totalTokens > 0 ? ((prevTotal + trigger.total_tokens) / totalTokens) * 360 : 0}
+                                {@const startRad = (startAngle - 90) * Math.PI / 180}
+                                {@const endRad = (endAngle - 90) * Math.PI / 180}
+                                {@const x1 = 50 + 35 * Math.cos(startRad)}
+                                {@const y1 = 50 + 35 * Math.sin(startRad)}
+                                {@const x2 = 50 + 35 * Math.cos(endRad)}
+                                {@const y2 = 50 + 35 * Math.sin(endRad)}
+                                {@const largeArc = endAngle - startAngle > 180 ? 1 : 0}
+                                <path
+                                    d="M 50 50 L {x1} {y1} A 35 35 0 {largeArc} 1 {x2} {y2} Z"
+                                    fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}
+                                    stroke="white"
+                                    stroke-width="1"
+                                />
+                            {/each}
+                        </svg>
+                        <div class="space-y-1.5">
+                            {#each usageStore.byTrigger as trigger, i}
+                                <div class="flex items-center gap-2 text-xs">
+                                    <div class="w-2.5 h-2.5 rounded-full" style="background: {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][i % 5]}"></div>
+                                    <span class="text-text">{TRIGGER_TYPE_LABELS[trigger.trigger_type] || trigger.trigger_type}</span>
+                                    <span class="text-text-secondary">{formatNumber(trigger.total_tokens)} tokens ({getPercentage(trigger.total_tokens, totalTokens)})</span>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2366,6 +2585,10 @@ git commit -m "feat(frontend): add UsageBySession sub-page"
 
     let page = $state(1);
     const pageSize = 50;
+    let filterAgentId = $state('');
+    let filterModelId = $state('');
+    let filterSessionId = $state('');
+    let filterTriggerType = $state('');
 
     function formatNumber(n: number): string {
         return n.toLocaleString('zh-CN');
@@ -2375,74 +2598,133 @@ git commit -m "feat(frontend): add UsageBySession sub-page"
         return new Date(ts).toLocaleString('zh-CN');
     }
 
+    async function applyFilters() {
+        page = 1;
+        await usageStore.loadRecords(page, pageSize, {
+            agentId: filterAgentId || undefined,
+            modelConfigId: filterModelId || undefined,
+            sessionId: filterSessionId || undefined,
+            triggerType: filterTriggerType || undefined,
+        });
+    }
+
     async function goToPage(p: number) {
         if (p < 1) return;
         if (usageStore.records && p > Math.ceil(usageStore.records.total / pageSize)) return;
         page = p;
-        await usageStore.loadRecords(page, pageSize);
+        await usageStore.loadRecords(page, pageSize, {
+            agentId: filterAgentId || undefined,
+            modelConfigId: filterModelId || undefined,
+            sessionId: filterSessionId || undefined,
+            triggerType: filterTriggerType || undefined,
+        });
     }
+
+    // Initial load when component mounts
+    $effect(() => {
+        usageStore.loadRecords(page, pageSize);
+    });
 </script>
 
-{#if usageStore.records}
-    <div class="bg-surface rounded-xl border border-border overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50 border-b border-border">
-                <tr>
-                    <th class="px-4 py-2 text-left font-medium text-text-secondary">时间</th>
-                    <th class="px-4 py-2 text-left font-medium text-text-secondary">角色</th>
-                    <th class="px-4 py-2 text-left font-medium text-text-secondary">模型</th>
-                    <th class="px-4 py-2 text-left font-medium text-text-secondary">会话</th>
-                    <th class="px-4 py-2 text-left font-medium text-text-secondary">用途</th>
-                    <th class="px-4 py-2 text-right font-medium text-text-secondary">轮次</th>
-                    <th class="px-4 py-2 text-right font-medium text-text-secondary">Prompt</th>
-                    <th class="px-4 py-2 text-right font-medium text-text-secondary">Completion</th>
-                    <th class="px-4 py-2 text-right font-medium text-text-secondary">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {#each usageStore.records.records as record}
-                    <tr class="border-b border-border">
-                        <td class="px-4 py-2 text-text whitespace-nowrap">{formatDate(record.created_at)}</td>
-                        <td class="px-4 py-2 text-text">{record.agent_name}</td>
-                        <td class="px-4 py-2 text-text">{record.model_name}</td>
-                        <td class="px-4 py-2 text-text">{record.session_name || '-'}</td>
-                        <td class="px-4 py-2 text-text">{TRIGGER_TYPE_LABELS[record.trigger_type] || record.trigger_type}</td>
-                        <td class="px-4 py-2 text-right text-text">{record.call_round}</td>
-                        <td class="px-4 py-2 text-right text-text">{formatNumber(record.prompt_tokens)}</td>
-                        <td class="px-4 py-2 text-right text-text">{formatNumber(record.completion_tokens)}</td>
-                        <td class="px-4 py-2 text-right text-text font-medium">{formatNumber(record.total_tokens)}</td>
-                    </tr>
-                {/each}
-            </tbody>
-        </table>
+<div class="space-y-4">
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 bg-surface rounded-xl p-4 border border-border">
+        <input
+            type="text"
+            placeholder="角色ID"
+            class="px-3 py-1.5 text-sm border border-border rounded-lg bg-bg text-text w-32"
+            bind:value={filterAgentId}
+        />
+        <input
+            type="text"
+            placeholder="模型ID"
+            class="px-3 py-1.5 text-sm border border-border rounded-lg bg-bg text-text w-32"
+            bind:value={filterModelId}
+        />
+        <input
+            type="text"
+            placeholder="会话ID"
+            class="px-3 py-1.5 text-sm border border-border rounded-lg bg-bg text-text w-32"
+            bind:value={filterSessionId}
+        />
+        <select
+            class="px-3 py-1.5 text-sm border border-border rounded-lg bg-bg text-text"
+            bind:value={filterTriggerType}
+        >
+            <option value="">全部用途</option>
+            {#each Object.entries(TRIGGER_TYPE_LABELS) as [value, label]}
+                <option value={value}>{label}</option>
+            {/each}
+        </select>
+        <button
+            class="px-4 py-1.5 text-sm bg-primary text-white rounded-lg"
+            onclick={applyFilters}
+        >
+            筛选
+        </button>
     </div>
 
-    <!-- Pagination -->
-    {#if usageStore.records.total > pageSize}
-        {@const totalPages = Math.ceil(usageStore.records.total / pageSize)}
-        <div class="flex items-center justify-center gap-2 mt-4">
-            <button
-                class="px-3 py-1 text-sm rounded border border-border bg-surface text-text disabled:opacity-50"
-                disabled={page <= 1}
-                onclick={() => goToPage(page - 1)}
-            >
-                上一页
-            </button>
-            <span class="text-sm text-text">{page} / {totalPages}</span>
-            <button
-                class="px-3 py-1 text-sm rounded border border-border bg-surface text-text disabled:opacity-50"
-                disabled={page >= totalPages}
-                onclick={() => goToPage(page + 1)}
-            >
-                下一页
-            </button>
+    {#if usageStore.records}
+        <div class="bg-surface rounded-xl border border-border overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 border-b border-border">
+                    <tr>
+                        <th class="px-4 py-2 text-left font-medium text-text-secondary">时间</th>
+                        <th class="px-4 py-2 text-left font-medium text-text-secondary">角色</th>
+                        <th class="px-4 py-2 text-left font-medium text-text-secondary">模型</th>
+                        <th class="px-4 py-2 text-left font-medium text-text-secondary">会话</th>
+                        <th class="px-4 py-2 text-left font-medium text-text-secondary">用途</th>
+                        <th class="px-4 py-2 text-right font-medium text-text-secondary">轮次</th>
+                        <th class="px-4 py-2 text-right font-medium text-text-secondary">Prompt</th>
+                        <th class="px-4 py-2 text-right font-medium text-text-secondary">Completion</th>
+                        <th class="px-4 py-2 text-right font-medium text-text-secondary">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each usageStore.records.records as record}
+                        <tr class="border-b border-border">
+                            <td class="px-4 py-2 text-text whitespace-nowrap">{formatDate(record.created_at)}</td>
+                            <td class="px-4 py-2 text-text">{record.agent_name}</td>
+                            <td class="px-4 py-2 text-text">{record.model_name}</td>
+                            <td class="px-4 py-2 text-text">{record.session_name || '-'}</td>
+                            <td class="px-4 py-2 text-text">{TRIGGER_TYPE_LABELS[record.trigger_type] || record.trigger_type}</td>
+                            <td class="px-4 py-2 text-right text-text">{record.call_round}</td>
+                            <td class="px-4 py-2 text-right text-text">{formatNumber(record.prompt_tokens)}</td>
+                            <td class="px-4 py-2 text-right text-text">{formatNumber(record.completion_tokens)}</td>
+                            <td class="px-4 py-2 text-right text-text font-medium">{formatNumber(record.total_tokens)}</td>
+                        </tr>
+                    {/each}
+                </tbody>
+            </table>
         </div>
+
+        <!-- Pagination -->
+        {#if usageStore.records.total > pageSize}
+            {@const totalPages = Math.ceil(usageStore.records.total / pageSize)}
+            <div class="flex items-center justify-center gap-2 mt-4">
+                <button
+                    class="px-3 py-1 text-sm rounded border border-border bg-surface text-text disabled:opacity-50"
+                    disabled={page <= 1}
+                    onclick={() => goToPage(page - 1)}
+                >
+                    上一页
+                </button>
+                <span class="text-sm text-text">{page} / {totalPages}</span>
+                <button
+                    class="px-3 py-1 text-sm rounded border border-border bg-surface text-text disabled:opacity-50"
+                    disabled={page >= totalPages}
+                    onclick={() => goToPage(page + 1)}
+                >
+                    下一页
+                </button>
+            </div>
+        {/if}
+    {:else if usageStore.loadingRecords}
+        <div class="text-center text-text-secondary py-12">加载中...</div>
+    {:else}
+        <div class="text-center text-text-secondary py-12">暂无数据</div>
     {/if}
-{:else if usageStore.loading}
-    <div class="text-center text-text-secondary py-12">加载中...</div>
-{:else}
-    <div class="text-center text-text-secondary py-12">暂无数据</div>
-{/if}
+</div>
 ```
 
 ### Step 3: Verify compilation
@@ -2577,20 +2859,19 @@ git commit -m "feat: complete model usage monitoring feature" --allow-empty
 |-----------------|-----------|
 | Database schema (`llm_usage_records`) | Task 1 |
 | Migration V21 | Task 1 |
-| DTO structs | Task 2 |
-| Repository insert + all 10 queries | Task 2, 3 |
+| DTO structs (incl. `ModelAgentUsageItem`, `UsageFilters`) | Task 2 |
+| Repository insert + all 11 queries | Task 2, 3 |
 | `LlmCallUsage` struct | Task 4 |
 | `ConversationResult` usage_records | Task 4 |
 | conversation.run() collect usage | Task 4 |
-| Scheduler write usage (trigger_agent_inner) | Task 5 |
-| Scheduler write usage (trigger_special) | Task 5 |
+| Scheduler write usage (trigger_agent_inner + trigger_special) | Task 5 |
 | Persona generation write usage | Task 6 |
-| 10 Tauri Commands | Task 7 |
-| Frontend types | Task 8 |
-| Frontend store | Task 8 |
+| 11 Tauri Commands (incl. `get_model_agent_breakdown`) | Task 7 |
+| Frontend types (incl. `ModelAgentUsageItem`, `UsageFilters`) | Task 8 |
+| Frontend store (per-tab loading + `loadModelAgentBreakdown`) | Task 8 |
 | Navigation integration | Task 9 |
 | UsageMonitor container | Task 10 |
-| 6 sub-pages | Task 11-15 |
+| 6 sub-pages (incl. full model drill-down + dual pie charts + detail filters) | Task 11-15 |
 | Rust tests | Task 16 |
 | Final verification | Task 17 |
 
@@ -2599,12 +2880,16 @@ git commit -m "feat: complete model usage monitoring feature" --allow-empty
 - No TBD/TODO found.
 - All code steps contain complete code.
 - No "Similar to Task N" patterns.
+- `uuid::Uuid::new_v4()` used for collision-safe ID generation.
+- `UsageFilters` struct fully defined in both Rust and TypeScript.
 
 ### Type Consistency
 
 - Rust DTO field names match between `models/usage.rs` and `db/usage.rs` queries.
 - TypeScript interfaces match Rust DTOs.
 - Tauri Command parameter names use camelCase (frontend) which Tauri v2 auto-converts.
+- Repository methods consistently use `&TimeRange` (borrowed).
+- `parse_time_range` explicitly handles `"all"` case.
 
 ---
 
