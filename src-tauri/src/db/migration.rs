@@ -108,6 +108,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "llm_usage_tracking",
         sql: super::schema::MIGRATION_V21,
     },
+    Migration {
+        version: 22,
+        name: "chat_page_participant_snapshots",
+        sql: super::schema::MIGRATION_V22,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
@@ -124,7 +129,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::E
         // 直接执行完整最新 schema，无需逐个 ALTER TABLE
         conn.execute_batch(super::schema::BASE_SCHEMA)?;
 
-        // 批量标记 V1~V21 已应用
+        // 批量标记 V1~V22 已应用
         let now = chrono::Utc::now().timestamp_millis();
         let tx = conn.transaction()?;
         for migration in MIGRATIONS {

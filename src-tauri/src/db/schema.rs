@@ -646,6 +646,20 @@ CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_
 CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
 "#;
 
+pub const MIGRATION_V22: &str = r#"
+-- V22: Chat page participant snapshots
+CREATE TABLE chat_page_participants (
+    chat_page_id TEXT NOT NULL,
+    participant_id TEXT NOT NULL,
+    participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
+    participant_name TEXT NOT NULL,
+    participant_avatar TEXT,
+    participant_simplified_persona TEXT,
+    PRIMARY KEY (chat_page_id, participant_id, participant_type),
+    FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
+);
+"#;
+
 /// Latest consolidated schema for fresh databases.
 /// Creates all tables and indexes directly at the current version (V20).
 /// Table order respects foreign key dependencies.
@@ -838,6 +852,18 @@ CREATE TABLE chat_pages (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     UNIQUE(session_id, page_index)
+);
+
+-- ========== 13a. chat_page_participants ==========
+CREATE TABLE chat_page_participants (
+    chat_page_id TEXT NOT NULL,
+    participant_id TEXT NOT NULL,
+    participant_type TEXT NOT NULL CHECK(participant_type IN ('user', 'agent')),
+    participant_name TEXT NOT NULL,
+    participant_avatar TEXT,
+    participant_simplified_persona TEXT,
+    PRIMARY KEY (chat_page_id, participant_id, participant_type),
+    FOREIGN KEY (chat_page_id) REFERENCES chat_pages(id) ON DELETE CASCADE
 );
 
 -- ========== 14. session_settings ==========
