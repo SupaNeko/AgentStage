@@ -16,6 +16,7 @@
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import HistorySessionList from '$lib/components/HistorySessionList.svelte';
     import ProfileView from '$lib/components/ProfileView.svelte';
+    import UsageMonitor from '$lib/components/UsageMonitor.svelte';
     import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
     import { UserAttentionType, ProgressBarStatus } from '@tauri-apps/api/window';
     import { themeStore } from '$lib/stores/themeStore.svelte';
@@ -140,7 +141,7 @@
     <LeftNav />
 
     <!-- Middle Panel -->
-    {#if appState.currentView !== 'profile'}
+    {#if appState.currentView !== 'profile' && appState.currentView !== 'usage'}
         <div class="w-72 shrink-0 bg-surface border-r border-border">
             {#if appState.currentView === 'agents'}
                 <AgentList />
@@ -160,6 +161,8 @@
             <ChatView />
         {:else if appState.currentView === 'profile'}
             <ProfileView />
+        {:else if appState.currentView === 'usage'}
+            <UsageMonitor />
         {:else}
             <ChatView mode="history" />
         {/if}
