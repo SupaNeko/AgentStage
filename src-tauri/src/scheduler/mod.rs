@@ -639,7 +639,7 @@ impl Scheduler {
             crate::logger::debug(&format!(
                 "[DEBUG on_new_message] calling try_trigger_agent agent_id={}", agent_id
             ));
-            let _ = self.try_trigger_agent(&agent_id).await;
+            let _ = self.try_trigger_agent(&agent_id, "user_message").await;
         }
 
         crate::logger::debug(&format!(
@@ -649,7 +649,7 @@ impl Scheduler {
         Ok(())
     }
 
-    pub async fn try_trigger_agent(&self, agent_id: &str) -> Result<(), String> {
+    pub async fn try_trigger_agent(&self, agent_id: &str, trigger_type: &str) -> Result<(), String> {
         crate::logger::debug(&format!(
             "[DEBUG try_trigger_agent] START agent_id={}", agent_id
         ));
@@ -711,7 +711,7 @@ impl Scheduler {
         ));
 
         if now - last_trigger >= interval_ms {
-            let result = self.trigger_agent(agent_id).await;
+            let result = self.trigger_agent(agent_id, trigger_type).await;
             match &result {
                 Ok(_) => crate::logger::debug(&format!(
                     "[DEBUG try_trigger_agent] END agent_id={}, trigger_agent OK", agent_id
@@ -729,7 +729,7 @@ impl Scheduler {
         }
     }
 
-    pub async fn trigger_agent(&self, agent_id: &str) -> Result<(), String> {
+    pub async fn trigger_agent(&self, agent_id: &str, trigger_type: &str) -> Result<(), String> {
         crate::logger::debug(&format!(
             "[DEBUG trigger_agent] START agent_id={}", agent_id
         ));
@@ -878,8 +878,9 @@ impl Scheduler {
         // 使用 finally 模式：无论内部逻辑成功或失败，总是清除 is_triggering
         let scheduler = self.clone();
         let agent_id_owned = agent_id.to_string();
+        let trigger_type_owned = trigger_type.to_string();
         let inner_result = Self::catch_async_panic(async move {
-            scheduler.trigger_agent_inner(&agent_id_owned, pending, session_pages, snapshot_pages).await
+            scheduler.trigger_agent_inner(&agent_id_owned, &trigger_type_owned, pending, session_pages, snapshot_pages).await
         }).await;
         match &inner_result {
             Ok(_) => crate::logger::debug(&format!(
@@ -901,7 +902,7 @@ impl Scheduler {
         inner_result
     }
 
-    async fn trigger_agent_inner(&self, agent_id: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, _snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
+    async fn trigger_agent_inner(&self, agent_id: &str, trigger_type: &str, pending: Vec<PendingMessage>, session_pages: HashMap<String, i32>, _snapshot_pages: HashMap<String, i32>) -> Result<(), String> {
         let inner_start = chrono::Utc::now().timestamp_millis();
         crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] START agent_id={}, pending_count={}, session_pages={:?}",
@@ -940,7 +941,7 @@ impl Scheduler {
 
         // === 阶段 3：读取 agent 配置和 prompt ===
         let prompt_start = chrono::Utc::now().timestamp_millis();
-        let (_agent, llm_config, prompt) = {
+        let (agent_model_config_id, llm_config, prompt) = {
             let conn = self.db_state.0.lock().await;
 
             let agent = agent_repo::get_by_id(&conn, agent_id)
@@ -992,7 +993,7 @@ impl Scheduler {
                 agent_id, parts.system.len(), parts.user.len(), llm_config.model_name, llm_config.base_url
             ));
 
-            (agent, llm_config, parts)
+            (agent.model_config_id.clone(), llm_config, parts)
         };
         let prompt_elapsed = chrono::Utc::now().timestamp_millis() - prompt_start;
         crate::logger::debug(&format!(
@@ -1046,6 +1047,30 @@ impl Scheduler {
         ));
 
         let agent_messages = result.messages;
+
+        // Write usage records
+        if !result.usage_records.is_empty() {
+            let session_id_for_usage = pending.first().map(|p| p.session_id.clone());
+            let now = chrono::Utc::now().timestamp_millis();
+            if let Some(ref model_config_id) = agent_model_config_id {
+                for usage in &result.usage_records {
+                    let record = crate::models::usage::LlmUsageRecord {
+                        id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
+                        agent_id: agent_id.to_string(),
+                        model_config_id: model_config_id.clone(),
+                        session_id: session_id_for_usage.clone(),
+                        trigger_type: trigger_type.to_string(),
+                        call_round: usage.call_round,
+                        prompt_tokens: usage.prompt_tokens,
+                        completion_tokens: usage.completion_tokens,
+                        total_tokens: usage.total_tokens,
+                        message_id: None,
+                        created_at: now,
+                    };
+                    let _ = crate::db::usage::insert_usage_record(&self.db_state, &record).await;
+                }
+            }
+        }
 
         crate::logger::debug(&format!(
             "[DEBUG trigger_agent_inner] agent_id={}, agent_messages_count={}",
@@ -1256,7 +1281,7 @@ impl Scheduler {
             };
 
             for agent_id in agent_ids {
-                let _ = self.try_trigger_agent(&agent_id).await;
+                let _ = self.try_trigger_agent(&agent_id, "background_scan").await;
             }
         }
     }
@@ -1337,14 +1362,14 @@ impl Scheduler {
         }
 
         // 2. Get agent and provider
-        let (_agent, llm_config) = {
+        let (agent_model_config_id, llm_config) = {
             let conn = self.db_state.0.lock().await;
             let agent = agent_repo::get_by_id(&conn, agent_id)
                 .map_err(|e| e.to_string())?
                 .ok_or("Agent not found")?;
             let llm_config = agent_repo::resolve_llm_config(&conn, &agent)
                 .map_err(|e| format!("Agent LLM config error: {}", e))?;
-            (agent, llm_config)
+            (agent.model_config_id.clone(), llm_config)
         };
 
         let provider = OpenAiCompatibleProvider::new(
@@ -1404,7 +1429,7 @@ impl Scheduler {
         let inner_result = Self::catch_async_panic(async move {
             use crate::llm::conversation::LlmConversation;
 
-            let conversation = LlmConversation::new(provider, db_state, scheduler.clone());
+            let conversation = LlmConversation::new(provider, db_state.clone(), scheduler.clone());
             let result = conversation.run(
                 &system,
                 &user_prompt,
@@ -1413,6 +1438,37 @@ impl Scheduler {
                 &agent_id_owned,
                 &HashMap::new(),
             ).await?;
+
+            // Write usage records
+            if !result.usage_records.is_empty() {
+                let session_id_for_usage = match &context {
+                    SpecialTriggerContext::Timer { target_session_id, .. } => target_session_id.clone(),
+                    SpecialTriggerContext::Proactive => None,
+                };
+                let trigger_type_str = match &context {
+                    SpecialTriggerContext::Timer { .. } => "timer",
+                    SpecialTriggerContext::Proactive => "proactive",
+                };
+                let now = chrono::Utc::now().timestamp_millis();
+                if let Some(ref model_config_id) = agent_model_config_id {
+                    for usage in &result.usage_records {
+                        let record = crate::models::usage::LlmUsageRecord {
+                            id: format!("usage_{}_{}", agent_id_owned, uuid::Uuid::new_v4()),
+                            agent_id: agent_id_owned.clone(),
+                            model_config_id: model_config_id.clone(),
+                            session_id: session_id_for_usage.clone(),
+                            trigger_type: trigger_type_str.to_string(),
+                            call_round: usage.call_round,
+                            prompt_tokens: usage.prompt_tokens,
+                            completion_tokens: usage.completion_tokens,
+                            total_tokens: usage.total_tokens,
+                            message_id: None,
+                            created_at: now,
+                        };
+                        let _ = crate::db::usage::insert_usage_record(&db_state, &record).await;
+                    }
+                }
+            }
 
             // Unified post-processing (emit, distribute, freeze check, counter)
             scheduler.handle_agent_response(&agent_id_owned, &result.messages).await?;
@@ -2322,7 +2378,7 @@ impl Scheduler {
 
         // 调用 trigger_agent
         // 由于 agent 没有 API key，trigger_agent_inner 会失败并 restore_pending
-        let result = scheduler.trigger_agent("agent-1").await;
+        let result = scheduler.trigger_agent("agent-1", "user_message").await;
         // 失败是因为 api_key 不存在，但消息应该被 restore 并保持排序
         assert!(result.is_err());
 

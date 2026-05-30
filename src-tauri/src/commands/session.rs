@@ -144,7 +144,7 @@ pub async fn reset_message_count(
     drop(conn);
 
     for agent_id in agents_with_unread {
-        let _ = scheduler.try_trigger_agent(&agent_id).await;
+        let _ = scheduler.try_trigger_agent(&agent_id, "background_scan").await;
     }
 
     Ok(())
