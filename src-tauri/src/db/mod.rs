@@ -2,6 +2,7 @@ pub mod agent;
 pub mod agent_relationship;
 pub mod agent_unread;
 pub mod chat_page;
+pub mod chat_page_participant;
 pub mod connection;
 pub mod frozen_state;
 pub mod migration;
