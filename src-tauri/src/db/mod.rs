@@ -12,6 +12,7 @@ pub mod session;
 pub mod message;
 pub mod settings;
 pub mod trigger_state;
+pub mod usage;
 pub mod user_persona;
 
 /// Resolve a relative avatar path to an absolute path using the data directory

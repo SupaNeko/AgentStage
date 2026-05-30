@@ -7,4 +7,5 @@ pub mod model_config;
 pub mod scheduled_task;
 pub mod session;
 pub mod settings;
+pub mod usage;
 pub mod user_persona;
