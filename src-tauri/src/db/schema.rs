@@ -608,6 +608,44 @@ pub const MIGRATION_V20: &str = r#"
 ALTER TABLE app_settings ADD COLUMN summary_model_config_id TEXT;
 "#;
 
+pub const MIGRATION_V21: &str = r#"
+-- V21: LLM usage tracking
+CREATE TABLE llm_usage_records (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    model_config_id TEXT NOT NULL,
+    session_id TEXT,
+    trigger_type TEXT NOT NULL
+        CHECK(trigger_type IN (
+            'user_message',
+            'background_scan',
+            'timer',
+            'proactive',
+            'persona_generation'
+        )),
+    call_round INTEGER NOT NULL DEFAULT 1,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    created_at INTEGER NOT NULL,
+
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_config_id) REFERENCES model_configs(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_llm_usage_agent ON llm_usage_records(agent_id);
+CREATE INDEX idx_llm_usage_model ON llm_usage_records(model_config_id);
+CREATE INDEX idx_llm_usage_session ON llm_usage_records(session_id);
+CREATE INDEX idx_llm_usage_time ON llm_usage_records(created_at);
+CREATE INDEX idx_llm_usage_agent_model ON llm_usage_records(agent_id, model_config_id);
+CREATE INDEX idx_llm_usage_session_agent ON llm_usage_records(session_id, agent_id);
+CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_config_id);
+CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
+"#;
+
 /// Latest consolidated schema for fresh databases.
 /// Creates all tables and indexes directly at the current version (V20).
 /// Table order respects foreign key dependencies.
@@ -865,6 +903,33 @@ CREATE TABLE scheduled_tasks (
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
 
+-- ========== 19. llm_usage_records ==========
+CREATE TABLE llm_usage_records (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    model_config_id TEXT NOT NULL,
+    session_id TEXT,
+    trigger_type TEXT NOT NULL
+        CHECK(trigger_type IN (
+            'user_message',
+            'background_scan',
+            'timer',
+            'proactive',
+            'persona_generation'
+        )),
+    call_round INTEGER NOT NULL DEFAULT 1,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    created_at INTEGER NOT NULL,
+
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_config_id) REFERENCES model_configs(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
 -- ========== Indexes ==========
 CREATE INDEX idx_messages_session_time ON messages(session_id, created_at DESC);
 CREATE INDEX idx_messages_session_sender_time ON messages(session_id, sender_type, sender_id, created_at);
@@ -887,4 +952,12 @@ CREATE INDEX idx_agent_unread_agent ON agent_unread_queue(agent_id);
 CREATE INDEX idx_agent_relationships_observer ON agent_relationships(observer_id);
 CREATE INDEX idx_agent_relationships_target ON agent_relationships(target_id, target_type);
 CREATE INDEX idx_scheduled_tasks_next_trigger ON scheduled_tasks(next_trigger_at) WHERE is_active = 1;
+CREATE INDEX idx_llm_usage_agent ON llm_usage_records(agent_id);
+CREATE INDEX idx_llm_usage_model ON llm_usage_records(model_config_id);
+CREATE INDEX idx_llm_usage_session ON llm_usage_records(session_id);
+CREATE INDEX idx_llm_usage_time ON llm_usage_records(created_at);
+CREATE INDEX idx_llm_usage_agent_model ON llm_usage_records(agent_id, model_config_id);
+CREATE INDEX idx_llm_usage_session_agent ON llm_usage_records(session_id, agent_id);
+CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_config_id);
+CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
 "#;
