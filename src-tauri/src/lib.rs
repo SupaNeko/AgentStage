@@ -213,6 +213,17 @@ pub fn run() {
             update_agent_proactive,
             update_quiet_hours,
             get_quiet_hours,
+            commands::usage::get_usage_overview,
+            commands::usage::get_usage_by_model,
+            commands::usage::get_usage_by_agent,
+            commands::usage::get_agent_model_breakdown,
+            commands::usage::get_model_agent_breakdown,
+            commands::usage::get_usage_by_session,
+            commands::usage::get_session_agent_breakdown,
+            commands::usage::get_session_model_breakdown,
+            commands::usage::get_session_agent_model_breakdown,
+            commands::usage::get_usage_by_trigger,
+            commands::usage::get_usage_records,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

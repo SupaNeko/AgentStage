@@ -10,4 +10,5 @@ pub mod settings;
 pub mod theme;
 pub mod timer;
 pub mod upload;
+pub mod usage;
 pub mod user_persona;
