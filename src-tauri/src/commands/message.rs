@@ -104,7 +104,7 @@ pub async fn get_session_messages(
 /// 确定历史会话模式下的目标回复 Agent
 /// - 私聊：返回对方 Agent ID
 /// - 群聊：返回所有 Agent 成员 ID
-fn resolve_history_target_agents(
+pub fn resolve_history_target_agents(
     conn: &rusqlite::Connection,
     session_id: &str,
     page_index: i32,
@@ -123,9 +123,8 @@ fn resolve_history_target_agents(
             row.get::<_, String>(0)
         }).map_err(|e| e.to_string())?;
         let agents: Vec<String> = rows.filter_map(|r| r.ok()).collect();
-        if !agents.is_empty() {
-            return Ok(agents);
-        }
+        // Snapshot exists — use its result directly, even if empty (all agents deleted)
+        return Ok(agents);
     }
 
     // Fallback: query current session members (backward compatibility for pre-V22 pages)
