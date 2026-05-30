@@ -3,6 +3,7 @@
     import { Plus, Pencil, Trash2, Pause, Play, Clock, Loader2 } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import type { ScheduledTask } from '$lib/types';
     import TimerEditModal from './TimerEditModal.svelte';
 
@@ -12,6 +13,8 @@
     let loading = $state(false);
     let showModal = $state(false);
     let editingTask = $state<ScheduledTask | null>(null);
+    let showDeleteConfirm = $state(false);
+    let deleteTarget = $state<ScheduledTask | null>(null);
 
     async function loadTasks() {
         loading = true;
@@ -26,15 +29,23 @@
         }
     }
 
-    async function handleDelete(task: ScheduledTask) {
-        if (!confirm(`确定要删除定时任务 "${task.description}" 吗？`)) return;
+    function handleDelete(task: ScheduledTask) {
+        deleteTarget = task;
+        showDeleteConfirm = true;
+    }
+
+    async function doDelete() {
+        if (!deleteTarget) return;
+        showDeleteConfirm = false;
         try {
-            await invoke('delete_timer_command', { agentId, taskId: task.id });
+            await invoke('delete_timer_command', { agentId, taskId: deleteTarget.id });
             toastStore.success('定时任务已删除');
             loadTasks();
         } catch (err) {
             logger.error('Failed to delete timer:', err);
             toastStore.error('删除失败');
+        } finally {
+            deleteTarget = null;
         }
     }
 
@@ -189,3 +200,13 @@
         onClose={() => { showModal = false; editingTask = null; }}
     />
 {/if}
+
+<ConfirmDialog
+    open={showDeleteConfirm}
+    title="删除定时任务"
+    content={deleteTarget ? `确定要删除定时任务 "${deleteTarget.description}" 吗？` : ''}
+    confirmText="确认删除"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doDelete}
+    onCancel={() => { showDeleteConfirm = false; deleteTarget = null; }}
+/>

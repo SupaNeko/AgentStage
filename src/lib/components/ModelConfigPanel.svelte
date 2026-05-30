@@ -2,6 +2,7 @@
     import { Plus, Pencil, Trash2, Wifi, Loader2, ChevronDown, ChevronUp, X } from 'lucide-svelte';
     import { modelConfigStore } from '$lib/stores/modelConfigStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import { PROVIDER_DEFAULTS } from '$lib/modelConfig';
     import type { ModelConfig } from '$lib/types';
 
@@ -11,6 +12,8 @@
     let testResult = $state<{ configId: string; success: boolean; latencyMs: number; message: string } | null>(null);
     let apiKeyVisible = $state(false);
     let deletingId = $state<string | null>(null);
+    let showDeleteConfirm = $state(false);
+    let deleteTarget = $state<ModelConfig | null>(null);
 
     const emptyConfig = (): Omit<ModelConfig, 'id' | 'created_at' | 'updated_at'> => ({
         name: '',
@@ -115,11 +118,17 @@
         }
     }
 
-    async function handleDelete(config: ModelConfig) {
-        if (!confirm(`确定要删除模型配置 "${config.name}" 吗？`)) return;
-        deletingId = config.id;
+    function handleDelete(config: ModelConfig) {
+        deleteTarget = config;
+        showDeleteConfirm = true;
+    }
+
+    async function doDelete() {
+        if (!deleteTarget) return;
+        showDeleteConfirm = false;
+        deletingId = deleteTarget.id;
         try {
-            await modelConfigStore.delete(config.id);
+            await modelConfigStore.delete(deleteTarget.id);
             toastStore.success('已删除', 2000);
         } catch (err: any) {
             const msg = String(err);
@@ -130,6 +139,7 @@
             }
         } finally {
             deletingId = null;
+            deleteTarget = null;
         }
     }
 
@@ -417,3 +427,13 @@
         {/if}
     {/if}
 </div>
+
+<ConfirmDialog
+    open={showDeleteConfirm}
+    title="删除模型配置"
+    content={deleteTarget ? `确定要删除模型配置 "${deleteTarget.name}" 吗？` : ''}
+    confirmText="确认删除"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doDelete}
+    onCancel={() => { showDeleteConfirm = false; deleteTarget = null; }}
+/>

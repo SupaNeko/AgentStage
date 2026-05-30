@@ -3,6 +3,7 @@
     import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import SwitchPersonaConfirmModal from './SwitchPersonaConfirmModal.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import { resolveAvatarUrl } from '$lib/utils';
     import type { UserPersona } from '$lib/stores/userPersonaStore.svelte';
     import { ChevronDown, ChevronUp, User } from 'lucide-svelte';
@@ -21,6 +22,7 @@
     let draftDesc = $state('');
     let avatarUploadOpen = $state(false);
     let showConfirmModal = $state(false);
+    let showDeleteConfirm = $state(false);
     let saving = $state(false);
 
     function toggleExpand() {
@@ -67,8 +69,12 @@
         expanded = false;
     }
 
-    async function handleDelete() {
-        if (!confirm(`确定要删除人设 "${persona.name}" 吗？`)) return;
+    function handleDelete() {
+        showDeleteConfirm = true;
+    }
+
+    async function doDelete() {
+        showDeleteConfirm = false;
         try {
             await userPersonaStore.deletePersona(persona.id);
         } catch (e) {
@@ -113,6 +119,16 @@
         onClose={() => showConfirmModal = false}
     />
 {/if}
+
+<ConfirmDialog
+    open={showDeleteConfirm}
+    title="删除人设"
+    content={`确定要删除人设 "${persona.name}" 吗？`}
+    confirmText="确认删除"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doDelete}
+    onCancel={() => showDeleteConfirm = false}
+/>
 
 <div class="border border-border rounded-lg bg-surface overflow-hidden">
     <!-- Header Row -->

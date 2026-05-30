@@ -3,6 +3,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { historyStore } from '$lib/stores/historyStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
     import { MessageSquare, ChevronDown, ChevronRight, Eraser } from 'lucide-svelte';
     import type { Session } from '$lib/types';
@@ -13,6 +14,7 @@
     let contextMenuX = $state(0);
     let contextMenuY = $state(0);
     let contextSessionId = $state<string | null>(null);
+    let showClearConfirm = $state(false);
 
     onMount(() => {
         historyStore.loadSessions();
@@ -31,12 +33,14 @@
         contextSessionId = null;
     }
 
-    async function handleClearHistory() {
+    function handleClearHistory() {
         if (!contextSessionId) return;
-        if (!confirm('确定要清除此会话的历史记录吗？所有消息将被清空，此操作不可恢复。')) {
-            closeContextMenu();
-            return;
-        }
+        showClearConfirm = true;
+    }
+
+    async function doClearHistory() {
+        if (!contextSessionId) return;
+        showClearConfirm = false;
         try {
             await invoke('clear_session_history', { req: { session_id: contextSessionId } });
             historyStore.sessions = historyStore.sessions.filter(s => s.id !== contextSessionId);
@@ -218,6 +222,16 @@
         {/if}
     </div>
 </div>
+
+<ConfirmDialog
+    open={showClearConfirm}
+    title="清除历史记录"
+    content="确定要清除此会话的历史记录吗？所有消息将被清空，此操作不可恢复。"
+    confirmText="确认清除"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doClearHistory}
+    onCancel={() => { showClearConfirm = false; closeContextMenu(); }}
+/>
 
 <!-- Context Menu -->
 {#if contextMenuOpen}

@@ -13,6 +13,7 @@
     import PersonaGenerateModal from './PersonaGenerateModal.svelte';
     import AgentRelationshipPanel from './AgentRelationshipPanel.svelte';
     import AgentMemoryPanel from './AgentMemoryPanel.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import AgentTimerPanel from './AgentTimerPanel.svelte';
 
     let agent = $state<Agent | null>(null);
@@ -21,6 +22,7 @@
     let error = $state('');
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
+    let showDeleteConfirm = $state(false);
     let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer'>('config');
 
     // Proactive session state
@@ -104,10 +106,15 @@
         }
     }
 
-    async function handleDelete() {
+    function handleDelete() {
         if (!agent) return;
         logger.debug('[DEBUG AgentDetail.handleDelete]', { id: agent.id });
-        if (!confirm(`确定要删除角色 "${agent.name}" 吗？此操作不可恢复。`)) return;
+        showDeleteConfirm = true;
+    }
+
+    async function doDelete() {
+        if (!agent) return;
+        showDeleteConfirm = false;
         try {
             await invoke('delete_agent', { req: { id: agent.id } });
             await agentStore.loadAgents();
@@ -378,7 +385,7 @@
     }}
 />
 
-{#if agent}
+    {#if agent}
     <PersonaGenerateModal
         open={showGenerateModal}
         agentId={agent.id}
@@ -387,5 +394,14 @@
             form.detailed_persona = result.detailed_persona;
             form.simplified_persona = result.simplified_persona;
         }}
+    />
+    <ConfirmDialog
+        open={showDeleteConfirm}
+        title="删除角色"
+        content={`确定要删除角色 "${agent.name}" 吗？此操作不可恢复。`}
+        confirmText="确认删除"
+        confirmClass="bg-red-500 text-white hover:bg-red-600"
+        onConfirm={doDelete}
+        onCancel={() => showDeleteConfirm = false}
     />
 {/if}

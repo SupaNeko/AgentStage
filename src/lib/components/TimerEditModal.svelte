@@ -3,6 +3,7 @@
     import { X, Save, Loader2, Clock } from 'lucide-svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import type { ScheduledTask, Session } from '$lib/types';
 
     interface Props {
@@ -13,6 +14,7 @@
     }
 
     let { agentId, task = null, onSave, onClose }: Props = $props();
+    let showCloseConfirm = $state(false);
 
     let submitting = $state(false);
     let sessions = $state<Session[]>([]);
@@ -145,8 +147,14 @@
 
     function handleClose() {
         if (submitting) {
-            if (!confirm('操作正在进行中，确定要关闭吗？')) return;
+            showCloseConfirm = true;
+            return;
         }
+        onClose();
+    }
+
+    function doClose() {
+        showCloseConfirm = false;
         onClose();
     }
 </script>
@@ -373,3 +381,13 @@
         </div>
     </div>
 </div>
+
+<ConfirmDialog
+    open={showCloseConfirm}
+    title="关闭确认"
+    content="操作正在进行中，确定要关闭吗？"
+    confirmText="确认关闭"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doClose}
+    onCancel={() => showCloseConfirm = false}
+/>

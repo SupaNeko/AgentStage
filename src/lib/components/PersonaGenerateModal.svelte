@@ -3,6 +3,7 @@
     import { X, Loader2, Sparkles } from 'lucide-svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import type { GeneratePersonaResult } from '$lib/types';
 
     interface Props {
@@ -13,6 +14,7 @@
     }
 
     let { open, agentId, onClose, onGenerated }: Props = $props();
+    let showCloseConfirm = $state(false);
 
     let referenceCharacter = $state('');
     let supplement = $state('');
@@ -20,10 +22,14 @@
 
     function handleClose() {
         if (generating) {
-            if (!confirm('退出将会打断生成，确定要退出吗？')) {
-                return;
-            }
+            showCloseConfirm = true;
+            return;
         }
+        onClose();
+    }
+
+    function doClose() {
+        showCloseConfirm = false;
         onClose();
     }
 
@@ -122,3 +128,13 @@
         </div>
     </div>
 {/if}
+
+<ConfirmDialog
+    open={showCloseConfirm}
+    title="退出确认"
+    content="退出将会打断生成，确定要退出吗？"
+    confirmText="确认退出"
+    confirmClass="bg-red-500 text-white hover:bg-red-600"
+    onConfirm={doClose}
+    onCancel={() => showCloseConfirm = false}
+/>
