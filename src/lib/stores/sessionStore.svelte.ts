@@ -5,6 +5,34 @@ import type { Session } from '$lib/types';
 export class SessionStore {
     sessions = $state<Session[]>([]);
     selectedSessionId = $state<string | null>(null);
+    pageParticipants = $state<Map<string, Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null, participantSimplifiedPersona: string | null}>>>(new Map());
+
+    async loadPageParticipants(sessionId: string, pageIndex: number) {
+        try {
+            const chatPageId = await invoke<string | null>('get_chat_page_id', { sessionId, pageIndex });
+            if (!chatPageId) return;
+            const participants = await invoke<Array<{participantId: string, participantType: string, participantName: string, participantAvatar: string | null, participantSimplifiedPersona: string | null}>>('list_chat_page_participants', { chatPageId });
+            this.pageParticipants.set(chatPageId, participants);
+        } catch (e) {
+            console.error('Failed to load page participants:', e);
+        }
+    }
+
+    getParticipantName(chatPageId: string | undefined, participantId: string, participantType: string): string | undefined {
+        if (!chatPageId) return undefined;
+        const list = this.pageParticipants.get(chatPageId);
+        if (!list) return undefined;
+        const found = list.find(p => p.participantId === participantId && p.participantType === participantType);
+        return found?.participantName;
+    }
+
+    getParticipantAvatar(chatPageId: string | undefined, participantId: string, participantType: string): string | null {
+        if (!chatPageId) return null;
+        const list = this.pageParticipants.get(chatPageId);
+        if (!list) return null;
+        const found = list.find(p => p.participantId === participantId && p.participantType === participantType);
+        return found?.participantAvatar ?? null;
+    }
 
     async loadSessions() {
         try {

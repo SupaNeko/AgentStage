@@ -186,6 +186,8 @@ pub fn run() {
             remove_group_member,
             list_chat_pages,
             update_chat_page_name,
+            commands::chat_page::get_chat_page_id,
+            commands::chat_page::list_chat_page_participants,
             send_user_message,
             send_history_message,
             get_session_messages,
