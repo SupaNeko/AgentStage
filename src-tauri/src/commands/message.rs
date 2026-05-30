@@ -104,7 +104,31 @@ pub async fn get_session_messages(
 /// 确定历史会话模式下的目标回复 Agent
 /// - 私聊：返回对方 Agent ID
 /// - 群聊：返回所有 Agent 成员 ID
-fn resolve_history_target_agents(conn: &rusqlite::Connection, session_id: &str) -> Result<Vec<String>, String> {
+fn resolve_history_target_agents(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    page_index: i32,
+) -> Result<Vec<String>, String> {
+    // Try snapshot first
+    if let Ok(Some(chat_page_id)) = crate::db::chat_page_participant::get_chat_page_id(conn, session_id, page_index) {
+        let mut stmt = conn.prepare(
+            "SELECT cpp.participant_id 
+             FROM chat_page_participants cpp
+             JOIN agents a ON cpp.participant_id = a.id
+             WHERE cpp.chat_page_id = ?1 
+               AND cpp.participant_type = 'agent'
+               AND a.is_deleted = 0"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([&chat_page_id], |row| {
+            row.get::<_, String>(0)
+        }).map_err(|e| e.to_string())?;
+        let agents: Vec<String> = rows.filter_map(|r| r.ok()).collect();
+        if !agents.is_empty() {
+            return Ok(agents);
+        }
+    }
+
+    // Fallback: query current session members (backward compatibility for pre-V22 pages)
     let session_type: String = conn.query_row(
         "SELECT session_type FROM sessions WHERE id = ?1 AND is_deleted = 0",
         [session_id],
@@ -167,7 +191,7 @@ pub async fn send_history_message(
         .map_err(|e| e.to_string())?;
 
     // 4. 确定目标 Agents
-    let target_agents = resolve_history_target_agents(&conn, &req.session_id)?;
+    let target_agents = resolve_history_target_agents(&conn, &req.session_id, req.page_index)?;
 
     // 5. 为每个 Agent 调用 LLM 并收集回复
     let mut all_messages = vec![user_msg.clone()];
@@ -307,7 +331,7 @@ mod tests {
             [],
         ).unwrap();
 
-        let agents = resolve_history_target_agents(&conn, "s1").unwrap();
+        let agents = resolve_history_target_agents(&conn, "s1", 0).unwrap();
         assert_eq!(agents, vec!["a1"]);
     }
 
@@ -339,7 +363,7 @@ mod tests {
             [],
         ).unwrap();
 
-        let mut agents = resolve_history_target_agents(&conn, "s1").unwrap();
+        let mut agents = resolve_history_target_agents(&conn, "s1", 0).unwrap();
         agents.sort();
         assert_eq!(agents, vec!["a1", "a2"]);
     }
@@ -360,7 +384,7 @@ mod tests {
             [],
         ).unwrap();
 
-        let result = resolve_history_target_agents(&conn, "s1");
+        let result = resolve_history_target_agents(&conn, "s1", 0);
         assert!(result.is_err());
     }
 
@@ -388,7 +412,7 @@ mod tests {
             [],
         ).unwrap();
 
-        let agents = resolve_history_target_agents(&conn, "s1").unwrap();
+        let agents = resolve_history_target_agents(&conn, "s1", 0).unwrap();
         assert_eq!(agents, vec!["a1"]);
     }
 }
