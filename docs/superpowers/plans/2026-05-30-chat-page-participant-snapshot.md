@@ -263,6 +263,8 @@ Insert the following block **after** the new `chat_page` INSERT and **before** t
 
 **Note:** The variable `max_page` is the existing local variable in `reset_session` that holds the current maximum `page_index`. The snapshot is inserted for this old page before the new page becomes active.
 
+**Order verification:** The `reset_session` Tauri command (in `commands/session.rs`) calls `session_repo::reset_session` first, then spawns `spawn_session_summary` and `spawn_generate_page_title`. Since the snapshot is inserted inside `session_repo::reset_session`, the snapshot is guaranteed to exist before `spawn_session_summary` runs. ✅
+
 - [ ] **Step 3: Verify**
 
 Run: `cargo check`
@@ -418,6 +420,8 @@ Replace the existing `assemble` method body with the following. The key changes 
                 continue; // 跳过当前 agent 自身
             }
             // 标签实时推导：优先查 friendships（好友），否则群友/用户
+            // friendships 表对 agent-agent 友谊是双向存储的（add_friendship 插入两条记录），
+            // 因此只需查 agent_id_1 = observer AND agent_id_2 = target 即可
             let label = if p.participant_type == "agent" {
                 let is_friend: bool = conn.query_row(
                     "SELECT 1 FROM friendships WHERE agent_id_1 = ?1 AND agent_id_2 = ?2 AND participant_type_2 = 'agent'",
@@ -441,6 +445,8 @@ Replace the existing `assemble` method body with the following. The key changes 
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 ).unwrap_or_default();
                 
+                // 注：主 PromptAssembler 即使为空也会输出 [印象]：""
+                // 历史模式下选择省略空值，减少 prompt 长度，不影响语义
                 if !rel_text.is_empty() {
                     participants_text.push_str(&format!("  [印象]：{}\n", rel_text));
                 }

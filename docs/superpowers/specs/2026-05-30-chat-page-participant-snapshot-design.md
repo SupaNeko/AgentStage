@@ -56,7 +56,7 @@ reset_session(session_id)
   │    └─ 群聊: group_members
   ├─ 查询成员名称/头像/人设摘要
   │    ├─ agent: agents.name, agents.avatar_path, agents.simplified_persona
-  │    └─ user: user_personas.name, user_personas.avatar_path
+  │    └─ user: user_personas.name, user_personas.avatar_path（user 不快照人设摘要）
   ├─ 插入 chat_page_participants 快照
   └─ 触发 spawn_session_summary / spawn_generate_page_title
 ```
@@ -116,27 +116,46 @@ fn resolve_history_target_agents(conn, session_id, page_index) -> Vec<String> {
 }
 ```
 
-### `HistoryPromptAssembler::get_participants`
+### `HistoryPromptAssembler::assemble`（历史模式参与者注入）
 
-**当前逻辑：**
+**背景：** `HistoryPromptAssembler` 当前没有参与者介绍层（不像主 `PromptAssembler` 有 Layer 3）。本需求在历史模式下新增参与者介绍层，实现方式为**内联到 `assemble` 方法中**，不新增独立函数。
+
+**实现逻辑：**
+1. 查快照中的所有参与者（名称、头像、人设摘要）
+2. 对 **agent** 类型的参与者：
+   - 名称、人设摘要 → 来自快照
+   - 标签（好友/群友）→ 实时推导：查询 `friendships` 表，`agent_id_1 = 当前agent AND agent_id_2 = 目标agent AND participant_type_2 = 'agent'` 存在则为"好友"，否则为"群友"
+   - relationship_text / memory_text → 实时查询 `agent_relationships`
+3. 对 **user** 类型的参与者：
+   - 名称 → 来自快照
+   - 标签 → 固定为"用户"
+   - 人设摘要 → user 类型不快照 `simplified_persona`（该字段为 NULL）
+
+## 新增 Tauri Commands
+
+### `get_chat_page_id`
+
 ```rust
-fn get_participants(conn, agent_id) {
-    // 查当前 active_persona_id 的关系
-    list_relationships_by_observer(conn, agent_id)
-}
+fn get_chat_page_id(session_id: String, page_index: i32) -> Option<String>
 ```
 
-**新逻辑（历史模式）：**
+根据 session_id 和 page_index 查询对应的 chat_page_id。
+
+### `list_chat_page_participants`
+
 ```rust
-fn get_participants_for_page(conn, agent_id, chat_page_id) {
-    // 1. 查快照中的所有参与者（名称、头像、人设摘要）
-    SELECT participant_id, participant_type, participant_name, participant_simplified_persona
-    FROM chat_page_participants
-    WHERE chat_page_id = ?
-    
-    // 2. 对 agent 类型的参与者，查 relationship_text / memory_text（实时）
-    // 3. 对 user 类型的参与者，使用快照中的 participant_name
-    // 4. 标签（好友/群友）实时推导
+fn list_chat_page_participants(chat_page_id: String) -> Vec<ChatPageParticipantResponse>
+```
+
+返回指定 chat_page 的所有快照参与者。
+
+```rust
+struct ChatPageParticipantResponse {
+    participant_id: String,
+    participant_type: String,
+    participant_name: String,
+    participant_avatar: Option<String>,
+    participant_simplified_persona: Option<String>,
 }
 ```
 
