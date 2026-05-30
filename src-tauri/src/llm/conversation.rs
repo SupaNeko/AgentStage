@@ -27,6 +27,7 @@ pub struct ConversationResult {
     pub executed_tool_calls: Vec<ExecutedToolCall>,
     pub messages: Vec<Message>,
     pub total_rounds: usize,
+    pub usage_records: Vec<crate::llm::tool::LlmCallUsage>,
 }
 
 pub struct LlmConversation<P: LlmProvider> {
@@ -61,6 +62,7 @@ impl<P: LlmProvider> LlmConversation<P> {
         let mut executed_tool_calls: Vec<ExecutedToolCall> = Vec::new();
         let mut all_messages: Vec<Message> = Vec::new();
         let mut final_content: Option<String> = None;
+        let mut usage_records: Vec<crate::llm::tool::LlmCallUsage> = Vec::new();
 
         for round in 0..max_rounds {
             let round_start = chrono::Utc::now().timestamp_millis();
@@ -84,6 +86,19 @@ impl<P: LlmProvider> LlmConversation<P> {
             }
             let llm_elapsed = chrono::Utc::now().timestamp_millis() - llm_start;
             let response = response.unwrap();
+
+            if let Some(ref usage_json) = response.usage {
+                let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
+                let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
+                let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
+                usage_records.push(crate::llm::tool::LlmCallUsage {
+                    call_round: (round + 1) as i32,
+                    prompt_tokens: prompt,
+                    completion_tokens: completion,
+                    total_tokens: total,
+                });
+            }
+
             crate::logger::debug(&format!(
                 "[LlmConversation] round={} LLM responded tool_calls={} content_len={} llm_elapsed_ms={}",
                 round + 1, response.tool_calls.len(),
@@ -157,7 +172,7 @@ impl<P: LlmProvider> LlmConversation<P> {
         }
 
         let total_rounds = messages.iter().filter(|m| m["role"] == "assistant").count();
-        Ok(ConversationResult { final_content, executed_tool_calls, messages: all_messages, total_rounds })
+        Ok(ConversationResult { final_content, executed_tool_calls, messages: all_messages, total_rounds, usage_records })
     }
 }
 

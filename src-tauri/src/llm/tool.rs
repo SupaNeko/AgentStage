@@ -230,6 +230,14 @@ pub struct LlmResponse {
     pub usage: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmCallUsage {
+    pub call_round: i32,
+    pub prompt_tokens: i32,
+    pub completion_tokens: i32,
+    pub total_tokens: i32,
+}
+
 #[derive(Debug)]
 pub enum ToolError {
     InvalidArguments(String),
