@@ -193,7 +193,9 @@ pub async fn generate(
         return Err("参考角色和补充信息至少填写一项".to_string());
     }
 
-    // 2. Get model config
+    // 2. Get model config and save IDs for usage tracking
+    let usage_agent_id = req.agent_id.clone();
+    let usage_model_config_id: Option<String>;
     let model_config = if let Some(ref id) = req.agent_id {
         let conn = db_state.0.lock().await;
         let agent = crate::db::agent::get_by_id(&conn, id)
@@ -201,6 +203,7 @@ pub async fn generate(
             .ok_or_else(|| "角色不存在".to_string())?;
         let llm_config = crate::db::agent::resolve_llm_config(&conn, &agent)
             .map_err(|e| format!("该角色未配置模型信息: {}", e))?;
+        usage_model_config_id = agent.model_config_id.clone();
         ModelConfig {
             model_provider: "openai".to_string(),
             model_name: llm_config.model_name,
@@ -214,6 +217,7 @@ pub async fn generate(
         let mc = crate::db::model_config::get_by_id(&conn, mc_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "模型配置不存在".to_string())?;
+        usage_model_config_id = Some(mc_id.clone());
         let api_key = mc.api_key_encrypted
             .as_ref()
             .and_then(|enc| crate::crypto::decrypt(enc).ok())
@@ -274,6 +278,30 @@ pub async fn generate(
     log_llm_call("Step1", 1, SYSTEM_PROMPT_STEP1, &step1_messages);
 
     let response1 = provider.chat(SYSTEM_PROMPT_STEP1, step1_messages, tools).await?;
+
+    // Record usage for step 1
+    if let (Some(ref agent_id), Some(ref model_config_id)) = (&usage_agent_id, &usage_model_config_id) {
+        if let Some(ref usage_json) = response1.usage {
+            let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
+            let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
+            let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
+            let now = chrono::Utc::now().timestamp_millis();
+            let record = crate::models::usage::LlmUsageRecord {
+                id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
+                agent_id: agent_id.clone(),
+                model_config_id: model_config_id.clone(),
+                session_id: None,
+                trigger_type: "persona_generation".to_string(),
+                call_round: 1,
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                total_tokens: total,
+                message_id: None,
+                created_at: now,
+            };
+            let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
+        }
+    }
 
     let content1 = response1.content.as_deref().unwrap_or("");
     log_llm_response("Step1", 1, content1, response1.tool_calls.len());
@@ -350,6 +378,30 @@ pub async fn generate(
         log_llm_call("Step2", step2_attempt + 1, SYSTEM_PROMPT_STEP2, &step2_messages);
 
         let response2 = provider.chat(SYSTEM_PROMPT_STEP2, step2_messages.clone(), vec![]).await?;
+
+        // Record usage for step 2
+        if let (Some(ref agent_id), Some(ref model_config_id)) = (&usage_agent_id, &usage_model_config_id) {
+            if let Some(ref usage_json) = response2.usage {
+                let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
+                let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
+                let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
+                let now = chrono::Utc::now().timestamp_millis();
+                let record = crate::models::usage::LlmUsageRecord {
+                    id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
+                    agent_id: agent_id.clone(),
+                    model_config_id: model_config_id.clone(),
+                    session_id: None,
+                    trigger_type: "persona_generation".to_string(),
+                    call_round: 2,
+                    prompt_tokens: prompt,
+                    completion_tokens: completion,
+                    total_tokens: total,
+                    message_id: None,
+                    created_at: now,
+                };
+                let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
+            }
+        }
 
         let content2 = response2.content.ok_or_else(|| {
             log_llm_response("Step2", step2_attempt + 1, "[无content]", response2.tool_calls.len());
