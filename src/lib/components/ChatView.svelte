@@ -35,6 +35,7 @@
     let isFirstLoad = $state(false);
     let editingPageIndex = $state<number | null>(null);
     let editingName = $state('');
+    let currentChatPageId = $state<string | undefined>(undefined);
 
     function startEditPage() {
         const page = historyStore.chatPages.find(p => p.page_index === historyStore.selectedPageIndex);
@@ -224,11 +225,21 @@
             } else {
                 members = [];
             }
+            // History 模式：加载快照参与者
+            if (mode === 'history' && pageIdx != null) {
+                sessionStore.loadPageParticipants(id, pageIdx);
+                invoke<string | null>('get_chat_page_id', { sessionId: id, pageIndex: pageIdx })
+                    .then(id => { currentChatPageId = id ?? undefined; })
+                    .catch(err => logger.error('Failed to get chat page id:', err));
+            } else {
+                currentChatPageId = undefined;
+            }
         } else {
             messageStore.setSessionId(null);
             currentAgentId = undefined;
             members = [];
             sessionConfig = null;
+            currentChatPageId = undefined;
         }
     });
 
@@ -680,6 +691,12 @@
                 <div class="py-4 space-y-2">
                     {#each messageStore.messages as message (message.id)}
                         {@const rightSide = isOnRightSide(message, selectedSession)}
+                        {@const snapName = mode === 'history'
+                            ? sessionStore.getParticipantName(currentChatPageId, message.sender_id, message.sender_type)
+                            : undefined}
+                        {@const snapAvatar = mode === 'history'
+                            ? sessionStore.getParticipantAvatar(currentChatPageId, message.sender_id, message.sender_type)
+                            : undefined}
                         <div
                             class="flex px-4 {rightSide ? 'justify-end' : 'justify-start'}"
                         >
@@ -687,6 +704,8 @@
                                 {message}
                                 isMe={rightSide}
                                 senderName={message.sender_name || '未知'}
+                                snapshotName={snapName}
+                                snapshotAvatar={snapAvatar}
                             />
                         </div>
                     {/each}
