@@ -79,7 +79,7 @@
             loadRelationships();
         } catch (err) {
             logger.error('Failed to remove friendship:', err);
-            toastStore.show('删除关系失败: ' + String(err), 'error');
+            toastStore.error('删除关系失败: ' + String(err));
         }
     }
 

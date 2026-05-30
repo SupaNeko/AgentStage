@@ -19,7 +19,7 @@
         try {
             agents = await invoke<Agent[]>('list_agents');
         } catch (err) {
-            toastStore.show('加载角色列表失败', 'error');
+            toastStore.error('加载角色列表失败');
         } finally {
             loadingAgents = false;
         }
@@ -36,8 +36,8 @@
 
     async function handleCreate() {
         const name = groupName.trim();
-        if (!name) { toastStore.show('请输入群聊名称', 'error'); return; }
-        if (selectedAgentIds.size < 2) { toastStore.show('请选择至少 2 个角色', 'error'); return; }
+        if (!name) { toastStore.error('请输入群聊名称'); return; }
+        if (selectedAgentIds.size < 2) { toastStore.error('请选择至少 2 个角色'); return; }
         creating = true;
         try {
             const session = await invoke<Session>('create_group_session', {
@@ -46,10 +46,10 @@
             sessionStore.addSession(session);
             sessionStore.selectSession(session.id);
             appState.switchView('chat');
-            toastStore.show('群聊创建成功', 'success', 2000);
+            toastStore.success('群聊创建成功', 2000);
             onclose?.();
         } catch (err) {
-            toastStore.show(`创建失败：${err}`, 'error');
+            toastStore.error(`创建失败：${err}`);
         } finally {
             creating = false;
         }

@@ -31,7 +31,7 @@
         const hasRef = referenceCharacter.trim().length > 0;
         const hasSupp = supplement.trim().length > 0;
         if (!hasRef && !hasSupp) {
-            toastStore.show('参考角色和补充信息至少填写一项', 'error', 3000);
+            toastStore.error('参考角色和补充信息至少填写一项');
             return;
         }
 
@@ -49,7 +49,7 @@
             onClose();
         } catch (err: any) {
             logger.error('Failed to generate persona:', err);
-            toastStore.show('生成失败: ' + String(err), 'error', 5000);
+            toastStore.error('生成失败: ' + String(err));
         } finally {
             generating = false;
         }

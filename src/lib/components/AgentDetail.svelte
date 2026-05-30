@@ -94,7 +94,7 @@
                 proactiveMaxMinutes: proactiveMaxMinutes,
             });
             logger.debug('[DEBUG AgentDetail.handleSave] success', { id: agent.id });
-            toastStore.show('已保存', 'success', 2000);
+            toastStore.success('已保存', 2000);
         } catch (err) {
             logger.debug('[DEBUG AgentDetail.handleSave] failed', { id: agent?.id, error: err });
             logger.error('Failed to update agent:', err);

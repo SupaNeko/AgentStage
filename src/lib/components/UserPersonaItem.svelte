@@ -39,9 +39,9 @@
         showConfirmModal = false;
         try {
             await userPersonaStore.activatePersona(persona.id);
-            toastStore.show(`已切换到 "${persona.name}"`, 'success');
+            toastStore.success(`已切换到 "${persona.name}"`);
         } catch (e) {
-            toastStore.show('启用失败: ' + String(e), 'error');
+            toastStore.error('启用失败: ' + String(e));
         }
     }
 
@@ -55,7 +55,7 @@
             });
             expanded = false;
         } catch (e) {
-            toastStore.show('保存失败: ' + String(e), 'error');
+            toastStore.error('保存失败: ' + String(e));
         } finally {
             saving = false;
         }
@@ -72,7 +72,7 @@
         try {
             await userPersonaStore.deletePersona(persona.id);
         } catch (e) {
-            toastStore.show('删除失败: ' + String(e), 'error');
+            toastStore.error('删除失败: ' + String(e));
         }
     }
 
@@ -82,7 +82,7 @@
             try {
                 await userPersonaStore.updatePersona({ id: persona.id, avatar_path: defaultPath });
             } catch (e) {
-                toastStore.show('设置头像失败: ' + String(e), 'error');
+                toastStore.error('设置头像失败: ' + String(e));
             }
         }
     }
@@ -92,7 +92,7 @@
         try {
             await userPersonaStore.updatePersona({ id: persona.id, avatar_path: path });
         } catch (e) {
-            toastStore.show('上传头像失败: ' + String(e), 'error');
+            toastStore.error('上传头像失败: ' + String(e));
         }
     }
 </script>

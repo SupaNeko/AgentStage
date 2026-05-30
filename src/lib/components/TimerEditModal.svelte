@@ -85,7 +85,7 @@
 
     async function handleSave() {
         if (!description.trim()) {
-            toastStore.show('请填写描述', 'error');
+            toastStore.error('请填写描述');
             return;
         }
 
@@ -102,7 +102,7 @@
                         target_session_id: targetSessionId || null,
                     }
                 });
-                toastStore.show('定时任务已更新', 'success');
+                toastStore.success('定时任务已更新');
             } else {
                 const req: Record<string, unknown> = {
                     description: description.trim(),
@@ -127,13 +127,13 @@
                 }
 
                 await invoke('create_timer_command', { agentId, req });
-                toastStore.show('定时任务已创建', 'success');
+                toastStore.success('定时任务已创建');
             }
             onSave();
             onClose();
         } catch (err: any) {
             logger.error('Failed to save timer:', err);
-            toastStore.show('保存失败: ' + String(err), 'error');
+            toastStore.error('保存失败: ' + String(err));
         } finally {
             submitting = false;
         }

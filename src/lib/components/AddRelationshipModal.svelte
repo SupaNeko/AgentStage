@@ -47,7 +47,7 @@
             onClose();
         } catch (err) {
             logger.error('Failed to add friendships:', err);
-            toastStore.show('添加关系失败: ' + String(err), 'error');
+            toastStore.error('添加关系失败: ' + String(err));
         } finally {
             loading = false;
         }

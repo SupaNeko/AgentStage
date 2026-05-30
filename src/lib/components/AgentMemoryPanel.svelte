@@ -38,7 +38,7 @@
             await invoke('update_agent', { req: { id: agentId, long_term_memory: longTermMemory } });
         } catch (err) {
             logger.error('Failed to save long term memory:', err);
-            toastStore.show('保存长期记忆失败', 'error');
+            toastStore.error('保存长期记忆失败');
         }
     }
 
@@ -52,7 +52,7 @@
             });
         } catch (err) {
             logger.error('Failed to save memory:', err);
-            toastStore.show('保存记忆失败', 'error');
+            toastStore.error('保存记忆失败');
         }
     }
 
@@ -99,10 +99,10 @@
             await invoke('reset_agent_memory', { agentId });
             longTermMemory = '';
             items = items.map(i => ({ ...i, memory_text: '' }));
-            toastStore.show('记忆已重置', 'success');
+            toastStore.success('记忆已重置');
         } catch (err) {
             logger.error('Failed to reset memory:', err);
-            toastStore.show('重置记忆失败', 'error');
+            toastStore.error('重置记忆失败');
         }
     }
 
@@ -112,7 +112,7 @@
             await invoke('update_agent', { req: { id: agentId, memory_enabled: memoryEnabled } });
         } catch (err) {
             logger.error('Failed to update memory_enabled:', err);
-            toastStore.show('更新设置失败', 'error');
+            toastStore.error('更新设置失败');
             memoryEnabled = !memoryEnabled;
         }
     }

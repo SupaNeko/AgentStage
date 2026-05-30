@@ -12,28 +12,29 @@ export class ToastStore {
     private nextId = 0;
     private timers = new Map<number, { interval: ReturnType<typeof setInterval>; timeout: ReturnType<typeof setTimeout> }>();
 
-    show(message: string, type: ToastItem['type'] = 'info', autoDismissOrDuration: boolean | number = false, duration = 0) {
-        let autoDismiss: boolean;
-        let finalDuration: number;
+    /** 绿色成功提示，默认 5s 后自动消失，可覆盖 duration（单位 ms） */
+    success(message: string, duration = 5000) {
+        this.add({ message, type: 'success', autoDismiss: true, duration });
+    }
 
-        if (typeof autoDismissOrDuration === 'boolean') {
-            autoDismiss = autoDismissOrDuration;
-            finalDuration = duration;
-        } else if (typeof autoDismissOrDuration === 'number' && autoDismissOrDuration > 0) {
-            autoDismiss = true;
-            finalDuration = autoDismissOrDuration;
-        } else {
-            autoDismiss = false;
-            finalDuration = 0;
-        }
+    /** 蓝色/默认信息提示，默认 5s 后自动消失，可覆盖 duration（单位 ms） */
+    info(message: string, duration = 5000) {
+        this.add({ message, type: 'info', autoDismiss: true, duration });
+    }
 
+    /** 红色错误提示，永久保留，必须手动关闭。不接受 duration 参数。 */
+    error(message: string) {
+        this.add({ message, type: 'error', autoDismiss: false, duration: 0 });
+    }
+
+    private add(item: Omit<ToastItem, 'id' | 'progress'>) {
         const id = this.nextId++;
-        const item: ToastItem = { id, message, type, autoDismiss, duration: finalDuration, progress: 100 };
-        this.items = [...this.items, item];
+        const fullItem: ToastItem = { ...item, id, progress: 100 };
+        this.items = [...this.items, fullItem];
 
-        if (autoDismiss && finalDuration > 0) {
+        if (item.autoDismiss && item.duration > 0) {
             const intervalMs = 50;
-            const step = 100 / (finalDuration / intervalMs);
+            const step = 100 / (item.duration / intervalMs);
 
             const interval = setInterval(() => {
                 const idx = this.items.findIndex(t => t.id === id);
@@ -48,7 +49,7 @@ export class ToastStore {
 
             const timeout = setTimeout(() => {
                 this.remove(id);
-            }, finalDuration);
+            }, item.duration);
 
             this.timers.set(id, { interval, timeout });
         }

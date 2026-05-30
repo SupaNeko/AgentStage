@@ -26,7 +26,7 @@
 
     async function handleCreate() {
         if (!name.trim()) {
-            toastStore.show('角色名不能为空', 'error');
+            toastStore.error('角色名不能为空');
             return;
         }
         saving = true;
@@ -39,7 +39,7 @@
             oncreated?.();
             onClose();
         } catch (e) {
-            toastStore.show('创建失败: ' + String(e), 'error');
+            toastStore.error('创建失败: ' + String(e));
         } finally {
             saving = false;
         }

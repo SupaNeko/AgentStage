@@ -71,9 +71,9 @@
                 settingsStore.settings.quiet_hours_start = quietHoursEnabled ? timeToMinutes(quietStart) : -1;
                 settingsStore.settings.quiet_hours_end = quietHoursEnabled ? timeToMinutes(quietEnd) : -1;
             }
-            toastStore.show('已保存', 'success', 2000);
+            toastStore.success('已保存', 2000);
         } catch (err) {
-            toastStore.show(`保存失败：${err}`, 'error');
+            toastStore.error(`保存失败：${err}`);
         } finally {
             saving = false;
         }

@@ -155,12 +155,12 @@
             const path = await invoke<string>('upload_avatar', {
                 req: { target_type: targetType, target_id: targetId, image_data_base64: base64 }
             });
-            toastStore.show('头像上传成功', 'success', 2000);
+            toastStore.success('头像上传成功', 2000);
             onUploaded(path);
             cropMode = false;
             imgObj = null;
         } catch (err) {
-            toastStore.show('上传失败: ' + String(err), 'error', 5000);
+            toastStore.error('上传失败: ' + String(err));
         } finally {
             uploading = false;
         }

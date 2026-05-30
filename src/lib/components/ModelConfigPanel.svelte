@@ -53,15 +53,15 @@
     async function handleSave() {
         if (!editingConfig) return;
         if (!editingConfig.name?.trim()) {
-            toastStore.show('名称不能为空', 'error', 3000);
+            toastStore.error('名称不能为空');
             return;
         }
         if (!editingConfig.model_name?.trim()) {
-            toastStore.show('模型名称不能为空', 'error', 3000);
+            toastStore.error('模型名称不能为空');
             return;
         }
         if (!editingConfig.api_key?.trim()) {
-            toastStore.show('API Key 不能为空', 'error', 3000);
+            toastStore.error('API Key 不能为空');
             return;
         }
 
@@ -81,14 +81,14 @@
         try {
             if (editingConfig.id) {
                 await modelConfigStore.update(editingConfig.id, payload);
-                toastStore.show('已保存', 'success', 2000);
+                toastStore.success('已保存', 2000);
             } else {
                 await modelConfigStore.create(payload);
-                toastStore.show('已创建', 'success', 2000);
+                toastStore.success('已创建', 2000);
             }
             editingConfig = null;
         } catch (err: any) {
-            toastStore.show('保存失败: ' + String(err), 'error', 5000);
+            toastStore.error('保存失败: ' + String(err));
         }
     }
 
@@ -104,12 +104,12 @@
                 message: result.message,
             };
             if (result.success) {
-                toastStore.show(`连接成功 (${result.latency_ms}ms)`, 'success', 3000);
+                toastStore.success(`连接成功 (${result.latency_ms}ms)`, 3000);
             } else {
-                toastStore.show(`连接失败: ${result.message}`, 'error', 5000);
+                toastStore.error(`连接失败: ${result.message}`);
             }
         } catch (err: any) {
-            toastStore.show('测试失败: ' + String(err), 'error', 5000);
+            toastStore.error('测试失败: ' + String(err));
         } finally {
             testingId = null;
         }
@@ -120,13 +120,13 @@
         deletingId = config.id;
         try {
             await modelConfigStore.delete(config.id);
-            toastStore.show('已删除', 'success', 2000);
+            toastStore.success('已删除', 2000);
         } catch (err: any) {
             const msg = String(err);
             if (msg.includes('被角色引用') || msg.includes('foreign key') || msg.includes('FOREIGN KEY')) {
-                toastStore.show('该模型配置正被角色引用，无法删除', 'error', 5000);
+                toastStore.error('该模型配置正被角色引用，无法删除');
             } else {
-                toastStore.show('删除失败: ' + msg, 'error', 5000);
+                toastStore.error('删除失败: ' + msg);
             }
         } finally {
             deletingId = null;

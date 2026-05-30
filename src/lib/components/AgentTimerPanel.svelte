@@ -20,7 +20,7 @@
             tasks = result;
         } catch (err) {
             logger.error('Failed to load timers:', err);
-            toastStore.show('加载定时任务失败', 'error');
+            toastStore.error('加载定时任务失败');
         } finally {
             loading = false;
         }
@@ -30,11 +30,11 @@
         if (!confirm(`确定要删除定时任务 "${task.description}" 吗？`)) return;
         try {
             await invoke('delete_timer_command', { agentId, taskId: task.id });
-            toastStore.show('定时任务已删除', 'success');
+            toastStore.success('定时任务已删除');
             loadTasks();
         } catch (err) {
             logger.error('Failed to delete timer:', err);
-            toastStore.show('删除失败', 'error');
+            toastStore.error('删除失败');
         }
     }
 
@@ -42,11 +42,11 @@
         const newActive = task.is_active ? 0 : 1;
         try {
             await invoke('toggle_timer', { agentId, taskId: task.id, isActive: newActive });
-            toastStore.show(newActive ? '定时任务已激活' : '定时任务已暂停', 'success');
+            toastStore.success(newActive ? '定时任务已激活' : '定时任务已暂停');
             loadTasks();
         } catch (err) {
             logger.error('Failed to toggle timer:', err);
-            toastStore.show('操作失败', 'error');
+            toastStore.error('操作失败');
         }
     }
 

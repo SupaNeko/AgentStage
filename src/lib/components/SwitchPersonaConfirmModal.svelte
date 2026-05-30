@@ -25,9 +25,9 @@
         try {
             await invoke('reset_all_sessions');
             await sessionStore.loadSessions();
-            toastStore.show('所有会话已重置', 'success');
+            toastStore.success('所有会话已重置');
         } catch (e) {
-            toastStore.show('重置会话失败: ' + String(e), 'error');
+            toastStore.error('重置会话失败: ' + String(e));
             resetting = false;
             return;
         }

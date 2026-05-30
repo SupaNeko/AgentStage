@@ -32,16 +32,16 @@
         const hasRef = referenceCharacter.trim().length > 0;
         const hasSupp = additionalInfo.trim().length > 0;
         if (!hasRef && !hasSupp) {
-            toastStore.show('参考角色和补充信息至少填写一项', 'error', 3000);
+            toastStore.error('参考角色和补充信息至少填写一项');
             return;
         }
         if (!form.model_config_id) {
-            toastStore.show('请先在下方选择模型配置', 'error', 3000);
+            toastStore.error('请先在下方选择模型配置');
             return;
         }
         const modelConfig = modelConfigStore.getById(form.model_config_id);
         if (!modelConfig) {
-            toastStore.show('所选模型配置不存在', 'error', 3000);
+            toastStore.error('所选模型配置不存在');
             return;
         }
 
@@ -62,10 +62,10 @@
             form.scenario = result.scenario || '';
             form.example_messages = result.example_messages || '';
             form.creator_notes = result.creator_notes || '';
-            toastStore.show('人设生成完成', 'success', 2000);
+            toastStore.success('人设生成完成', 2000);
         } catch (err: any) {
             logger.error('Failed to generate persona:', err);
-            toastStore.show('生成失败: ' + String(err), 'error', 5000);
+            toastStore.error('生成失败: ' + String(err));
         } finally {
             generating = false;
         }

@@ -111,13 +111,13 @@
         listen('system_notice', (event) => {
             const payload = event.payload as { content?: string };
             logger.debug('[DEBUG App.listen system_notice]', { content: payload.content });
-            toastStore.show(payload.content || '系统通知', 'info', true, 10000);
+            toastStore.info(payload.content || '系统通知', 10000);
         }).then((fn) => unlistenFns.push(fn));
 
         listen('agent_error', (event) => {
             const payload = event.payload as { error?: string; message?: string };
             logger.error('[DEBUG App.listen agent_error]', { error: payload.error, message: payload.message });
-            toastStore.show(payload.error || payload.message || '角色回复失败，将在稍后重试', 'error');
+            toastStore.error(payload.error || payload.message || '角色回复失败，将在稍后重试');
         }).then((fn) => unlistenFns.push(fn));
 
         listen('agent_completed', (event) => {

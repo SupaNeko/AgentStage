@@ -45,9 +45,9 @@
                 historyStore.chatPages = [];
                 historyStore.selectedPageIndex = null;
             }
-            toastStore.show('历史记录已清除', 'success', 2000);
+            toastStore.success('历史记录已清除', 2000);
         } catch (err) {
-            toastStore.show('清除失败: ' + String(err), 'error', 5000);
+            toastStore.error('清除失败: ' + String(err));
         } finally {
             closeContextMenu();
         }

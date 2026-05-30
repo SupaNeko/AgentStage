@@ -75,10 +75,10 @@
             await sessionStore.resetSession(sessionId);
             showResetConfirm = false;
             onClose();
-            toastStore.show('会话已重置，历史消息已归档', 'error', 10000);
+            toastStore.success('会话已重置，历史消息已归档');
         } catch (err) {
             logger.error('Reset failed:', err);
-            toastStore.show('重置失败，请稍后重试', 'error', 5000);
+            toastStore.error('重置失败，请稍后重试');
         }
     }
 
@@ -94,7 +94,7 @@
 
     async function handleRemoveMember(agentId: string) {
         if (members.filter(m => m.participant_type === 'agent').length <= 2) {
-            alert('群聊至少需要保留 2 名角色成员');
+            toastStore.error('群聊至少需要保留 2 名角色成员');
             return;
         }
         try {

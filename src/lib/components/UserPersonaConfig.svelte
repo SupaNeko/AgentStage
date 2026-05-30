@@ -23,7 +23,7 @@
         try {
             await userPersonaStore.activatePersona(null);
         } catch (e) {
-            toastStore.show('关闭失败: ' + String(e), 'error');
+            toastStore.error('关闭失败: ' + String(e));
         }
     }
 

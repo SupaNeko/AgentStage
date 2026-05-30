@@ -63,7 +63,7 @@
                 historyStore.chatPages = [...historyStore.chatPages];
             }
         } catch (err) {
-            toastStore.show('保存失败: ' + String(err), 'error', 3000);
+            toastStore.error('保存失败: ' + String(err));
         } finally {
             editingPageIndex = null;
         }
