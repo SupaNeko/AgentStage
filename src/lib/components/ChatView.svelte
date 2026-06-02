@@ -188,9 +188,8 @@
         const pageIdx = mode === 'history' ? historyStore.selectedPageIndex : null;
         prevMsgCount = 0;
         isFirstLoad = true;
-        // 恢复该会话的输入内容
         if (id) {
-            inputText = inputBySession.get(id) || '';
+            inputText = untrack(() => inputBySession.get(id) || '');
         } else {
             inputText = '';
         }
@@ -259,13 +258,14 @@
         if (isFirstLoad) {
             isFirstLoad = false;
             if (diff > 0 && messageListEl) {
-                const saved = scrollPositions.get(selectedId);
+                const saved = untrack(() => scrollPositions.get(selectedId));
                 if (saved != null) {
                     messageListEl.scrollTop = saved;
                 } else {
                     messageListEl.scrollTop = messageListEl.scrollHeight;
                 }
             }
+            prevScrollHeight = messageListEl?.scrollHeight ?? 0;
             return;
         }
 
