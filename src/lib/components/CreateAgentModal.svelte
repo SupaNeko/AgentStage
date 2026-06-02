@@ -9,6 +9,8 @@
 
     let { open = $bindable(false), onSuccess }: { open: boolean; onSuccess?: () => void } = $props();
 
+    let mouseDownOnOverlay = $state(false);
+
     let form = $state({
         name: '',
         detailed_persona: '',
@@ -105,8 +107,11 @@
 </script>
 
 {#if open}
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay" onclick={() => open = false} role="dialog" aria-modal="true">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto modal-card" onclick={(e) => e.stopPropagation()}>
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay"
+    onmousedown={(e) => { mouseDownOnOverlay = e.target === e.currentTarget; }}
+    onclick={(e) => { if (mouseDownOnOverlay && e.target === e.currentTarget) open = false; mouseDownOnOverlay = false; }}
+    role="dialog" aria-modal="true">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto modal-card" onmousedown={() => mouseDownOnOverlay = false} onclick={(e) => e.stopPropagation()}>
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold">新建角色</h3>
             <button onclick={() => open = false} class="p-1 hover:bg-gray-100 rounded" aria-label="关闭">

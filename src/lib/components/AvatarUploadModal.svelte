@@ -17,6 +17,7 @@
 
     let uploading = $state(false);
     let fileInput: HTMLInputElement | undefined = $state(undefined);
+    let mouseDownOnOverlay = $state(false);
 
     // Cropper state
     let cropMode = $state(false);
@@ -176,8 +177,11 @@
 </script>
 
 {#if open}
-    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center modal-overlay" onclick={onClose} role="dialog" aria-modal="true">
-        <div class="bg-surface rounded-xl p-6 w-80 shadow-xl modal-card" onclick={(e) => e.stopPropagation()}>
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center modal-overlay"
+        onmousedown={(e) => { mouseDownOnOverlay = e.target === e.currentTarget; }}
+        onclick={(e) => { if (mouseDownOnOverlay && e.target === e.currentTarget) onClose(); mouseDownOnOverlay = false; }}
+        role="dialog" aria-modal="true">
+        <div class="bg-surface rounded-xl p-6 w-80 shadow-xl modal-card" onmousedown={() => mouseDownOnOverlay = false} onclick={(e) => e.stopPropagation()}>
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold">头像管理</h3>
                 <button onclick={onClose} class="p-1 hover:bg-bg rounded" aria-label="关闭">

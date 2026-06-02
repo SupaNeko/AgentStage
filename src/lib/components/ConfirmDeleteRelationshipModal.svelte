@@ -10,6 +10,7 @@
 
     let { open, targetName, onClose, onConfirm }: Props = $props();
     let loading = $state(false);
+    let mouseDownOnOverlay = $state(false);
 
     async function handleConfirm() {
         loading = true;
@@ -22,8 +23,11 @@
 </script>
 
 {#if open}
-    <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 modal-overlay" onclick={onClose} role="dialog" aria-modal="true">
-        <div class="bg-surface rounded-xl p-6 w-96 max-w-full shadow-lg border border-border modal-card" onclick={(e) => e.stopPropagation()}>
+    <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 modal-overlay"
+        onmousedown={(e) => { mouseDownOnOverlay = e.target === e.currentTarget; }}
+        onclick={(e) => { if (mouseDownOnOverlay && e.target === e.currentTarget) onClose(); mouseDownOnOverlay = false; }}
+        role="dialog" aria-modal="true">
+        <div class="bg-surface rounded-xl p-6 w-96 max-w-full shadow-lg border border-border modal-card" onmousedown={() => mouseDownOnOverlay = false} onclick={(e) => e.stopPropagation()}>
             <div class="flex items-center gap-2 mb-3">
                 <AlertTriangle size={20} class="text-red-500" />
                 <h3 class="text-lg font-semibold">删除关系</h3>

@@ -19,6 +19,7 @@
     let referenceCharacter = $state('');
     let supplement = $state('');
     let generating = $state(false);
+    let mouseDownOnOverlay = $state(false);
 
     function handleClose() {
         if (generating) {
@@ -63,8 +64,11 @@
 </script>
 
 {#if open}
-    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center modal-overlay" onclick={handleClose} role="dialog" aria-modal="true">
-        <div class="bg-surface rounded-xl p-6 w-[28rem] shadow-xl modal-card" onclick={(e) => e.stopPropagation()}>
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center modal-overlay"
+        onmousedown={(e) => { mouseDownOnOverlay = e.target === e.currentTarget; }}
+        onclick={(e) => { if (mouseDownOnOverlay && e.target === e.currentTarget) handleClose(); mouseDownOnOverlay = false; }}
+        role="dialog" aria-modal="true">
+        <div class="bg-surface rounded-xl p-6 w-[28rem] shadow-xl modal-card" onmousedown={() => mouseDownOnOverlay = false} onclick={(e) => e.stopPropagation()}>
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
                     <Sparkles size={18} class="text-primary" />

@@ -319,6 +319,7 @@
     onClose={() => showAvatarModal = false}
     onUploaded={(path) => {
         groupAvatar = path;
+        sessionStore.updateSessionGroupAvatar(sessionId, path);
         showAvatarModal = false;
     }}
 />

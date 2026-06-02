@@ -9,26 +9,32 @@ export function formatTime(ts: number): string {
     return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+const avatarVersion = new Map<string, number>();
+
+export function bumpAvatarVersion(path: string | null | undefined) {
+    if (!path) return;
+    const normalizedPath = path.replace(/\\/g, '/');
+    const current = avatarVersion.get(normalizedPath) ?? 0;
+    avatarVersion.set(normalizedPath, current + 1);
+}
+
 export function resolveAvatarUrl(path: string | null | undefined): string {
     if (!path) return '';
-    // 如果已经是 URL 格式，直接返回
     if (path.startsWith('http') || path.startsWith('asset:') || path.startsWith('data:')) {
         return path;
     }
     const normalizedPath = path.replace(/\\/g, '/');
 
-    // Development: Vite dev server can serve local files via @fs/
-    // (Tauri convertFileSrc uses asset.localhost which has no listener in dev mode)
+    const version = avatarVersion.get(normalizedPath);
+    const cacheBust = version ? `?v=${version}` : '';
+
     if (import.meta.env.DEV) {
-        const url = `http://${window.location.host}/@fs/${normalizedPath}`;
-        console.log('[Avatar] resolve (dev):', path, '->', url);
+        const url = `http://${window.location.host}/@fs/${normalizedPath}${cacheBust}`;
         return url;
     }
 
-    // Production: Tauri asset protocol
     try {
-        const url = convertFileSrc(normalizedPath);
-        console.log('[Avatar] resolve (prod):', path, '->', url);
+        const url = convertFileSrc(normalizedPath) + cacheBust;
         return url;
     } catch (e) {
         console.warn('[Avatar] convertFileSrc failed:', path, e);

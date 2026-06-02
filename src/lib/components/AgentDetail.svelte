@@ -380,6 +380,7 @@
     onUploaded={(path) => {
         if (agent) {
             agent.avatar_path = path;
+            agentStore.updateAgentAvatar(agent.id, path);
         }
         showAvatarModal = false;
     }}

@@ -18,6 +18,7 @@
 
     let draft = $state({ global_min_trigger_interval: 30, summary_model_config_id: null as string | null });
     let saving = $state(false);
+    let mouseDownOnOverlay = $state(false);
     let showAvatarModal = $state(false);
     let userAvatar = $state<string | null>(null);
     let activeTab = $state('general');
@@ -82,8 +83,10 @@
     let { onclose }: { onclose: () => void } = $props();
 </script>
 
-<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}>
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col modal-card">
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 modal-overlay"
+    onmousedown={(e) => { mouseDownOnOverlay = e.target === e.currentTarget; }}
+    onclick={(e) => { if (mouseDownOnOverlay && e.target === e.currentTarget) onclose(); mouseDownOnOverlay = false; }}>
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col modal-card" onmousedown={() => mouseDownOnOverlay = false}>
         <div class="flex items-center justify-between p-4 border-b border-border">
             <h3 class="text-lg font-semibold">设置</h3>
             <button onclick={onclose} class="p-1 hover:bg-gray-100 rounded">

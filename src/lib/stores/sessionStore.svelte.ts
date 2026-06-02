@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '$lib/logger';
+import { bumpAvatarVersion } from '$lib/utils';
 import type { Session } from '$lib/types';
 
 export class SessionStore {
@@ -153,6 +154,15 @@ export class SessionStore {
         } catch (err) {
             logger.error('Failed to disband group:', err);
             throw err;
+        }
+    }
+
+    updateSessionGroupAvatar(sessionId: string, groupAvatar: string | null) {
+        const idx = this.sessions.findIndex(s => s.id === sessionId);
+        if (idx !== -1) {
+            if (groupAvatar) bumpAvatarVersion(groupAvatar);
+            this.sessions[idx] = { ...this.sessions[idx], group_avatar: groupAvatar };
+            this.sessions = [...this.sessions];
         }
     }
 

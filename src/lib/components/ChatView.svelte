@@ -87,11 +87,14 @@
         }
     }
 
-    function isNearBottom(): boolean {
+    function isNearBottom(scrollHeight?: number): boolean {
         if (!messageListEl) return true;
         const threshold = 80;
-        return messageListEl.scrollHeight - messageListEl.scrollTop - messageListEl.clientHeight <= threshold;
+        const sh = scrollHeight ?? messageListEl.scrollHeight;
+        return sh - messageListEl.scrollTop - messageListEl.clientHeight <= threshold;
     }
+
+    let prevScrollHeight = $state(0);
 
     let selectedSession = $derived(
         mode === 'chat'
@@ -266,11 +269,13 @@
             return;
         }
 
+        const wasNearBottom = diff >= 1 && isNearBottom(prevScrollHeight);
         if (diff > 1) {
             scrollToBottom();
-        } else if (diff === 1 && isNearBottom()) {
+        } else if (diff === 1 && wasNearBottom) {
             scrollToBottom();
         }
+        prevScrollHeight = messageListEl?.scrollHeight ?? 0;
     });
 
     async function handleResetMessageCount() {
