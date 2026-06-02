@@ -111,6 +111,7 @@ cd src-tauri && cargo test
 2. **LLM 调用全部走后端**：前端不直接调用任何 LLM API，所有请求通过 Tauri IPC 由 Rust 代理执行
 3. **数据库迁移**：修改 `src-tauri/src/db/schema.rs` 后，需要在 `src-tauri/src/db/migration.rs` 中添加迁移脚本
 4. **Windows 专用**：当前仅支持 Windows 平台（依赖 WebView2）
+5. **调试日志**：生产版本默认不输出调试日志（如完整 prompt 内容、HTTP 请求详情等）。如需调试，设置环境变量 `AGENTSTAGE_DEBUG_LOG=1` 后启动程序，会在 `data/logs/backend-debug.log` 中记录详细信息
 
 ---
 

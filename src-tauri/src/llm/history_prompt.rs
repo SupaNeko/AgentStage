@@ -116,8 +116,8 @@ impl HistoryPromptAssembler {
             instruction
         );
 
-        // 7. 记录完整 prompt 到日志
-        crate::logger::info(&format!(
+        // 7. 记录完整 prompt 到日志（仅 debug 级别）
+        crate::logger::debug(&format!(
             "[HistoryPromptAssembler] Full prompt for agent {} | session={} | page={} | prompt_length={}\n---PROMPT START---\n{}\n---PROMPT END---",
             agent_id, session_id, page_index, full_prompt.len(), full_prompt
         ));

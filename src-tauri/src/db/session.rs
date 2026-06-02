@@ -9,11 +9,19 @@ fn resolve_participant(
     participant_id: &str,
 ) -> Result<SessionParticipant> {
     if participant_type == "user" {
+        let (name, avatar_path): (String, Option<String>) = conn.query_row(
+            "SELECT COALESCE(up.name, '用户'), up.avatar_path
+             FROM app_settings s
+             LEFT JOIN user_personas up ON s.active_persona_id = up.id
+             LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap_or(("用户".to_string(), None));
         Ok(SessionParticipant {
             participant_type: participant_type.to_string(),
             participant_id: participant_id.to_string(),
-            name: "用户".to_string(),
-            avatar_path: None,
+            name,
+            avatar_path: crate::db::resolve_avatar_path(avatar_path),
             is_deleted: false,
         })
     } else {
@@ -375,10 +383,12 @@ pub fn get_group_members(
 ) -> Result<Vec<crate::models::session::GroupMemberResponse>> {
     let mut stmt = conn.prepare(
         "SELECT gm.participant_type, gm.participant_id,
-                CASE WHEN gm.participant_type = 'user' THEN '用户' ELSE COALESCE(a.name, '未知角色') END as name,
-                a.avatar_path
+                CASE WHEN gm.participant_type = 'user' THEN COALESCE(up.name, '用户') ELSE COALESCE(a.name, '未知角色') END as name,
+                CASE WHEN gm.participant_type = 'user' THEN up.avatar_path ELSE a.avatar_path END as avatar_path
          FROM group_members gm
          LEFT JOIN agents a ON gm.participant_type = 'agent' AND gm.participant_id = a.id
+         LEFT JOIN app_settings s ON 1=1
+         LEFT JOIN user_personas up ON gm.participant_type = 'user' AND s.active_persona_id = up.id
          WHERE gm.session_id = ?1 AND gm.is_active = 1
          ORDER BY gm.participant_type DESC, name ASC"
     )?;
