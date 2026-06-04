@@ -12,9 +12,9 @@
 <div class="flex h-full">
     <!-- Category List -->
     <div class="w-56 shrink-0 bg-surface border-r border-border flex flex-col profile-sidebar">
-        <div class="px-4 py-3 border-b border-border">
-            <h2 class="font-semibold text-sm">个人配置</h2>
-        </div>
+        <header class="flex items-center justify-between p-4 border-b border-border">
+            <h2 class="text-base font-semibold">个人配置</h2>
+        </header>
         <nav class="flex-1 p-2">
             {#each categories as cat}
                 <button

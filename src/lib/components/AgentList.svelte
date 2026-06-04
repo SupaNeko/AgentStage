@@ -225,8 +225,8 @@
         onchange={handleImportFileChange}
     />
 
-    <header class="border-b border-border p-4">
-        <h2 class="text-base font-semibold text-text mb-2">角色列表</h2>
+    <header class="flex flex-col gap-2 p-4 border-b border-border">
+        <h2 class="text-base font-semibold">角色列表</h2>
         <div class="flex items-center gap-2">
             <button
                 type="button"
