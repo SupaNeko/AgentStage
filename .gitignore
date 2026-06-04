@@ -1,4 +1,5 @@
 /.opencode
+/.agents
 
 # Build output
 /dist
@@ -28,6 +29,7 @@ npm-debug.log*
 /data/*
 !/data/themes/
 !/data/themes/**
+/exports/
 
 # Testing (development only, not project files)
 /playwright-report/

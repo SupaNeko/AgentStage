@@ -203,3 +203,73 @@ export interface UpdateChatPageNameRequest {
     page_index: number;
     name: string;
 }
+
+export interface PreviewAgentBundleExportRequest {
+    agentIds: string[];
+    userPersonaIds: string[];
+}
+
+export interface ExportAgentBundleRequest {
+    agentIds: string[];
+    userPersonaIds: string[];
+    confirmOmissions: boolean;
+}
+
+export interface PreviewAgentBundleImportRequest {
+    fileContent: string;
+}
+
+export interface AgentBundleImportAgentSelection {
+    bundleId: string;
+    name: string;
+    modelConfigId: string | null;
+}
+
+export interface AgentBundleImportUserPersonaSelection {
+    bundleId: string;
+    name: string;
+}
+
+export interface ImportAgentBundleRequest {
+    fileContent: string;
+    agents: AgentBundleImportAgentSelection[];
+    userPersonas: AgentBundleImportUserPersonaSelection[];
+}
+
+export interface AgentBundleExportPreviewResponse {
+    agentCount: number;
+    userPersonaCount: number;
+    omittedRelationshipCount: number;
+    omittedRelationshipMemoryCount: number;
+    omittedFriendshipCount: number;
+    warnings: string[];
+    requiresConfirmation: boolean;
+}
+
+export interface AgentBundleExportResultResponse {
+    preview: AgentBundleExportPreviewResponse;
+    exportedPath: string | null;
+    warnings: string[];
+}
+
+export interface AgentBundleImportPreviewItem {
+    bundleId: string;
+    originalName: string;
+    suggestedName: string;
+    avatarDataUrl: string | null;
+}
+
+export interface AgentBundleImportPreviewResponse {
+    agentCount: number;
+    userPersonaCount: number;
+    agents: AgentBundleImportPreviewItem[];
+    userPersonas: AgentBundleImportPreviewItem[];
+    warnings: string[];
+}
+
+export interface AgentBundleImportResultResponse {
+    importedAgentCount: number;
+    importedUserPersonaCount: number;
+    warnings: string[];
+    renamed: boolean;
+}

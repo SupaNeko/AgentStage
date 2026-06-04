@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_bundle;
 pub mod agent_relationship;
 pub mod agent_unread;
 pub mod chat_page;

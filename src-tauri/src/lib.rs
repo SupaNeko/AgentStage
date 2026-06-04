@@ -8,6 +8,7 @@ pub mod models;
 pub mod scheduler;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, reset_agent_memory};
+use commands::agent_bundle::{preview_agent_bundle_export, export_agent_bundle, preview_agent_bundle_import, import_agent_bundle};
 use commands::chat_page::update_chat_page_name;
 use commands::model_config::{list_model_configs, create_model_config, update_model_config, delete_model_config, test_model_config_connection};
 use commands::log::log_frontend;
@@ -163,6 +164,10 @@ pub fn run() {
             update_agent,
             delete_agent,
             reset_agent_memory,
+            preview_agent_bundle_export,
+            export_agent_bundle,
+            preview_agent_bundle_import,
+            import_agent_bundle,
             list_model_configs,
             create_model_config,
             update_model_config,
