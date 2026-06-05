@@ -108,7 +108,7 @@
 | CHAT-40 | 超长消息批量处理 | 当会话消息超出阈值时，自动触发AI批量总结，更新角色长期记忆 | P1 | ✅ 已实现 | overflow_summary_threshold + last_overflow_summary_index + 消息插入时触发 |
 | CHAT-41 | 定时任务工具 | 角色可通过 create_timer/delete_timer 工具设定定时任务（单次/循环），到时间后无视CD触发一次调用 | P1 | ✅ 已实现 | Migration V15 + scheduled_tasks表 + LLM工具 + 前端定时任务面板 |
 | CHAT-42 | 主动会话机制 | 角色在空闲时主动发起话题，可配置时间区间 + 全局安静时段，触发时由角色自选会话 | P1 | ✅ 已实现 | proactive_enabled + proactive_timers内存计时 + 安静时段 + 前端配置 |
-| CHAT-43 | Agent 发送表情 | 支持角色通过特殊机制发送表情（emoji / 自定义图片表情），前端消息气泡渲染展示表情内容 | P1 | ⬜ 待实现 | 需设计 LLM 侧特殊标记语法（如 `[emoji:😊]` 或 `<emotion>happy</emotion>`）及前端解析渲染；优先级中 |
+| CHAT-43 | 表情包系统 | 支持自定义表情包（批量导入图片、按包管理），AI 根据表情名称理解语境并通过 `<sticker>包名_表情名</sticker>` 标签发送表情；前端输入框、消息气泡渲染展示表情图片 | P1 | ✅ 已实现 | StickerPack 表 + CRUD/导入导出(.agentsticker) + Prompt 注入 sticker 上下文 + RichTextarea 内联渲染 + StickerPickerPanel 底部面板 + MessageBubble 渲染 + 会话列表预览显示 [表情] |
 | CHAT-44 | 消息朗读（TTS） | 支持用户点击消息气泡朗读消息内容；支持按角色配置不同语音（音色/语速）；接入本地或云端 TTS 服务 | P1 | ⬜ 待实现 | 后端提供 TTS 命令，前端提供朗读按钮和语音设置面板；大需求 |
 
 ---
