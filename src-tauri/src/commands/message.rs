@@ -326,6 +326,10 @@ mod tests {
             [],
         ).unwrap();
         conn.execute(
+            "INSERT INTO sessions (id, session_type, created_at, updated_at) VALUES ('s1', 'private', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
             "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, created_at, current_chat_page) VALUES ('s1', 'user', 'user', 'agent', 'a1', 0, 0)",
             [],
         ).unwrap();
@@ -354,11 +358,11 @@ mod tests {
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES ('s1', 'a1', 'agent', 0)",
+            "INSERT INTO group_members (session_id, participant_id, participant_type, joined_at) VALUES ('s1', 'a1', 'agent', 0)",
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES ('s1', 'a2', 'agent', 0)",
+            "INSERT INTO group_members (session_id, participant_id, participant_type, joined_at) VALUES ('s1', 'a2', 'agent', 0)",
             [],
         ).unwrap();
 
@@ -403,11 +407,11 @@ mod tests {
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES ('s1', 'a1', 'agent', 0)",
+            "INSERT INTO group_members (session_id, participant_id, participant_type, joined_at) VALUES ('s1', 'a1', 'agent', 0)",
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES ('s1', 'user', 'user', 0)",
+            "INSERT INTO group_members (session_id, participant_id, participant_type, joined_at) VALUES ('s1', 'user', 'user', 0)",
             [],
         ).unwrap();
 

@@ -237,6 +237,7 @@ mod tests {
 
     fn init_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF;", []).unwrap();
         conn.execute_batch(crate::db::schema::BASE_SCHEMA).unwrap();
         conn
     }

@@ -226,6 +226,7 @@ DROP TABLE friendships_old;
 CREATE INDEX idx_friendships_a1 ON friendships(agent_id_1);
 CREATE INDEX idx_friendships_a2 ON friendships(agent_id_2);
 CREATE INDEX idx_friendships_type ON friendships(participant_type_2);
+CREATE UNIQUE INDEX idx_friendships_unique ON friendships(agent_id_1, agent_id_2, participant_type_2);
 "#;
 
 pub const MIGRATION_V3: &str = r#"
@@ -710,6 +711,11 @@ CREATE INDEX IF NOT EXISTS idx_agent_sticker_packs_pack
     ON agent_sticker_packs(pack_id);
 "#;
 
+pub const MIGRATION_V24: &str = r#"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_unique
+    ON friendships(agent_id_1, agent_id_2, participant_type_2);
+"#;
+
 /// Latest consolidated schema for fresh databases.
 /// Creates all tables and indexes directly at the current version (V20).
 /// Table order respects foreign key dependencies.
@@ -1062,6 +1068,7 @@ CREATE INDEX idx_group_members_agent ON group_members(participant_id, participan
 CREATE INDEX idx_friendships_a1 ON friendships(agent_id_1);
 CREATE INDEX idx_friendships_a2 ON friendships(agent_id_2);
 CREATE INDEX idx_friendships_type ON friendships(participant_type_2);
+CREATE UNIQUE INDEX idx_friendships_unique ON friendships(agent_id_1, agent_id_2, participant_type_2);
 CREATE INDEX idx_agent_views_agent_session ON agent_message_views(agent_id, session_id, created_at DESC);
 CREATE INDEX idx_agent_views_message ON agent_message_views(message_id);
 CREATE INDEX idx_chat_pages_session ON chat_pages(session_id);

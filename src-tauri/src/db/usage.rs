@@ -541,27 +541,27 @@ mod tests {
 
     async fn setup_test_data(db: &DbState) {
         let conn = db.0.lock().await;
+        // Insert model config first (referenced by agents)
+        conn.execute(
+            "INSERT INTO model_configs (id, name, provider, model_name, base_url, api_key_encrypted, created_at, updated_at)
+             VALUES ('model-1', 'Test Model', 'openai', 'gpt-4', 'https://api.openai.com', 'key', 1000, 1000)",
+            [],
+        ).unwrap();
         // Insert agent
         conn.execute(
             "INSERT INTO agents (id, name, detailed_persona, simplified_persona, model_config_id, created_at, updated_at)
              VALUES ('agent-1', 'Test Agent', 'detailed', 'simple', 'model-1', 1000, 1000)",
             [],
         ).unwrap();
-        // Insert model config
-        conn.execute(
-            "INSERT INTO model_configs (id, name, provider, model_name, base_url, api_key_encrypted, created_at)
-             VALUES ('model-1', 'Test Model', 'openai', 'gpt-4', 'https://api.openai.com', 'key', 1000)",
-            [],
-        ).unwrap();
         // Insert session
         conn.execute(
-            "INSERT INTO sessions (id, session_type, created_at, last_message_at, is_deleted)
-             VALUES ('session-1', 'private', 1000, 1000, 0)",
+            "INSERT INTO sessions (id, session_type, created_at, updated_at, last_message_at, is_deleted)
+             VALUES ('session-1', 'private', 1000, 1000, 1000, 0)",
             [],
         ).unwrap();
         conn.execute(
-            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, agent_message_count)
-             VALUES ('session-1', 'user', 'user-1', 'agent', 'agent-1', 0)",
+            "INSERT INTO private_sessions (session_id, participant_1_type, participant_1_id, participant_2_type, participant_2_id, agent_message_count, created_at)
+             VALUES ('session-1', 'user', 'user-1', 'agent', 'agent-1', 0, 1000)",
             [],
         ).unwrap();
     }

@@ -1295,7 +1295,7 @@ mod tests {
         ).unwrap();
         // Set active persona to "up-new"
         conn.execute(
-            "INSERT INTO app_settings (id, active_persona_id, created_at, updated_at) VALUES (1, 'up-new', 0, 0)",
+            "INSERT INTO app_settings (id, active_persona_id, updated_at) VALUES (1, 'up-new', 0)",
             [],
         ).unwrap();
         // Insert session and chat_page

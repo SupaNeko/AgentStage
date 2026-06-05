@@ -838,7 +838,7 @@ mod tests {
     fn test_prompt_assemble_with_new_session() {
         let conn = init_test_db();
         conn.execute(
-            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, ' detailed', 'simple', ?3, ?3)",
+            "INSERT INTO agents (id, name, detailed_persona, simplified_persona, created_at, updated_at) VALUES (?1, ?2, 'Test Agent detailed', 'simple', ?3, ?3)",
             ("agent1", "Test Agent", 0i64),
         ).unwrap();
         

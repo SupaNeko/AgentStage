@@ -269,19 +269,21 @@ mod tests {
         insert_session(&conn, "sess1", "private");
         insert_private_session(&conn, "sess1", "agent1", 0);
 
+        // HistoryPromptAssembler expects messages in reverse chronological order (newest first)
+        // and reverses them internally to produce oldest-first output.
         let msgs = vec![
             Message {
-                id: "msg1".to_string(), session_id: "sess1".to_string(),
+                id: "msg2".to_string(), session_id: "sess1".to_string(),
                 sender_type: "user".to_string(), sender_id: "user".to_string(),
-                content: "First".to_string(), created_at: 1000,
+                content: "Second".to_string(), created_at: 2000,
                 message_type: "text".to_string(), tool_call_data: None,
                 generation_info: None, is_deleted: false,
                 sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,
             },
             Message {
-                id: "msg2".to_string(), session_id: "sess1".to_string(),
+                id: "msg1".to_string(), session_id: "sess1".to_string(),
                 sender_type: "user".to_string(), sender_id: "user".to_string(),
-                content: "Second".to_string(), created_at: 2000,
+                content: "First".to_string(), created_at: 1000,
                 message_type: "text".to_string(), tool_call_data: None,
                 generation_info: None, is_deleted: false,
                 sender_name: "用户".to_string(), sender_avatar: None, page_index: 0,

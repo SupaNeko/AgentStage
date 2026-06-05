@@ -941,12 +941,12 @@ impl Scheduler {
 
         // === 阶段 3：读取 agent 配置和 prompt ===
         let prompt_start = chrono::Utc::now().timestamp_millis();
-        let (agent_model_config_id, llm_config, prompt) = {
+        let setup_result: Result<(Option<String>, crate::db::agent::AgentLlmConfig, crate::llm::conversation::PromptParts), String> = async {
             let conn = self.db_state.0.lock().await;
 
             let agent = agent_repo::get_by_id(&conn, agent_id)
                 .map_err(|e| e.to_string())?
-                .ok_or("Agent not found")?;
+                .ok_or("Agent not found".to_string())?;
 
             let llm_config = agent_repo::resolve_llm_config(&conn, &agent)
                 .map_err(|e| format!("Agent LLM config error: {}", e))?;
@@ -993,7 +993,15 @@ impl Scheduler {
                 agent_id, parts.system.len(), parts.user.len(), llm_config.model_name, llm_config.base_url
             ));
 
-            (agent.model_config_id.clone(), llm_config, parts)
+            Ok((agent.model_config_id.clone(), llm_config, parts))
+        }.await;
+
+        let (agent_model_config_id, llm_config, prompt) = match setup_result {
+            Ok(v) => v,
+            Err(e) => {
+                self.restore_pending(agent_id, pending).await;
+                return Err(e);
+            }
         };
         let prompt_elapsed = chrono::Utc::now().timestamp_millis() - prompt_start;
         crate::logger::debug(&format!(

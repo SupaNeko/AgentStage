@@ -190,6 +190,8 @@ impl PromptAssembler {
                 layer.push_str(&format!("[{}]{} {}: {}\n", time, new_mark, sender, msg.content));
             }
             layer.push('\n');
+            layer.push_str(prompt_templates::LAYER_FOOTER_NOTE);
+            layer.push('\n');
             user_layers.push(layer);
         }
 
@@ -615,7 +617,7 @@ mod tests {
 
     fn insert_group_member(conn: &Connection, session_id: &str, participant_id: &str, participant_type: &str) {
         conn.execute(
-            "INSERT INTO group_members (session_id, participant_id, participant_type, created_at) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO group_members (session_id, participant_id, participant_type, joined_at) VALUES (?1, ?2, ?3, ?4)",
             (session_id, participant_id, participant_type, 0i64),
         ).unwrap();
     }
@@ -909,6 +911,19 @@ mod tests {
         insert_private_session(&conn, "sess1", "agent1", 0);
         insert_session_settings(&conn, "sess1", 50);
 
+        conn.execute(
+            "INSERT INTO app_settings (id, updated_at) VALUES (1, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO user_personas (id, name, description, created_at, updated_at) VALUES ('up1', '用户', '', 0, 0)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "UPDATE app_settings SET active_persona_id = 'up1' WHERE id = 1",
+            [],
+        ).unwrap();
+
         let msg = Message {
             id: "msg1".to_string(), session_id: "sess1".to_string(),
             sender_type: "user".to_string(), sender_id: "user".to_string(),
@@ -1005,7 +1020,7 @@ mod tests {
         let parts = PromptAssembler::assemble(&conn, "agent1", None, None, &[], &std::collections::HashSet::new()).unwrap();
         println!("system:\n{}\nuser:\n{}", parts.system, parts.user);
         assert!(parts.user.contains("- Bob（好友）：Bob 的简介"), "Participant line should include name, label, and simplified persona. Got:\n{}", parts.user);
-        assert!(parts.user.contains("[印象]：好朋友"), "Should contain [印象] line. Got:\n{}", parts.user);
-        assert!(parts.user.contains("[记忆]：他喜欢吃苹果"), "Should contain [记忆] line. Got:\n{}", parts.user);
+        assert!(parts.user.contains("[印象]：\"好朋友\""), "Should contain [印象] line. Got:\n{}", parts.user);
+        assert!(parts.user.contains("[记忆]：\"他喜欢吃苹果\""), "Should contain [记忆] line. Got:\n{}", parts.user);
     }
 }
