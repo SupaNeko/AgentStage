@@ -19,6 +19,11 @@
         appState.switchView('chat');
     }
 
+    function formatPreview(text: string | null): string {
+        if (!text) return '暂无消息';
+        return text.replace(/<sticker>[^<]+<\/sticker>/g, '[表情]');
+    }
+
     function getSessionDisplay(session: Session) {
         const userParticipant = session.participants.find(p => p.participant_type === 'user');
         const agentParticipants = session.participants.filter(p => p.participant_type === 'agent');
@@ -139,7 +144,7 @@
                             </div>
                             <div class="flex items-center justify-between mt-0.5">
                                 <p class="text-xs text-text-secondary truncate flex-1">
-                                    {session.last_message_preview || '暂无消息'}
+                                    {formatPreview(session.last_message_preview)}
                                 </p>
                                 {#if session.unread_count > 0}
                                     <span class="ml-2 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-primary text-white text-xs font-medium rounded-full shrink-0">

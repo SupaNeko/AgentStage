@@ -5,11 +5,14 @@
     import { messageStore } from '$lib/stores/messageStore.svelte';
     import { sessionStore } from '$lib/stores/sessionStore.svelte';
     import MessageBubble from './MessageBubble.svelte';
-    import { Send, MessageSquare, User, Settings, Bot, Clock, Pencil } from 'lucide-svelte';
+    import { Send, MessageSquare, User, Settings, Bot, Clock, Pencil, Smile } from 'lucide-svelte';
     import { logger } from '$lib/logger';
     import type { GroupMember, SessionConfig, Session, Message } from '$lib/types';
     import SessionSettingsPanel from './SessionSettingsPanel.svelte';
+    import RichTextarea from './RichTextarea.svelte';
+import StickerPickerPanel from './StickerPickerPanel.svelte';
     import { historyStore } from '$lib/stores/historyStore.svelte';
+    import { stickerStore } from '$lib/stores/stickerStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { userPersonaStore } from '$lib/stores/userPersonaStore.svelte';
     import type { ChatPage } from '$lib/types';
@@ -22,6 +25,8 @@
 
     let inputText = $state('');
     let inputBySession = $state<Map<string, string>>(new Map());
+    let stickerPickerOpen = $state(false);
+    let richInputRef: { insertSticker: (ref: string) => void } | undefined = $state(undefined);
     let sending = $state(false);
     let typingAgents = $state<Set<string>>(new Set());
     let typingTimeouts = $state<Map<string, number>>(new Map());
@@ -217,6 +222,10 @@
             currentAgentId = agentParticipant?.participant_id;
             if (session) {
                 loadSessionConfig(id, session.session_type);
+            }
+            // 预加载表情包数据，避免消息中的 sticker 显示为失效
+            if (stickerStore.packs.length === 0) {
+                stickerStore.load();
             }
             if (session?.session_type === 'group') {
                 loadingMembers = true;
@@ -771,24 +780,43 @@
                     该角色已删除，无法发送消息
                 </div>
             {:else}
-                <div class="shrink-0 border-t border-border p-4 bg-surface chat-input-area">
-                    <div class="flex items-end gap-2">
-                        <textarea
-                            value={inputText}
-                            oninput={(e) => {
-                                inputText = e.currentTarget.value;
+                <div class="shrink-0 border-t border-border bg-surface chat-input-area flex flex-col">
+                    {#if stickerPickerOpen}
+                        <StickerPickerPanel
+                            onPick={(tag) => {
+                                richInputRef?.insertSticker(tag);
+                                stickerPickerOpen = false;
+                            }}
+                            onClose={() => stickerPickerOpen = false}
+                        />
+                    {/if}
+                    <div class="flex items-end gap-2 p-4">
+                        <RichTextarea
+                            bind:this={richInputRef}
+                            bind:value={inputText}
+                            placeholder="输入消息..."
+                            onFocus={() => {
+                                if (stickerPickerOpen) stickerPickerOpen = false;
+                            }}
+                            onChange={(v) => {
+                                inputText = v;
                                 const id = mode === 'chat' ? sessionStore.selectedSessionId : historyStore.selectedSessionId;
                                 if (id) {
                                     const next = new Map(inputBySession);
-                                    next.set(id, e.currentTarget.value);
+                                    next.set(id, v);
                                     inputBySession = next;
                                 }
                             }}
-                            onkeydown={handleKeydown}
-                            placeholder="输入消息..."
-                            rows={3}
-                            class="flex-1 resize-none px-4 py-2.5 bg-bg border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 max-h-32 input-field"
-                        ></textarea>
+                            onKeyDown={handleKeydown}
+                        />
+                        <button
+                            onclick={() => stickerPickerOpen = !stickerPickerOpen}
+                            class="p-2.5 text-text-secondary hover:text-text hover:bg-bg rounded-xl transition-colors shrink-0 {stickerPickerOpen ? 'bg-bg text-primary' : ''}"
+                            title="插入表情"
+                            type="button"
+                        >
+                            <Smile size={18} />
+                        </button>
                         <button
                             onclick={handleSend}
                             disabled={sending || !inputText.trim()}

@@ -26,6 +26,14 @@ use commands::user_persona::{list_user_personas, create_user_persona, update_use
 use commands::agent_relationship::{list_agent_relationships, update_agent_relationship, add_friendships, remove_friendship, update_agent_memory};
 use commands::generate_persona::generate_persona;
 use commands::timer::{list_agent_timers, create_timer_command, update_timer_command, delete_timer_command, toggle_timer, update_agent_proactive, update_quiet_hours, get_quiet_hours};
+use commands::sticker::{
+    list_sticker_packs, create_sticker_pack, update_sticker_pack, delete_sticker_pack,
+    add_sticker_to_pack, update_sticker, delete_stickers,
+    list_agent_sticker_packs, set_agent_sticker_packs, resolve_sticker_refs,
+    export_sticker_pack, import_sticker_pack,
+};
+use commands::data_dir::get_data_dir_cmd;
+
 use db::connection::init_db;
 use scheduler::Scheduler;
 use tauri::Manager;
@@ -232,6 +240,19 @@ pub fn run() {
             commands::usage::get_session_agent_model_breakdown,
             commands::usage::get_usage_by_trigger,
             commands::usage::get_usage_records,
+            list_sticker_packs,
+            create_sticker_pack,
+            update_sticker_pack,
+            delete_sticker_pack,
+            add_sticker_to_pack,
+            update_sticker,
+            delete_stickers,
+            list_agent_sticker_packs,
+            set_agent_sticker_packs,
+            resolve_sticker_refs,
+            export_sticker_pack,
+            import_sticker_pack,
+            get_data_dir_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

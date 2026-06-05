@@ -660,6 +660,56 @@ CREATE TABLE chat_page_participants (
 );
 "#;
 
+pub const MIGRATION_V23: &str = r#"
+CREATE TABLE IF NOT EXISTS sticker_packs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sticker_packs_name_active
+    ON sticker_packs(name)
+    WHERE is_deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_sticker_packs_list
+    ON sticker_packs(is_deleted, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS stickers (
+    id TEXT PRIMARY KEY,
+    pack_id TEXT NOT NULL REFERENCES sticker_packs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    file_size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stickers_pack_name_active
+    ON stickers(pack_id, name)
+    WHERE is_deleted = 0;
+
+CREATE INDEX IF NOT EXISTS idx_stickers_pack_list
+    ON stickers(pack_id, is_deleted, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS agent_sticker_packs (
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    pack_id TEXT NOT NULL REFERENCES sticker_packs(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, pack_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_sticker_packs_pack
+    ON agent_sticker_packs(pack_id);
+"#;
+
 /// Latest consolidated schema for fresh databases.
 /// Creates all tables and indexes directly at the current version (V20).
 /// Table order respects foreign key dependencies.
@@ -955,6 +1005,48 @@ CREATE TABLE llm_usage_records (
     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
+
+-- ========== 20. sticker_packs ==========
+CREATE TABLE sticker_packs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER
+);
+
+CREATE UNIQUE INDEX idx_sticker_packs_name_active ON sticker_packs(name) WHERE is_deleted = 0;
+CREATE INDEX idx_sticker_packs_list ON sticker_packs(is_deleted, updated_at DESC);
+
+-- ========== 21. stickers ==========
+CREATE TABLE stickers (
+    id TEXT PRIMARY KEY,
+    pack_id TEXT NOT NULL REFERENCES sticker_packs(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    file_size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    is_deleted INTEGER DEFAULT 0 CHECK(is_deleted IN (0, 1)),
+    deleted_at INTEGER
+);
+
+CREATE UNIQUE INDEX idx_stickers_pack_name_active ON stickers(pack_id, name) WHERE is_deleted = 0;
+CREATE INDEX idx_stickers_pack_list ON stickers(pack_id, is_deleted, created_at ASC);
+
+-- ========== 22. agent_sticker_packs ==========
+CREATE TABLE agent_sticker_packs (
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    pack_id TEXT NOT NULL REFERENCES sticker_packs(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, pack_id)
+);
+
+CREATE INDEX idx_agent_sticker_packs_pack ON agent_sticker_packs(pack_id);
 
 -- ========== Indexes ==========
 CREATE INDEX idx_messages_session_time ON messages(session_id, created_at DESC);

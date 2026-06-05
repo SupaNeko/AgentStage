@@ -7,5 +7,6 @@ pub mod model_config;
 pub mod scheduled_task;
 pub mod session;
 pub mod settings;
+pub mod sticker;
 pub mod usage;
 pub mod user_persona;

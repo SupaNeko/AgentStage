@@ -11,6 +11,7 @@ pub mod model_config;
 pub mod schema;
 pub mod scheduled_task;
 pub mod session;
+pub mod sticker;
 pub mod message;
 pub mod settings;
 pub mod trigger_state;

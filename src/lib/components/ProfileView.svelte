@@ -1,9 +1,10 @@
 <script lang="ts">
     import UserPersonaConfig from './UserPersonaConfig.svelte';
+    import StickerPackManager from './StickerPackManager.svelte';
 
-    // 当前只实现 user_persona 分类，后续可扩展
     const categories = [
         { id: 'user_persona', label: '用户角色配置' },
+        { id: 'sticker_packs', label: '表情包管理' },
     ];
 
     let activeCategory = $state('user_persona');
@@ -31,6 +32,8 @@
     <div class="flex-1 min-w-0 detail-panel">
         {#if activeCategory === 'user_persona'}
             <UserPersonaConfig />
+        {:else if activeCategory === 'sticker_packs'}
+            <StickerPackManager />
         {/if}
     </div>
 </div>

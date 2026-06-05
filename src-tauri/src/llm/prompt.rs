@@ -193,6 +193,12 @@ impl PromptAssembler {
             user_layers.push(layer);
         }
 
+        // Layer 5.5: Sticker section
+        let sticker_section = Self::build_sticker_section(conn, agent_id)?;
+        if !sticker_section.is_empty() {
+            user_layers.push(sticker_section);
+        }
+
         // Layer 6: Instruction（工具使用说明 + 当前上下文 ID）
         let instruction = Self::build_instruction(conn, agent_id, &agent.name)?;
         user_layers.push(instruction);
@@ -218,6 +224,38 @@ impl PromptAssembler {
             system: system_with_vars,
             user: user_with_vars,
         })
+    }
+
+    pub fn build_sticker_section(conn: &Connection, agent_id: &str) -> Result<String, String> {
+        let packs = crate::db::sticker::list_prompt_stickers(conn, agent_id)?;
+        let has_stickers = packs.iter().any(|pack| !pack.stickers.is_empty());
+        if !has_stickers {
+            return Ok(String::new());
+        }
+        let mut section = String::from("【可用的表情】\n");
+        section.push_str("你可以在回复消息中携带表情。表情不会替代文字内容，而是作为聊天中的情绪补充。\n\n");
+        section.push_str("使用格式：\n");
+        section.push_str("在回复内容中直接写入 <sticker>包名_表情名</sticker> 标签即可。系统会把该标签渲染成对应表情图片。\n");
+        section.push_str("例如：早上好<sticker>猫_可爱</sticker>\n\n");
+        section.push_str("使用建议：\n");
+        section.push_str("- 如果你要使用表情，建议把 <sticker>...</sticker> 放在整条回复的开头或结尾。\n");
+        section.push_str("- 一次回复中尽量最多只使用一个表情。\n");
+        section.push_str("- 不要过于频繁地使用表情，只有在能自然增强语气、情绪或角色表现时再使用。\n");
+        section.push_str("- 不要使用列表外的表情。\n");
+        section.push_str("- 不要修改包名或表情名。\n");
+        section.push_str("- 不要在标签内容里添加额外空格。\n");
+        section.push_str("- 不要把表情标签拆开输出。\n\n");
+        section.push_str("可用表情：\n");
+        for pack in packs {
+            if pack.stickers.is_empty() {
+                continue;
+            }
+            section.push_str(&format!("- {}\n", pack.name));
+            for sticker in pack.stickers {
+                section.push_str(&format!("  - {}：<sticker>{}_{}</sticker>\n", sticker.name, pack.name, sticker.name));
+            }
+        }
+        Ok(section)
     }
 
     /// 构建工具使用说明层，注入当前所有可见会话的 session_id

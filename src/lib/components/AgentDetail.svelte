@@ -15,6 +15,7 @@
     import AgentMemoryPanel from './AgentMemoryPanel.svelte';
     import ConfirmDialog from './ConfirmDialog.svelte';
     import AgentTimerPanel from './AgentTimerPanel.svelte';
+    import AgentStickerPackPanel from './AgentStickerPackPanel.svelte';
 
     let agent = $state<Agent | null>(null);
     let loading = $state(false);
@@ -23,7 +24,7 @@
     let showAvatarModal = $state(false);
     let showGenerateModal = $state(false);
     let showDeleteConfirm = $state(false);
-    let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer'>('config');
+    let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer' | 'stickers'>('config');
 
     // Proactive session state
     let proactiveEnabled = $state(false);
@@ -221,6 +222,12 @@
                 >
                     定时任务
                 </button>
+                <button
+                    onclick={() => activeTab = 'stickers'}
+                    class="py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'stickers' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'}"
+                >
+                    表情包
+                </button>
             </div>
         </div>
 
@@ -334,6 +341,8 @@
                 />
             {:else if activeTab === 'timer'}
                 <AgentTimerPanel agentId={agent.id} />
+            {:else if activeTab === 'stickers' && agent}
+                <AgentStickerPackPanel agentId={agent.id} />
             {/if}
         </div>
 

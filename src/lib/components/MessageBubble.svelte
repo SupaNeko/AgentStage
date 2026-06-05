@@ -2,6 +2,15 @@
     import type { Message } from '$lib/types';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
     import { User, Bot } from 'lucide-svelte';
+    import { parseStickerContent } from '$lib/stickerParser';
+    import { stickerStore } from '$lib/stores/stickerStore.svelte';
+
+    // 自动加载 sticker 数据
+    $effect(() => {
+        if (stickerStore.packs.length === 0 && !stickerStore.loading) {
+            stickerStore.load();
+        }
+    });
 
     interface Props {
         message: Message;
@@ -15,6 +24,7 @@
 
     const displayName = snapshotName ?? senderName ?? '未知角色';
     const displayAvatar = snapshotAvatar ?? message.sender_avatar;
+    const contentParts = $derived(parseStickerContent(message.content));
 </script>
 
 <div class="flex flex-col max-w-[80%] {isMe ? 'items-end' : 'items-start'}">
@@ -42,6 +52,27 @@
             : 'msg-other bg-surface border border-border rounded-2xl rounded-tl-sm'} px-4 py-2 min-w-[80px]"
         style="--sender-avatar: {displayAvatar ? `url(${resolveAvatarUrl(displayAvatar)})` : 'none'}"
     >
-        {message.content}
+        {#each contentParts as part}
+            {#if part.type === 'text'}
+                <span>{part.text}</span>
+            {:else}
+                {@const resolved = stickerStore.resolve(part.reference)}
+                {#if resolved && resolved.status === 'valid' && resolved.filePath}
+                    <img
+                        src={stickerStore.imageUrl(resolved.filePath)}
+                        alt={part.reference}
+                        class="block max-w-32 max-h-32 my-1"
+                    />
+                {:else if stickerStore.packs.length === 0}
+                    <span class="inline-flex items-center px-2 py-1 text-xs rounded bg-bg text-text-secondary border border-border">
+                        [表情]
+                    </span>
+                {:else}
+                    <span class="inline-flex items-center px-2 py-1 text-xs rounded bg-bg text-text-secondary border border-border">
+                        失效表情
+                    </span>
+                {/if}
+            {/if}
+        {/each}
     </div>
 </div>

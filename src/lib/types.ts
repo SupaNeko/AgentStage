@@ -273,3 +273,35 @@ export interface AgentBundleImportResultResponse {
     warnings: string[];
     renamed: boolean;
 }
+
+export interface Sticker {
+    id: string;
+    packId: string;
+    name: string;
+    filePath: string;
+    mimeType: string;
+    width: number;
+    height: number;
+    fileSize: number;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface StickerPack {
+    id: string;
+    name: string;
+    stickers: Sticker[];
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface ResolvedSticker {
+    reference: string;
+    status: 'valid' | 'invalid';
+    packId: string | null;
+    stickerId: string | null;
+    filePath: string | null;
+    mimeType: string | null;
+    width: number | null;
+    height: number | null;
+}
