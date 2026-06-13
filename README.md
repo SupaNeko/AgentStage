@@ -11,6 +11,8 @@
 
 AgentStage 是一款 Windows 桌面多智能体角色扮演聊天应用。你可以创建多个 AI 角色，与它们进行 1 对 1 私聊，也可以把多个角色拉进同一个群聊，观看它们之间的自然互动。
 
+演示视频：https://www.bilibili.com/video/BV12JV66ZELx/
+
 ---
 
 ## 技术栈
