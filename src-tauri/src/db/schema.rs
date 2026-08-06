@@ -645,6 +645,7 @@ CREATE INDEX idx_llm_usage_agent_model ON llm_usage_records(agent_id, model_conf
 CREATE INDEX idx_llm_usage_session_agent ON llm_usage_records(session_id, agent_id);
 CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_config_id);
 CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
+
 "#;
 
 pub const MIGRATION_V22: &str = r#"
@@ -714,6 +715,85 @@ CREATE INDEX IF NOT EXISTS idx_agent_sticker_packs_pack
 pub const MIGRATION_V24: &str = r#"
 CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_unique
     ON friendships(agent_id_1, agent_id_2, participant_type_2);
+"#;
+
+pub const MIGRATION_V25: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_voices (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    model_path TEXT NOT NULL,
+    speaker_id TEXT,
+    target_language TEXT NOT NULL,
+    emotion_params TEXT,
+    speed REAL DEFAULT 1.0,
+    translate_enabled INTEGER DEFAULT 1 CHECK(translate_enabled IN (0, 1)),
+    translate_model_config_id TEXT,
+    generation_mode TEXT NOT NULL CHECK(generation_mode IN ('auto_play', 'auto_silent', 'manual')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voices_agent ON agent_voices(agent_id);
+
+CREATE TABLE IF NOT EXISTS vits_cache (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vits_cache_message ON vits_cache(message_id);
+CREATE INDEX IF NOT EXISTS idx_vits_cache_session ON vits_cache(session_id);
+CREATE INDEX IF NOT EXISTS idx_vits_cache_agent ON vits_cache(agent_id);
+
+-- 重建 llm_usage_records：trigger_type CHECK 约束增加 'tts_translate'
+CREATE TABLE IF NOT EXISTS llm_usage_records_new (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    model_config_id TEXT NOT NULL,
+    session_id TEXT,
+    trigger_type TEXT NOT NULL
+        CHECK(trigger_type IN (
+            'user_message',
+            'background_scan',
+            'timer',
+            'proactive',
+            'persona_generation',
+            'tts_translate'
+        )),
+    call_round INTEGER NOT NULL DEFAULT 1,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    created_at INTEGER NOT NULL,
+
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_config_id) REFERENCES model_configs(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+INSERT INTO llm_usage_records_new (id, agent_id, model_config_id, session_id, trigger_type, call_round, prompt_tokens, completion_tokens, total_tokens, message_id, created_at)
+    SELECT id, agent_id, model_config_id, session_id, trigger_type, call_round, prompt_tokens, completion_tokens, total_tokens, message_id, created_at FROM llm_usage_records;
+
+DROP TABLE llm_usage_records;
+ALTER TABLE llm_usage_records_new RENAME TO llm_usage_records;
+
+CREATE INDEX idx_llm_usage_agent ON llm_usage_records(agent_id);
+CREATE INDEX idx_llm_usage_model ON llm_usage_records(model_config_id);
+CREATE INDEX idx_llm_usage_session ON llm_usage_records(session_id);
+CREATE INDEX idx_llm_usage_time ON llm_usage_records(created_at);
+CREATE INDEX idx_llm_usage_agent_model ON llm_usage_records(agent_id, model_config_id);
+CREATE INDEX idx_llm_usage_session_agent ON llm_usage_records(session_id, agent_id);
+CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_config_id);
+CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
 "#;
 
 /// Latest consolidated schema for fresh databases.
@@ -985,7 +1065,6 @@ CREATE TABLE scheduled_tasks (
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
 
--- ========== 19. llm_usage_records ==========
 CREATE TABLE llm_usage_records (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
@@ -997,7 +1076,8 @@ CREATE TABLE llm_usage_records (
             'background_scan',
             'timer',
             'proactive',
-            'persona_generation'
+            'persona_generation',
+            'tts_translate'
         )),
     call_round INTEGER NOT NULL DEFAULT 1,
     prompt_tokens INTEGER NOT NULL DEFAULT 0,
@@ -1085,4 +1165,40 @@ CREATE INDEX idx_llm_usage_agent_model ON llm_usage_records(agent_id, model_conf
 CREATE INDEX idx_llm_usage_session_agent ON llm_usage_records(session_id, agent_id);
 CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_config_id);
 CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
+
+-- ========== 23. agent_voices ==========
+CREATE TABLE agent_voices (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    model_path TEXT NOT NULL,
+    speaker_id TEXT,
+    target_language TEXT NOT NULL,
+    emotion_params TEXT,
+    speed REAL DEFAULT 1.0,
+    translate_enabled INTEGER DEFAULT 1 CHECK(translate_enabled IN (0, 1)),
+    translate_model_config_id TEXT,
+    generation_mode TEXT NOT NULL CHECK(generation_mode IN ('auto_play', 'auto_silent', 'manual')),
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_agent_voices_agent ON agent_voices(agent_id);
+
+-- ========== 24. vits_cache ==========
+CREATE TABLE vits_cache (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_vits_cache_message ON vits_cache(message_id);
+CREATE INDEX idx_vits_cache_session ON vits_cache(session_id);
+CREATE INDEX idx_vits_cache_agent ON vits_cache(agent_id);
 "#;

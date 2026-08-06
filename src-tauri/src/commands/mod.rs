@@ -14,4 +14,5 @@ pub mod timer;
 pub mod upload;
 pub mod usage;
 pub mod user_persona;
+pub mod voice;
 pub mod data_dir;

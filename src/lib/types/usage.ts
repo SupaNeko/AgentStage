@@ -132,4 +132,5 @@ export const TRIGGER_TYPE_LABELS: Record<string, string> = {
     timer: '定时任务',
     proactive: '主动会话',
     persona_generation: '人设生成',
+    tts_translate: 'TTS 翻译',
 };

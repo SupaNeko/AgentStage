@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_voice;
 pub mod agent_relationship;
 pub mod chat_page;
 pub mod generate_persona;

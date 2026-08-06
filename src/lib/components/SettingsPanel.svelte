@@ -6,6 +6,7 @@
     import { resolveAvatarUrl } from '$lib/utils';
     import AvatarUploadModal from './AvatarUploadModal.svelte';
     import ModelConfigPanel from './ModelConfigPanel.svelte';
+    import VoiceCachePanel from './VoiceCachePanel.svelte';
     import { themeStore } from '$lib/stores/themeStore.svelte';
     import { modelConfigStore } from '$lib/stores/modelConfigStore.svelte';
     import { convertFileSrc } from '@tauri-apps/api/core';
@@ -98,6 +99,7 @@
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'trigger' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'trigger'}>触发设置</button>
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'appearance' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'appearance'}>主题</button>
             <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'models' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'models'}>模型</button>
+            <button class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'voice' ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text'}" onclick={() => activeTab = 'voice'}>语音缓存</button>
         </div>
         <div class="flex-1 overflow-y-auto">
             {#if activeTab === 'general'}
@@ -164,6 +166,14 @@
                             重置会话时，用于总结聊天记录生成历史页面标题。不选则自动使用第一个配置了 API Key 的模型。
                         </p>
                     </div>
+                </div>
+            {:else if activeTab === 'voice'}
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-text mb-2">语音缓存</h3>
+                    <p class="text-xs text-text-secondary mb-4">
+                        语音文件保存在 data\vits_cache\ 目录下，按会话分子目录存放。
+                    </p>
+                    <VoiceCachePanel />
                 </div>
             {:else if activeTab === 'appearance'}
                 <div class="p-6">

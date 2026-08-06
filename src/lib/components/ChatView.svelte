@@ -15,6 +15,7 @@ import StickerPickerPanel from './StickerPickerPanel.svelte';
     import { stickerStore } from '$lib/stores/stickerStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { userPersonaStore } from '$lib/stores/userPersonaStore.svelte';
+    import { voiceStore } from '$lib/stores/voiceStore.svelte';
     import type { ChatPage } from '$lib/types';
     import { formatTime, resolveAvatarUrl } from '$lib/utils';
 
@@ -222,6 +223,14 @@ import StickerPickerPanel from './StickerPickerPanel.svelte';
             currentAgentId = agentParticipant?.participant_id;
             if (session) {
                 loadSessionConfig(id, session.session_type);
+                // 预加载各角色的语音配置，用于喇叭按钮显隐与自动生成
+                if (mode === 'chat') {
+                    for (const p of session.participants) {
+                        if (p.participant_type === 'agent') {
+                            voiceStore.loadAgentVoice(p.participant_id).catch(() => {});
+                        }
+                    }
+                }
             }
             // 预加载表情包数据，避免消息中的 sticker 显示为失效
             if (stickerStore.packs.length === 0) {
@@ -460,6 +469,10 @@ import StickerPickerPanel from './StickerPickerPanel.svelte';
                             }
                         }
                         messageStore.addMessage(msg as unknown as import('$lib/types').Message);
+                        // 配置了语音的角色：按生成时机设置自动触发语音生成
+                        if (msg.sender_type === 'agent' && msg.content) {
+                            voiceStore.handleAgentMessage(msg as unknown as import('$lib/types').Message);
+                        }
                     }
                 }
 

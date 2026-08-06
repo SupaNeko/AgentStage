@@ -305,3 +305,59 @@ export interface ResolvedSticker {
     width: number | null;
     height: number | null;
 }
+
+// ========== VITS 语音 ==========
+
+export interface VitsModelInfo {
+    name: string;
+    path: string;
+    language: string | null;
+    speakers: string[];
+    has_config: boolean;
+}
+
+export interface AgentVoice {
+    id: string;
+    agent_id: string;
+    model_name: string;
+    model_path: string;
+    speaker_id: string | null;
+    target_language: string;
+    emotion_params: string | null;
+    speed: number;
+    translate_enabled: boolean;
+    translate_model_config_id: string | null;
+    generation_mode: string;
+    created_at: number;
+    updated_at: number;
+}
+
+export interface SaveAgentVoiceRequest {
+    agent_id: string;
+    model_name: string;
+    model_path: string;
+    speaker_id: string | null;
+    target_language: string;
+    emotion_params: string | null;
+    speed: number;
+    translate_enabled: boolean;
+    translate_model_config_id: string | null;
+    generation_mode: string;
+}
+
+export interface VoiceCacheItem {
+    id: string;
+    message_id: string;
+    session_id: string;
+    agent_id: string;
+    file_path: string;
+    file_size: number;
+    created_at: number;
+}
+
+export interface GenerateVoiceRequest {
+    message_id: string;
+    session_id: string;
+    agent_id: string;
+    text: string;
+}

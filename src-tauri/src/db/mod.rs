@@ -2,6 +2,7 @@ pub mod agent;
 pub mod agent_bundle;
 pub mod agent_relationship;
 pub mod agent_unread;
+pub mod agent_voice;
 pub mod chat_page;
 pub mod chat_page_participant;
 pub mod connection;

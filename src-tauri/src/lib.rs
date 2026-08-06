@@ -6,6 +6,7 @@ pub mod logger;
 pub mod llm;
 pub mod models;
 pub mod scheduler;
+pub mod vits;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, reset_agent_memory};
 use commands::agent_bundle::{preview_agent_bundle_export, export_agent_bundle, preview_agent_bundle_import, import_agent_bundle};
@@ -117,6 +118,7 @@ pub fn run() {
 
             let db_state = init_db(&app_data_dir)?;
             app.manage(db_state.clone());
+            app.manage(vits::runtime::create_vits_state(&app_data_dir));
 
             // 手动创建主窗口，强制 WebView2 数据目录到程序目录，避免在 %LOCALAPPDATA% 创建 EBWebView
             let webview_data_dir = app_data_dir.join("webview");
@@ -253,6 +255,15 @@ pub fn run() {
             export_sticker_pack,
             import_sticker_pack,
             get_data_dir_cmd,
+            commands::voice::check_vits_runtime,
+            commands::voice::scan_vits_models,
+            commands::voice::save_agent_voice,
+            commands::voice::get_agent_voice,
+            commands::voice::delete_agent_voice,
+            commands::voice::generate_voice,
+            commands::voice::list_voice_cache,
+            commands::voice::delete_voice_cache,
+            commands::voice::clear_voice_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

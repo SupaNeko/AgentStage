@@ -41,3 +41,20 @@ export function resolveAvatarUrl(path: string | null | undefined): string {
         return path;
     }
 }
+
+/** 将本地文件路径解析为前端可加载的 URL（用于语音等本地资源） */
+export function resolveLocalFileUrl(path: string): string {
+    if (path.startsWith('http') || path.startsWith('asset:') || path.startsWith('data:') || path.startsWith('blob:')) {
+        return path;
+    }
+    const normalizedPath = path.replace(/\\/g, '/');
+    if (import.meta.env.DEV) {
+        return `http://${window.location.host}/@fs/${normalizedPath}`;
+    }
+    try {
+        return convertFileSrc(normalizedPath);
+    } catch (e) {
+        console.warn('[File] convertFileSrc failed:', path, e);
+        return path;
+    }
+}
