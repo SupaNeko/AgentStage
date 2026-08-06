@@ -1,4 +1,4 @@
-"""VITS runtime 纯逻辑单元测试（不依赖 torch，stub 掉模型相关导入）。
+﻿"""VITS runtime 纯逻辑单元测试（不依赖 torch，stub 掉模型相关导入）。
 
 运行：.venv/Scripts/python.exe test_runtime.py
 """
@@ -26,37 +26,6 @@ sys.modules["vits.commons"].intersperse = None
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import synthesizer  # noqa: E402
 import markup  # noqa: E402
-
-
-class TestMarkup(unittest.TestCase):
-    def test_single_lang_model_wraps_whole_text(self):
-        self.assertEqual(
-            markup.markup_text("こんにちは。", ["ja"]),
-            "[JA]こんにちは。[JA]",
-        )
-
-    def test_zh_ja_mixture(self):
-        got = markup.markup_text("你好こんにちは", ["zh", "ja"])
-        self.assertEqual(got, "[ZH]你好[ZH] [JA]こんにちは[JA]")
-
-    def test_kanji_goes_ja_for_ja_only_model(self):
-        got = markup.markup_text("今日はいい天気", ["ja"])
-        self.assertEqual(got, "[JA]今日はいい天気[JA]")
-
-    def test_kanji_goes_zh_for_mixture_model(self):
-        got = markup.markup_text("今日は", ["zh", "ja"])
-        self.assertEqual(got, "[ZH]今日[ZH] [JA]は[JA]")
-
-    def test_punctuation_merges_into_current_run(self):
-        got = markup.markup_text("こんにちは、世界", ["zh", "ja"])
-        self.assertEqual(got, "[JA]こんにちは、[JA] [ZH]世界[ZH]")
-
-    def test_langs_for_cleaners(self):
-        self.assertEqual(markup.langs_for_cleaners(["japanese_cleaners"]), ["ja"])
-        self.assertEqual(markup.langs_for_cleaners(["zh_ja_mixture_cleaners"]), ["zh", "ja"])
-        self.assertEqual(markup.langs_for_cleaners([]), ["ja"])
-        with self.assertRaises(ValueError):
-            markup.langs_for_cleaners(["cjke_cleaners"])
 
 
 class TestSplitSentences(unittest.TestCase):
@@ -116,6 +85,47 @@ class TestParseEmotionParams(unittest.TestCase):
         self.assertEqual(synthesizer.parse_emotion_params("not json"), (0.667, 0.8))
         self.assertEqual(synthesizer.parse_emotion_params("happy"), (0.667, 0.8))
         self.assertEqual(synthesizer.parse_emotion_params("[1,2]"), (0.667, 0.8))
+
+
+class TestMarkup(unittest.TestCase):
+    def test_single_lang_model_wraps_whole_text(self):
+        self.assertEqual(
+            markup.markup_text("こんにちは。", ["ja"]),
+            "[JA]こんにちは。[JA]",
+        )
+
+    def test_pure_chinese_in_mixture_model(self):
+        got = markup.markup_text("你好", ["zh", "ja"])
+        self.assertEqual(got, "[ZH]你好[ZH]")
+
+    def test_mixed_with_kana_treated_as_japanese(self):
+        # 只要句子里有假名，就把汉字视为日语汉字
+        got = markup.markup_text("你好こんにちは", ["zh", "ja"])
+        self.assertEqual(got, "[JA]你好こんにちは[JA]")
+
+    def test_kanji_with_kana_treated_as_japanese(self):
+        got = markup.markup_text("今日はいい天気", ["zh", "ja"])
+        self.assertEqual(got, "[JA]今日はいい天気[JA]")
+
+    def test_kanji_without_kana_treated_as_chinese(self):
+        # 没有假名时，CJK 才按中文处理
+        got = markup.markup_text("今天天气不错", ["zh", "ja"])
+        self.assertEqual(got, "[ZH]今天天气不错[ZH]")
+
+    def test_punctuation_merges_into_japanese_run(self):
+        got = markup.markup_text("こんにちは、世界", ["zh", "ja"])
+        self.assertEqual(got, "[JA]こんにちは、世界[JA]")
+
+    def test_langs_for_cleaners(self):
+        self.assertEqual(markup.langs_for_cleaners(["japanese_cleaners"]), ["ja"])
+        self.assertEqual(markup.langs_for_cleaners(["zh_ja_mixture_cleaners"]), ["zh", "ja"])
+        self.assertEqual(markup.langs_for_cleaners([]), ["ja"])
+        with self.assertRaises(ValueError):
+            markup.langs_for_cleaners(["cjke_cleaners"])
+
+    def test_has_chinese_symbols(self):
+        self.assertTrue(markup.has_chinese_symbols(["ㄋ", "ㄧˇ", "ㄏ", "ㄠˇ"]))
+        self.assertFalse(markup.has_chinese_symbols(list("_abcdefghijklmnopqrstuvwxyz")))
 
 
 class TestProtocolHandling(unittest.TestCase):

@@ -1,8 +1,9 @@
-# VITS 合成器封装，推理流程参考 vits-simple-api（vits/vits.py，MoeGoe 系 MIT 代码）
+﻿# VITS 合成器封装，推理流程参考 vits-simple-api（vits/vits.py，MoeGoe 系 MIT 代码）
 import glob
 import json
 import os
 import re
+import sys
 
 import numpy as np
 import torch
@@ -10,10 +11,11 @@ from torch import LongTensor, no_grad
 
 from checkpoint import load_checkpoint
 from hparams import get_hparams_from_file
-from markup import langs_for_cleaners, markup_text
+from markup import has_chinese_symbols, langs_for_cleaners, markup_text
 from vits import commons
 from vits.models import SynthesizerTrn
 from vits.text import text_to_sequence
+from vits.text import cleaners as cleaners_module
 
 # 默认合成参数（与 MoeGoe 默认值一致）
 DEFAULT_NOISE = 0.667
@@ -22,9 +24,14 @@ DEFAULT_NOISEW = 0.8
 # 句末标点，长文本按此切分后分段合成再拼接
 _SENTENCE_END = re.compile(r"([^。！？!?…\.\n]+[。！？!?…\.\n]*)")
 # 段内二次切分（超长句）
-_CLAUSE_END = re.compile(r"([^，、,；;：:]+[，、,；;：:]*)")
+_CLAUSE_END = re.compile(r"([^，、,；;：:]+[，、,；;：:]*)"
+)
 
 MAX_SEGMENT_CHARS = 120
+
+
+def _log(msg):
+    print(f"[vits_runtime] {msg}", file=sys.stderr, flush=True)
 
 
 def split_sentences(text):
@@ -92,6 +99,16 @@ class VitsSynthesizer:
         self.sampling_rate = self.hps.data.sampling_rate
         self.text_cleaners = getattr(self.hps.data, "text_cleaners", [])
         self.langs = langs_for_cleaners(self.text_cleaners)
+
+        # 关键修正：很多中日混合模型 config 写 zh_ja，但 weights 没学中文符号
+        # 若 symbols 里没有中文注音，则降级为纯日语模型，避免汉字被误走中文清洗
+        if "zh" in self.langs and not has_chinese_symbols(self.hps.symbols):
+            _log(
+                f"model claims zh_ja support but has no chinese bopomofo symbols; "
+                f"downgrading languages from {self.langs} to ['ja']"
+            )
+            self.langs = ["ja"]
+
         self.device = torch.device(device)
 
         self.net_g = SynthesizerTrn(
@@ -121,7 +138,24 @@ class VitsSynthesizer:
 
     def get_text_sequence(self, text):
         marked = markup_text(text, self.langs)
+        _log(f"get_text_sequence: text={text!r} marked={marked!r} langs={self.langs} cleaners={self.text_cleaners}")
+        # 手动调用 cleaner 以观察清洗结果（debug）
+        cleaned = marked
+        for name in self.text_cleaners:
+            cleaner = getattr(cleaners_module, name)
+            cleaned = cleaner(cleaned)
+        _log(f"get_text_sequence: cleaned={cleaned!r}")
         text_norm = text_to_sequence(marked, self.hps.symbols, self.text_cleaners)
+        _log(f"get_text_sequence: text_norm length={len(text_norm)} ids={text_norm}")
+        if len(text_norm) < 3:
+            raise RuntimeError(
+                f"text produced only {len(text_norm)} symbols after cleaning; "
+                f"model likely does not support the input language. "
+                f"marked='{marked}' cleaned='{cleaned}' symbols={len(self.hps.symbols)}"
+            )
+        _log(
+            f"text='{text}' -> marked='{marked}' -> cleaned='{cleaned}' -> sequence_len={len(text_norm)}"
+        )
         if getattr(self.hps.data, "add_blank", False):
             text_norm = commons.intersperse(text_norm, 0)
         return LongTensor(text_norm)
@@ -153,6 +187,11 @@ class VitsSynthesizer:
         speed = float(speed) if speed else 1.0
         speed = min(max(speed, 0.5), 2.0)
         length = 1.0 / speed
+
+        _log(
+            f"synthesize: sentences={len(sentences)} speaker_id={speaker_id} "
+            f"speed={speed} length_scale={length:.3f} noise={noise:.3f} noisew={noisew:.3f}"
+        )
 
         brk = np.zeros(int(0.3 * self.sampling_rate), dtype=np.float32)
         audios = []
