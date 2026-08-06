@@ -1,4 +1,4 @@
-use tauri::State;
+﻿use tauri::State;
 
 use crate::db::agent_voice as voice_repo;
 use crate::db::connection::{get_db, DbState};
@@ -268,6 +268,7 @@ pub async fn generate_voice(
         speaker_id: voice.speaker_id.clone(),
         emotion_params: voice.emotion_params.clone(),
         speed: Some(voice.speed),
+        target_language: Some(voice.target_language.clone()),
         output_path: Some(output_path.to_string_lossy().to_string()),
     };
 

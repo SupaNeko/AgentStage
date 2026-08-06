@@ -1,4 +1,4 @@
-"""端到端冒烟测试：合成一个随机权重的玩具 VITS 模型，通过 stdin/stdout 协议驱动 main.py。
+﻿"""端到端冒烟测试：合成一个随机权重的玩具 VITS 模型，通过 stdin/stdout 协议驱动 main.py。
 
 需要完整依赖（torch 等）。运行：.venv/Scripts/python.exe test_smoke.py
 输出音频无意义（随机权重），仅验证 加载模型→清洗→推理→写 WAV→协议响应 全链路可用。
@@ -18,7 +18,7 @@ def make_fake_model(model_dir):
     os.makedirs(model_dir, exist_ok=True)
 
     symbols = sorted(set(
-        list("_-~!\"'(),.:;? ")
+        list("_-~!\\\"'(),.:;? ")
         + list("abcdefghijklmnopqrstuvwxyz")
         + list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         + list("0123456789")
@@ -84,6 +84,7 @@ def main():
     print(f"fake model at {model_dir}")
 
     runtime_dir = os.path.dirname(os.path.abspath(__file__))
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     proc = subprocess.Popen(
         [sys.executable, os.path.join(runtime_dir, "main.py")],
         stdin=subprocess.PIPE,
@@ -91,7 +92,9 @@ def main():
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        errors="replace",
         cwd=runtime_dir,
+        env=env,
     )
 
     ready = proc.stdout.readline()
@@ -106,6 +109,7 @@ def main():
         "speaker_id": None,
         "emotion_params": '{"noise": 0.5}',
         "speed": 1.2,
+        "target_language": "ja",
         "output_path": out_path,
     }
     proc.stdin.write(json.dumps(req, ensure_ascii=False) + "\n")

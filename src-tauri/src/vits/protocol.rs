@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
 /// 发送给 VITS Python 运行时的请求（stdin 一行一个 JSON）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -9,6 +9,7 @@ pub struct VitsRequest {
     pub speaker_id: Option<String>,
     pub emotion_params: Option<String>,
     pub speed: Option<f64>,
+    pub target_language: Option<String>,
     pub output_path: Option<String>,
 }
 

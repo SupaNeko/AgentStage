@@ -1,4 +1,4 @@
-"""VITS 独立推理运行时入口。
+﻿"""VITS 独立推理运行时入口。
 
 通过 stdin/stdout 逐行 JSON-RPC 与 AgentStage 主程序通信：
 - 启动完成后输出一行就绪信号：{"ready": true, "version": "..."}
@@ -7,18 +7,18 @@
 
 请求（generate）：
 {"action": "generate", "text": "...", "model_path": "<模型目录>",
- "speaker_id": "名称或下标，可空", "emotion_params": "{\"noise\":0.667}", "speed": 1.0,
- "output_path": "<输出 wav 路径>"}
+ "speaker_id": "名称或下标，可空", "emotion_params": "{\"noise\":0.667}",
+ "speed": 1.0, "target_language": "ja|zh|en|ko", "output_path": "<输出 wav 路径>"}
 
 响应：
 {"success": true, "output_path": "...", "duration_ms": 1234}
 {"success": false, "message": "错误描述"}
 """
+import contextlib
 import json
 import sys
 import time
 import wave
-import contextlib
 
 import numpy as np
 
@@ -30,6 +30,17 @@ _models = {}
 
 def log(msg):
     print(f"[vits_runtime] {msg}", file=sys.stderr, flush=True)
+
+
+def _reconfigure_stdio():
+    """强制 stdin/stdout 使用 UTF-8，避免 Windows 中文 locale 下出现 mojibake。"""
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        # Python < 3.7 没有 reconfigure，依赖环境变量
+        pass
 
 
 def get_synthesizer(model_path):
@@ -69,6 +80,7 @@ def handle_generate(req):
         speaker=req.get("speaker_id"),
         speed=req.get("speed") or 1.0,
         emotion_params=req.get("emotion_params"),
+        target_lang=req.get("target_language"),
     )
     write_wav(output_path, audio, sr)
     duration_ms = int(len(audio) / sr * 1000)
@@ -85,6 +97,7 @@ def handle_request(req):
 
 
 def main():
+    _reconfigure_stdio()
     # 就绪信号必须在任何推理之前输出，主程序以此判断启动成功
     print(json.dumps({"ready": True, "version": VERSION}), flush=True)
 

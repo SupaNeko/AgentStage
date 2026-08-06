@@ -11,7 +11,7 @@ from torch import LongTensor, no_grad
 
 from checkpoint import load_checkpoint
 from hparams import get_hparams_from_file
-from markup import has_chinese_symbols, langs_for_cleaners, markup_text
+from markup import lang_for_cleaner, markup_text, supported_langs_for_cleaner
 from vits import commons
 from vits.models import SynthesizerTrn
 from vits.text import text_to_sequence
@@ -24,8 +24,7 @@ DEFAULT_NOISEW = 0.8
 # 句末标点，长文本按此切分后分段合成再拼接
 _SENTENCE_END = re.compile(r"([^。！？!?…\.\n]+[。！？!?…\.\n]*)")
 # 段内二次切分（超长句）
-_CLAUSE_END = re.compile(r"([^，、,；;：:]+[，、,；;：:]*)"
-)
+_CLAUSE_END = re.compile(r"([^，、,；;：:]+[，、,；;：：]*)")
 
 MAX_SEGMENT_CHARS = 120
 
@@ -98,16 +97,9 @@ class VitsSynthesizer:
         self.speakers = speakers
         self.sampling_rate = self.hps.data.sampling_rate
         self.text_cleaners = getattr(self.hps.data, "text_cleaners", [])
-        self.langs = langs_for_cleaners(self.text_cleaners)
-
-        # 关键修正：很多中日混合模型 config 写 zh_ja，但 weights 没学中文符号
-        # 若 symbols 里没有中文注音，则降级为纯日语模型，避免汉字被误走中文清洗
-        if "zh" in self.langs and not has_chinese_symbols(self.hps.symbols):
-            _log(
-                f"model claims zh_ja support but has no chinese bopomofo symbols; "
-                f"downgrading languages from {self.langs} to ['ja']"
-            )
-            self.langs = ["ja"]
+        # 若未传入目标语言，从 config 的 cleaner 名称推导默认值；
+        # 中日混合 cleaner 默认按日语处理（更符合 VITS 社区常见模型）。
+        self.target_language = lang_for_cleaner(self.text_cleaners[0] if self.text_cleaners else "")
 
         self.device = torch.device(device)
 
@@ -136,32 +128,31 @@ class VitsSynthesizer:
             raise ValueError(f"speaker id {sid} out of range 0..{self.n_speakers - 1}")
         return sid
 
-    def get_text_sequence(self, text):
-        marked = markup_text(text, self.langs)
-        _log(f"get_text_sequence: text={text!r} marked={marked!r} langs={self.langs} cleaners={self.text_cleaners}")
-        # 手动调用 cleaner 以观察清洗结果（debug）
-        cleaned = marked
-        for name in self.text_cleaners:
-            cleaner = getattr(cleaners_module, name)
-            cleaned = cleaner(cleaned)
-        _log(f"get_text_sequence: cleaned={cleaned!r}")
+    def get_text_sequence(self, text, target_lang=None):
+        target_lang = target_lang or self.target_language
+        marked = markup_text(text, target_lang)
+        # 检查 config 中的 cleaner 是否支持该目标语言；
+        # 若不支持，直接报错，避免产生无意义的噪音。
+        supported = any(
+            target_lang in supported_langs_for_cleaner(name) for name in self.text_cleaners
+        ) or (not self.text_cleaners)
+        if not supported:
+            raise RuntimeError(
+                f"model cleaners {self.text_cleaners!r} do not support target language '{target_lang}'"
+            )
         text_norm = text_to_sequence(marked, self.hps.symbols, self.text_cleaners)
-        _log(f"get_text_sequence: text_norm length={len(text_norm)} ids={text_norm}")
         if len(text_norm) < 3:
             raise RuntimeError(
                 f"text produced only {len(text_norm)} symbols after cleaning; "
                 f"model likely does not support the input language. "
-                f"marked='{marked}' cleaned='{cleaned}' symbols={len(self.hps.symbols)}"
+                f"target_lang='{target_lang}' marked='{marked}' cleaners={self.text_cleaners}"
             )
-        _log(
-            f"text='{text}' -> marked='{marked}' -> cleaned='{cleaned}' -> sequence_len={len(text_norm)}"
-        )
         if getattr(self.hps.data, "add_blank", False):
             text_norm = commons.intersperse(text_norm, 0)
         return LongTensor(text_norm)
 
-    def infer_segment(self, text, speaker_id, noise, noisew, length):
-        stn_tst = self.get_text_sequence(text)
+    def infer_segment(self, text, speaker_id, noise, noisew, length, target_lang=None):
+        stn_tst = self.get_text_sequence(text, target_lang)
         sid = LongTensor([speaker_id]).to(self.device)
         with no_grad():
             x_tst = stn_tst.unsqueeze(0).to(self.device)
@@ -176,7 +167,7 @@ class VitsSynthesizer:
             )[0][0, 0].data.float().cpu().numpy()
         return audio
 
-    def synthesize(self, text, speaker=None, speed=1.0, emotion_params=None):
+    def synthesize(self, text, speaker=None, speed=1.0, emotion_params=None, target_lang=None):
         """合成整段文本，返回 (float32 波形, 采样率)。"""
         sentences = split_sentences(text)
         if not sentences:
@@ -188,15 +179,18 @@ class VitsSynthesizer:
         speed = min(max(speed, 0.5), 2.0)
         length = 1.0 / speed
 
+        target_lang = target_lang or self.target_language
+
         _log(
             f"synthesize: sentences={len(sentences)} speaker_id={speaker_id} "
-            f"speed={speed} length_scale={length:.3f} noise={noise:.3f} noisew={noisew:.3f}"
+            f"target_lang={target_lang} speed={speed} length_scale={length:.3f} "
+            f"noise={noise:.3f} noisew={noisew:.3f}"
         )
 
         brk = np.zeros(int(0.3 * self.sampling_rate), dtype=np.float32)
         audios = []
         for i, sentence in enumerate(sentences):
-            audios.append(self.infer_segment(sentence, speaker_id, noise, noisew, length))
+            audios.append(self.infer_segment(sentence, speaker_id, noise, noisew, length, target_lang))
             if i < len(sentences) - 1:
                 audios.append(brk)
         return np.concatenate(audios, axis=0), self.sampling_rate

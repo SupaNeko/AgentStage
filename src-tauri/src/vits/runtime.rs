@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+﻿use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -57,6 +57,7 @@ impl VitsRuntime {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
+        cmd.env("PYTHONIOENCODING", "utf-8");
         #[cfg(windows)]
         {
             // CREATE_NO_WINDOW：避免弹出控制台黑窗口
