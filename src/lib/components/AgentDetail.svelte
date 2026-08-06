@@ -27,6 +27,29 @@
     let showDeleteConfirm = $state(false);
     let activeTab = $state<'config' | 'relationships' | 'memory' | 'timer' | 'stickers' | 'voice'>('config');
 
+    // 子面板引用（bind:this），footer 保存按钮通过它们触发手动保存
+    type SaveablePanel = { saveAll: () => Promise<void> };
+    type VoicePanelRef = SaveablePanel & { deleteConfig: () => Promise<void> };
+    let relationshipPanel: SaveablePanel | undefined;
+    let memoryPanel: SaveablePanel | undefined;
+    let stickerPanel: SaveablePanel | undefined;
+    let voicePanel: VoicePanelRef | undefined;
+    let voiceHasExisting = $state(false);
+
+    async function handleFooterSave() {
+        if (activeTab === 'config') {
+            await handleSave();
+        } else if (activeTab === 'relationships') {
+            await relationshipPanel?.saveAll();
+        } else if (activeTab === 'memory') {
+            await memoryPanel?.saveAll();
+        } else if (activeTab === 'stickers') {
+            await stickerPanel?.saveAll();
+        } else if (activeTab === 'voice') {
+            await voicePanel?.saveAll();
+        }
+    }
+
     // Proactive session state
     let proactiveEnabled = $state(false);
     let proactiveMinMinutes = $state(10);
@@ -339,23 +362,24 @@
 
                 </div>
             {:else if activeTab === 'relationships'}
-                <AgentRelationshipPanel agentId={agent.id} />
+                <AgentRelationshipPanel agentId={agent.id} bind:this={relationshipPanel} />
             {:else if activeTab === 'memory'}
                 <AgentMemoryPanel
                     agentId={agent.id}
                     bind:longTermMemory={form.long_term_memory}
                     bind:memoryEnabled={form.memory_enabled}
+                    bind:this={memoryPanel}
                 />
             {:else if activeTab === 'timer'}
                 <AgentTimerPanel agentId={agent.id} />
             {:else if activeTab === 'stickers' && agent}
-                <AgentStickerPackPanel agentId={agent.id} />
+                <AgentStickerPackPanel agentId={agent.id} bind:this={stickerPanel} />
             {:else if activeTab === 'voice' && agent}
-                <AgentVoicePanel {agent} />
+                <AgentVoicePanel {agent} bind:this={voicePanel} bind:hasExisting={voiceHasExisting} />
             {/if}
         </div>
 
-        <!-- Footer actions -->
+        <!-- Footer actions（固定不滚动） -->
         <div class="px-6 py-4 border-t border-border bg-surface flex justify-between items-center">
             {#if activeTab === 'config'}
                 <button
@@ -365,6 +389,14 @@
                     <Sparkles size={16} />
                     <span>人设自生成</span>
                 </button>
+            {:else if activeTab === 'voice' && voiceHasExisting}
+                <button
+                    onclick={() => voicePanel?.deleteConfig()}
+                    class="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                    <Trash2 size={16} />
+                    <span>删除配置</span>
+                </button>
             {:else}
                 <div></div>
             {/if}
@@ -372,8 +404,8 @@
                 <button onclick={() => appState.selectAgent(null)} class="px-4 py-2 text-text-secondary hover:bg-gray-100 rounded-lg transition-colors">
                     取消
                 </button>
-                {#if activeTab === 'config'}
-                    <button onclick={handleSave} disabled={saving}
+                {#if activeTab !== 'timer'}
+                    <button onclick={handleFooterSave} disabled={saving}
                         class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 btn-primary">
                         {#if saving}
                             <Loader2 size={16} class="animate-spin" />

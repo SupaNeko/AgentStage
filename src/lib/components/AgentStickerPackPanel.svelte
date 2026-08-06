@@ -2,6 +2,7 @@
     import { invoke } from '@tauri-apps/api/core';
     import { stickerStore } from '$lib/stores/stickerStore.svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { toastAutoSaved } from '$lib/autoSaveToast';
 
     interface Props {
         agentId: string;
@@ -10,6 +11,7 @@
     let { agentId }: Props = $props();
     let selectedPackIds = $state<Set<string>>(new Set());
     let saving = $state(false);
+    let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
     async function load() {
         await stickerStore.load();
@@ -27,9 +29,18 @@
             next.add(id);
         }
         selectedPackIds = next;
+        scheduleAutoSave();
     }
 
-    async function save() {
+    function scheduleAutoSave() {
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            saveTimeout = null;
+            save(true);
+        }, 300);
+    }
+
+    async function save(isAuto: boolean) {
         saving = true;
         try {
             await invoke('set_agent_sticker_packs', {
@@ -38,12 +49,25 @@
                     packIds: Array.from(selectedPackIds),
                 },
             });
-            toastStore.success('保存成功');
+            if (isAuto) {
+                toastAutoSaved();
+            } else {
+                toastStore.success('保存成功');
+            }
         } catch (e: any) {
             toastStore.error(e || '保存失败');
         } finally {
             saving = false;
         }
+    }
+
+    /** 手动保存：取消防抖，立即保存当前勾选集合 */
+    export async function saveAll() {
+        if (saveTimeout) {
+            clearTimeout(saveTimeout);
+            saveTimeout = null;
+        }
+        await save(false);
     }
 
     $effect(() => {
@@ -79,12 +103,4 @@
             </button>
         {/each}
     </div>
-
-    <button
-        onclick={save}
-        disabled={saving}
-        class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-dark transition-colors disabled:opacity-50"
-    >
-        {saving ? '保存中...' : '保存'}
-    </button>
 </div>

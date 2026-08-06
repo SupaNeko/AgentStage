@@ -5,8 +5,9 @@
     import { RefreshCw, VolumeX } from 'lucide-svelte';
     import type { Agent, VitsModelInfo } from '$lib/types';
     import VoiceCachePanel from './VoiceCachePanel.svelte';
+    import { toastAutoSaved } from '$lib/autoSaveToast';
 
-    let { agent }: { agent: Agent } = $props();
+    let { agent, hasExisting = $bindable(false) }: { agent: Agent; hasExisting?: boolean } = $props();
 
     let form = $state({
         model_name: '',
@@ -21,7 +22,6 @@
     });
 
     let saving = $state(false);
-    let hasExisting = $state(false);
     let showCache = $state(false);
 
     const selectedModel: VitsModelInfo | null = $derived(
@@ -67,11 +67,7 @@
         }
     }
 
-    async function handleSave() {
-        if (!form.model_name) {
-            toastStore.error('请先选择语音模型');
-            return;
-        }
+    async function persist(isAuto: boolean) {
         saving = true;
         try {
             await voiceStore.saveAgentVoice({
@@ -87,12 +83,39 @@
                 generation_mode: form.generation_mode,
             });
             hasExisting = true;
-            toastStore.success('语音配置已保存');
+            if (isAuto) {
+                toastAutoSaved();
+            } else {
+                toastStore.success('语音配置已保存');
+            }
         } catch (e) {
             toastStore.error('保存失败: ' + e);
         } finally {
             saving = false;
         }
+    }
+
+    /** 控件变更触发的自动保存；未选模型时跳过 */
+    function autoSave() {
+        if (!form.model_name) {
+            toastStore.info('请先选择语音模型，当前修改未保存', 3000);
+            return;
+        }
+        persist(true);
+    }
+
+    /** 手动保存（footer 保存按钮） */
+    export async function saveAll() {
+        if (!form.model_name) {
+            toastStore.error('请先选择语音模型');
+            return;
+        }
+        await persist(false);
+    }
+
+    /** 删除配置（footer 删除按钮） */
+    export async function deleteConfig() {
+        await handleDelete();
     }
 
     async function handleDelete() {
@@ -146,7 +169,7 @@
                     <select
                         id="voice-model"
                         bind:value={form.model_name}
-                        onchange={handleModelChange}
+                        onchange={() => { handleModelChange(); autoSave(); }}
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
                     >
                         <option value="">选择模型（data\vits_models\ 下的目录）</option>
@@ -169,6 +192,7 @@
                         <select
                             id="voice-speaker"
                             bind:value={form.speaker_id}
+                            onchange={autoSave}
                             class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
                         >
                             <option value={null}>默认</option>
@@ -184,6 +208,7 @@
                     <select
                         id="voice-target-lang"
                         bind:value={form.target_language}
+                        onchange={autoSave}
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
                     >
                         <option value="zh">中文</option>
@@ -203,7 +228,7 @@
             <div class="space-y-3">
                 <div>
                     <label for="voice-speed" class="block text-sm font-medium mb-1">语速：{form.speed.toFixed(1)}x</label>
-                    <input id="voice-speed" type="range" min="0.5" max="2.0" step="0.1" bind:value={form.speed} class="w-64" />
+                    <input id="voice-speed" type="range" min="0.5" max="2.0" step="0.1" bind:value={form.speed} onchange={autoSave} class="w-64" />
                 </div>
                 <div>
                     <label for="voice-emotion" class="block text-sm font-medium mb-1">情感参数</label>
@@ -211,6 +236,7 @@
                         id="voice-emotion"
                         type="text"
                         bind:value={form.emotion_params}
+                        onblur={autoSave}
                         placeholder="留空使用模型默认，例如 happy、sad"
                         class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
                     />
@@ -223,7 +249,7 @@
             <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">自动翻译</h3>
             <div class="space-y-3">
                 <label class="flex items-center gap-2 text-sm">
-                    <input type="checkbox" bind:checked={form.translate_enabled} class="rounded" />
+                    <input type="checkbox" bind:checked={form.translate_enabled} onchange={autoSave} class="rounded" />
                     消息语言与输出语言不一致时自动翻译
                 </label>
                 {#if form.translate_enabled}
@@ -233,6 +259,7 @@
                             <select
                                 id="voice-translate-model"
                                 bind:value={form.translate_model_config_id}
+                                onchange={autoSave}
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 bg-surface"
                             >
                                 <option value={null}>使用角色配置的模型</option>
@@ -254,15 +281,15 @@
             <h3 class="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wide">生成时机</h3>
             <div class="space-y-2">
                 <label class="flex items-center gap-2 text-sm">
-                    <input type="radio" bind:group={form.generation_mode} value="auto_play" />
+                    <input type="radio" bind:group={form.generation_mode} value="auto_play" onchange={autoSave} />
                     自动生成并播放（角色输出消息后立即生成并播放）
                 </label>
                 <label class="flex items-center gap-2 text-sm">
-                    <input type="radio" bind:group={form.generation_mode} value="auto_silent" />
+                    <input type="radio" bind:group={form.generation_mode} value="auto_silent" onchange={autoSave} />
                     自动生成不播放（后台预生成，点击喇叭立即播放）
                 </label>
                 <label class="flex items-center gap-2 text-sm">
-                    <input type="radio" bind:group={form.generation_mode} value="manual" />
+                    <input type="radio" bind:group={form.generation_mode} value="manual" onchange={autoSave} />
                     手动生成（点击喇叭后生成并播放）
                 </label>
             </div>
@@ -270,18 +297,6 @@
 
         <!-- 操作 -->
         <div class="flex items-center gap-3 pt-2 border-t border-border">
-            <button
-                onclick={handleSave}
-                disabled={saving}
-                class="px-4 py-1.5 bg-primary text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-                {saving ? '保存中...' : '保存配置'}
-            </button>
-            {#if hasExisting}
-                <button onclick={handleDelete} class="px-4 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                    删除配置
-                </button>
-            {/if}
             <button onclick={() => (showCache = !showCache)} class="px-4 py-1.5 text-sm text-text-secondary hover:bg-bg rounded-lg transition-colors">
                 {showCache ? '隐藏语音缓存' : '查看语音缓存'}
             </button>

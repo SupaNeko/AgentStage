@@ -6,6 +6,7 @@
     import type { RelationshipItem } from '$lib/types';
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import ConfirmResetMemoryModal from './ConfirmResetMemoryModal.svelte';
+    import { toastAutoSaved } from '$lib/autoSaveToast';
 
     let { agentId, longTermMemory = $bindable(''), memoryEnabled = $bindable(true) }: {
         agentId: string;
@@ -33,16 +34,17 @@
         }
     }
 
-    async function saveLongTermMemory() {
+    async function saveLongTermMemory(isAuto = true) {
         try {
             await invoke('update_agent', { req: { id: agentId, long_term_memory: longTermMemory } });
+            if (isAuto) toastAutoSaved();
         } catch (err) {
             logger.error('Failed to save long term memory:', err);
             toastStore.error('保存长期记忆失败');
         }
     }
 
-    async function saveMemory(item: RelationshipItem) {
+    async function saveMemory(item: RelationshipItem, isAuto = true) {
         try {
             await invoke('update_agent_memory', {
                 observerId: agentId,
@@ -50,6 +52,7 @@
                 targetType: item.target_type,
                 memoryText: item.memory_text,
             });
+            if (isAuto) toastAutoSaved();
         } catch (err) {
             logger.error('Failed to save memory:', err);
             toastStore.error('保存记忆失败');
@@ -110,11 +113,23 @@
         memoryEnabled = !memoryEnabled;
         try {
             await invoke('update_agent', { req: { id: agentId, memory_enabled: memoryEnabled } });
+            toastAutoSaved();
         } catch (err) {
             logger.error('Failed to update memory_enabled:', err);
             toastStore.error('更新设置失败');
             memoryEnabled = !memoryEnabled;
         }
+    }
+
+    /** 手动保存：清除所有待执行防抖，立即保存长期记忆与全部他人记忆 */
+    export async function saveAll() {
+        for (const key of Object.keys(saveTimeouts)) {
+            clearTimeout(saveTimeouts[key]);
+        }
+        saveTimeouts = {};
+        await saveLongTermMemory(false);
+        await Promise.all(items.map((item) => saveMemory(item, false)));
+        toastStore.success('保存成功');
     }
 
     $effect(() => {

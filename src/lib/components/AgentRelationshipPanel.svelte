@@ -8,6 +8,7 @@
     import ConfirmDeleteRelationshipModal from './ConfirmDeleteRelationshipModal.svelte';
     import { Plus, X } from 'lucide-svelte';
     import { toastStore } from '$lib/stores/toastStore.svelte';
+    import { toastAutoSaved } from '$lib/autoSaveToast';
 
     let { agentId }: { agentId: string } = $props();
 
@@ -34,7 +35,7 @@
         }
     }
 
-    async function saveRelationship(item: RelationshipItem) {
+    async function saveRelationship(item: RelationshipItem, isAuto = true) {
         try {
             await invoke('update_agent_relationship', {
                 observerId: agentId,
@@ -43,6 +44,7 @@
                 relationshipText: item.relationship_text,
             });
             logger.debug('[DEBUG AgentRelationshipPanel] saved', { agentId, targetId: item.target_id });
+            if (isAuto) toastAutoSaved();
         } catch (err) {
             logger.error('Failed to save relationship:', err);
             error = '保存失败: ' + String(err);
@@ -67,6 +69,16 @@
             delete saveTimeouts[key];
         }
         saveRelationship(item);
+    }
+
+    /** 手动保存：清除所有待执行防抖，立即保存全部关系条目 */
+    export async function saveAll() {
+        for (const key of Object.keys(saveTimeouts)) {
+            clearTimeout(saveTimeouts[key]);
+        }
+        saveTimeouts = {};
+        await Promise.all(items.map((item) => saveRelationship(item, false)));
+        toastStore.success('保存成功');
     }
 
     async function handleRemove(item: RelationshipItem) {
