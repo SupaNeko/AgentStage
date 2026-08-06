@@ -143,6 +143,15 @@ pub async fn generate_voice(
         }
     }
 
+    // 生产级日志：记录每次语音生成的输入文本（单行化）
+    crate::logger::info(&format!(
+        "[VITS] generate start | agent={} session={} message={} text={}",
+        req.agent_id,
+        req.session_id,
+        req.message_id,
+        text.replace(['\n', '\r'], " ")
+    ));
+
     // Step 3: 语言检测与翻译（独立 LLM 调用，不计入会话历史）
     if voice.translate_enabled {
         let (translate_model_id, agent, relationships) = {
@@ -236,6 +245,12 @@ pub async fn generate_voice(
         usage_repo::insert_usage_record(&state, &usage).await?;
 
         if result.response.need_translate {
+            crate::logger::info(&format!(
+                "[VITS] translated | message={} from={} to={}",
+                req.message_id,
+                text.replace(['\n', '\r'], " "),
+                result.response.translated_text.replace(['\n', '\r'], " ")
+            ));
             text = result.response.translated_text;
         }
     }
@@ -256,13 +271,35 @@ pub async fn generate_voice(
         output_path: Some(output_path.to_string_lossy().to_string()),
     };
 
+    // 着重标记：最终交给 VITS 合成的文本（翻译后/未翻译的原文）
+    crate::logger::info(&format!(
+        "[VITS] >>> TTS INPUT >>> message={} model={} speaker={:?} speed={} text={}",
+        req.message_id,
+        voice.model_name,
+        voice.speaker_id,
+        voice.speed,
+        vits_req.text.as_deref().unwrap_or("").replace(['\n', '\r'], " ")
+    ));
+
     let resp = {
         let mut runtime = vits.lock().await;
         runtime.generate(&vits_req).await?
     };
     if !resp.success {
+        crate::logger::error(&format!(
+            "[VITS] generate failed | message={} error={}",
+            req.message_id,
+            resp.message.clone().unwrap_or_default()
+        ));
         return Err(resp.message.unwrap_or_else(|| "VITS generation failed".into()));
     }
+
+    crate::logger::info(&format!(
+        "[VITS] generate done | message={} output={} duration_ms={:?}",
+        req.message_id,
+        output_path.to_string_lossy(),
+        resp.duration_ms
+    ));
 
     // Step 5: 记录缓存
     let file_size = std::fs::metadata(&output_path)
