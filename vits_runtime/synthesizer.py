@@ -77,10 +77,19 @@ def parse_emotion_params(raw):
 class VitsSynthesizer:
     """加载单个 VITS 模型目录（config.json + 唯一 .pth），执行文本合成。"""
 
-    def __init__(self, model_dir, device="cpu"):
+    @staticmethod
+    def _find_config_path(model_dir):
+        """Prefer config.json, otherwise use the first .json file in the directory."""
         config_path = os.path.join(model_dir, "config.json")
-        if not os.path.isfile(config_path):
-            raise FileNotFoundError(f"config.json not found in {model_dir}")
+        if os.path.isfile(config_path):
+            return config_path
+        json_files = sorted(glob.glob(os.path.join(model_dir, "*.json")))
+        return json_files[0] if json_files else None
+
+    def __init__(self, model_dir, device="cpu"):
+        config_path = self._find_config_path(model_dir)
+        if not config_path:
+            raise FileNotFoundError(f"no .json config found in {model_dir}")
         pth_files = glob.glob(os.path.join(model_dir, "*.pth"))
         if len(pth_files) == 0:
             raise FileNotFoundError(f"no .pth checkpoint found in {model_dir}")

@@ -10,6 +10,36 @@ use crate::models::usage::LlmUsageRecord;
 use crate::vits::protocol::VitsRequest;
 use crate::vits::runtime::{runtime_exe_path, VitsState};
 
+/// 从 config.json 的 speakers 字段解析说话人名称列表。
+/// 兼容两种结构：数组 ["a","b"] 与 字典 {"a":0,"b":1}（字典按 id 升序取键）。
+fn parse_speakers(json: &serde_json::Value) -> Vec<String> {
+    match json.get("speakers") {
+        Some(serde_json::Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|s| s.as_str())
+            .map(|s| s.to_string())
+            .collect(),
+        Some(serde_json::Value::Object(map)) => {
+            let mut pairs: Vec<(String, i64)> = map
+                .iter()
+                .filter_map(|(k, v)| v.as_i64().map(|id| (k.clone(), id)))
+                .collect();
+            pairs.sort_by_key(|(_, id)| *id);
+            pairs.into_iter().map(|(name, _)| name).collect()
+        }
+        _ => vec![],
+    }
+}
+
+/// 过滤消息中的表情标签（<sticker>包名_贴纸名</sticker>），返回剩余文本。
+/// 表情不应进入翻译和语音合成。
+fn strip_sticker_tags(text: &str) -> String {
+    let re = regex::Regex::new(r"<sticker>[^<]+</sticker>").unwrap();
+    let stripped = re.replace_all(text, " ");
+    // 合并多余空白
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 #[tauri::command]
 pub async fn check_vits_runtime() -> Result<bool, String> {
     let data_dir = crate::get_data_dir().map_err(|e| e.to_string())?;
@@ -48,7 +78,24 @@ pub async fn scan_vits_models() -> Result<Vec<VitsModelInfo>, String> {
             continue;
         }
         let name = path.file_name().unwrap().to_string_lossy().to_string();
-        let config_path = path.join("config.json");
+        // Compatible with community config files not named config.json (e.g. paimon6k.json)
+        let config_path = if path.join("config.json").exists() {
+            path.join("config.json")
+        } else {
+            std::fs::read_dir(&path)
+                .map(|rd| {
+                    rd.filter_map(|e| e.ok())
+                        .find(|e| {
+                            e.path()
+                                .extension()
+                                .map(|ext| ext == "json")
+                                .unwrap_or(false)
+                        })
+                        .map(|e| e.path())
+                })
+                .unwrap_or(None)
+                .unwrap_or_else(|| path.join("config.json"))
+        };
         let has_config = config_path.exists();
         let mut language = None;
         let mut speakers = vec![];
@@ -66,13 +113,7 @@ pub async fn scan_vits_models() -> Result<Vec<VitsModelInfo>, String> {
                                 .and_then(|l| l.as_str())
                                 .map(|s| s.to_string())
                         });
-                    if let Some(arr) = json.get("speakers").and_then(|s| s.as_array()) {
-                        speakers = arr
-                            .iter()
-                            .filter_map(|s| s.as_str())
-                            .map(|s| s.to_string())
-                            .collect();
-                    }
+                    speakers = parse_speakers(&json);
                 }
             }
         }
@@ -121,7 +162,11 @@ pub async fn generate_voice(
     vits: State<'_, VitsState>,
     req: GenerateVoiceRequest,
 ) -> Result<String, String> {
-    let mut text = req.text.clone();
+    // 过滤表情标签：<sticker>...</sticker> 不参与翻译与合成
+    let mut text = strip_sticker_tags(&req.text);
+    if text.is_empty() {
+        return Err("消息过滤表情后没有可合成的文本".into());
+    }
 
     // Step 1: 读取语音配置
     let voice = {
@@ -354,4 +399,52 @@ pub async fn clear_voice_cache(
         }
     }
     voice_repo::clear_vits_cache(&conn, session_id.as_deref()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_speakers_array() {
+        let json = serde_json::json!({"speakers": ["芳乃", "茉子"]});
+        assert_eq!(parse_speakers(&json), vec!["芳乃", "茉子"]);
+    }
+
+    #[test]
+    fn test_parse_speakers_dict_sorted_by_id() {
+        // SenrenBanka 模型的实际结构：{"芳乃":0,"茉子":1,"丛雨":2,...}
+        let json = serde_json::json!({"speakers": {"丛雨": 2, "芳乃": 0, "茉子": 1}});
+        assert_eq!(parse_speakers(&json), vec!["芳乃", "茉子", "丛雨"]);
+    }
+
+    #[test]
+    fn test_parse_speakers_missing_or_invalid() {
+        assert!(parse_speakers(&serde_json::json!({})).is_empty());
+        assert!(parse_speakers(&serde_json::json!({"speakers": 123})).is_empty());
+        // 数组中的非字符串项被跳过
+        assert_eq!(
+            parse_speakers(&serde_json::json!({"speakers": ["a", 1, "b"]})),
+            vec!["a", "b"]
+        );
+    }
+
+    #[test]
+    fn test_strip_sticker_tags() {
+        assert_eq!(
+            strip_sticker_tags("你好 <sticker>测试包_开心</sticker> 今天怎么样"),
+            "你好 今天怎么样"
+        );
+        // 多个表情
+        assert_eq!(
+            strip_sticker_tags("<sticker>包_哭</sticker>不要这样<sticker>包_生气</sticker>"),
+            "不要这样"
+        );
+        // 纯表情消息过滤后为空
+        assert_eq!(strip_sticker_tags("<sticker>包_笑</sticker>"), "");
+        // 无表情时不变
+        assert_eq!(strip_sticker_tags("普通消息"), "普通消息");
+        // 不完整标签保留原文（与前端 parseStickerContent 行为一致）
+        assert_eq!(strip_sticker_tags("你好<sticker>没闭合"), "你好<sticker>没闭合");
+    }
 }

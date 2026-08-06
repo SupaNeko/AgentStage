@@ -152,7 +152,7 @@
                         <option value="">选择模型（data\vits_models\ 下的目录）</option>
                         {#each voiceStore.models as model}
                             <option value={model.name} disabled={!model.has_config}>
-                                {model.name}{model.language ? `（${model.language}）` : ''}{model.has_config ? '' : ' [缺少 config.json]'}
+                                {model.name}{model.language ? `（${model.language}）` : ''}{model.speakers.length > 1 ? ` · ${model.speakers.length} 个说话人` : ''}{model.has_config ? '' : ' [缺少 config.json]'}
                             </option>
                         {/each}
                     </select>
