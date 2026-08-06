@@ -1,0 +1,21 @@
+# 核心推理（torch 不列在此文件中，避免误装 CUDA 版：
+# 请先执行 pip install torch --index-url https://download.pytorch.org/whl/cpu）
+numpy
+
+# 文本清洗（按模型语言需要）
+unidecode
+# 中文（chinese_cleaners / zh_ja_mixture_cleaners）
+pypinyin
+jieba
+cn2an
+# 日语（japanese_cleaners 等）
+# pyopenjtalk-prebuilt 不支持 Python 3.12+，使用现代 fork（导入名仍为 pyopenjtalk）
+pyopenjtalk-plus
+
+# 可选：英语 IPA 清洗器（cje_/cjke_ 系列需要）
+# inflect
+# eng_to_ipa
+# phonemizer  # 还需要系统安装 espeak-ng
+# 可选：韩语清洗器
+# jamo
+# ko_pron

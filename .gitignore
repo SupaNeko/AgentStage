@@ -12,6 +12,9 @@
 .DS_Store
 Thumbs.db
 
+# Local reference projects (cloned for reading only, not versioned)
+/reference/
+
 # IDE
 .vscode/
 .idea/
@@ -43,6 +46,13 @@ npm-debug.log*
 
 # Git worktrees
 /.worktrees/
+
+# VITS runtime python env & build output
+/vits_runtime/.venv/
+/vits_runtime/build/
+/vits_runtime/dist/
+__pycache__/
+*.pyc
 
 # docs
 docs/reference.md
