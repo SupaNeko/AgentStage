@@ -16,6 +16,7 @@ Task:
 1. Detect whether the following text is already written in the target language "{target_language}".
 2. If yes, return need_translate=false and the original text unchanged.
 3. If no, translate the text into "{target_language}". The translation must match the character's tone and personality described in the persona above — the same sentence can have very different translations depending on who is speaking, so choose the expression that fits this character.
+4. Punctuation rule: the translated text MUST keep the original sentence's punctuation pattern. At most you may convert between full-width and half-width commas and periods (e.g. "," ↔ "，", "." ↔ "。"). NEVER change a comma into an ideographic comma "、" or a period, NEVER add or remove sentence-ending punctuation, and NEVER turn one sentence into multiple sentences or merge multiple sentences into one — punctuation directly controls the tone and pauses of downstream text-to-speech.
 
 Text:
 {text}
