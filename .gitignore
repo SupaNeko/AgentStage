@@ -48,17 +48,8 @@ npm-debug.log*
 # Git worktrees
 /.worktrees/
 
-# VITS runtime python env & build output
-/vits_runtime/.venv/
-/vits_runtime/build/
-/vits_runtime/dist/
-/vits_runtime/build-gpu/
-/vits_runtime/dist-gpu/
-/vits_runtime/dist-gpu-launcher/
-/vits_runtime/gpu_launcher/
-/vits_runtime/gpu_package/
-/vits_runtime/main_gpu.py
-/vits_runtime/vits_runtime_gpu.spec
+# VITS runtime（本地开发与打包，不入库）
+/vits_runtime/
 __pycache__/
 *.pyc
 
