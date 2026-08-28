@@ -517,12 +517,14 @@ impl Scheduler {
             }
         };
 
+        let clock = crate::virtual_time::VirtualClock::from_settings(&settings);
+
         drop(conn);
 
         // 4. Build session messages text
         let mut session_messages_text = String::new();
         for msg in &messages {
-            let time = crate::llm::prompt::PromptAssembler::format_time(msg.created_at);
+            let time = clock.format_ts(msg.created_at);
             session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
         }
 
@@ -1764,7 +1766,7 @@ impl Scheduler {
             ).unwrap_or(50);
 
             // Get messages and participants inside a scoped block so conn is released before await
-            let (messages, participants_text) = {
+            let (messages, participants_text, clock) = {
                 let mut stmt = conn.prepare(
                     "SELECT m.id, m.session_id, m.sender_type, m.sender_id, m.content, m.created_at,
                             m.message_type, m.tool_call_data, m.generation_info, m.is_deleted,
@@ -1820,7 +1822,9 @@ impl Scheduler {
                     }
                 }
 
-                (messages, participants_text)
+                let clock = crate::virtual_time::VirtualClock::load(&conn);
+
+                (messages, participants_text, clock)
             };
 
             drop(conn);
@@ -1833,12 +1837,12 @@ impl Scheduler {
             // Build session messages text
             let mut session_messages_text = String::new();
             for msg in &messages {
-                let time = PromptAssembler::format_time(msg.created_at);
+                let time = clock.format_ts(msg.created_at);
                 session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
             }
 
             let long_term_memory = agent.long_term_memory.as_deref().unwrap_or("");
-            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let now = clock.format_now();
 
             let system_prompt = prompt_templates::SUMMARY_SYSTEM_PROMPT
                 .replace("{current_time}", &now)
@@ -1993,6 +1997,7 @@ impl Scheduler {
 
             rows.filter_map(|r| r.ok()).collect()
         };
+        let clock = crate::virtual_time::VirtualClock::load(&conn);
         drop(conn);
 
         if messages.is_empty() {
@@ -2002,7 +2007,7 @@ impl Scheduler {
         // Build session messages text
         let mut session_messages_text = String::new();
         for msg in &messages {
-            let time = PromptAssembler::format_time(msg.created_at);
+            let time = clock.format_ts(msg.created_at);
             session_messages_text.push_str(&format!("[{}] {}: {}\n", time, msg.sender_name, msg.content));
         }
 

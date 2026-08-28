@@ -24,7 +24,8 @@ impl PromptAssembler {
         let mut user_layers: Vec<String> = Vec::new();
 
         // Layer 1: System Prompt
-        let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let clock = crate::virtual_time::VirtualClock::load(conn);
+        let now = clock.format_now();
         system_layers.push(format!("{}",
             prompt_templates::SYSTEM_PROMPT.replace("{current_time}", &now)
         ));
@@ -183,7 +184,7 @@ impl PromptAssembler {
 
                     layer.push_str(&format!("\n--- {}{} ---\n", session_name, new_label));
                 }
-                let time = Self::format_time(msg.created_at);
+                let time = clock.format_ts(msg.created_at);
                 let sender = Self::get_sender_name(conn, &msg.sender_type, &msg.sender_id)?;
                 let is_new = pending_ids.contains(&msg.id);
                 let new_mark = if is_new { " [新]" } else { "" };
@@ -557,13 +558,6 @@ impl PromptAssembler {
                 }
             }
             _ => Ok(format!("{}{})", prompt_templates::UNKNOWN_TYPE_PREFIX, sender_type)),
-        }
-    }
-
-    pub(crate) fn format_time(timestamp_ms: i64) -> String {
-        match Local.timestamp_millis_opt(timestamp_ms) {
-            LocalResult::Single(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
-            _ => "??".to_string(),
         }
     }
 }

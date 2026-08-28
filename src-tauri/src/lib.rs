@@ -6,7 +6,9 @@ pub mod logger;
 pub mod llm;
 pub mod models;
 pub mod scheduler;
+pub mod search;
 pub mod vits;
+pub mod virtual_time;
 
 use commands::agent::{create_agent, delete_agent, get_agent, list_agents, update_agent, reset_agent_memory};
 use commands::agent_bundle::{preview_agent_bundle_export, export_agent_bundle, preview_agent_bundle_import, import_agent_bundle};
@@ -20,7 +22,7 @@ use commands::session::{
             reset_session, reset_all_sessions, reset_message_count, disband_group, add_group_member, remove_group_member,
     list_chat_pages,
 };
-use commands::settings::{get_settings, update_settings};
+use commands::settings::{get_settings, update_settings, test_search_api};
 use commands::theme::{list_themes, read_theme_css};
 use commands::upload::upload_avatar;
 use commands::user_persona::{list_user_personas, create_user_persona, update_user_persona, delete_user_persona, get_current_user_persona, activate_user_persona};
@@ -209,6 +211,7 @@ pub fn run() {
             log_frontend,
             get_settings,
             update_settings,
+            test_search_api,
             list_themes,
             read_theme_css,
             upload_avatar,

@@ -1,8 +1,9 @@
 use crate::db::connection::DbState;
 use crate::llm::openai::OpenAiCompatibleProvider;
 use crate::llm::provider::LlmProvider;
-use crate::llm::tool::fill_character_fields_tool_schema;
+use crate::llm::tool::{fill_character_fields_tool_schema, web_search_tool_schema};
 use crate::models::generate_persona::{GeneratePersonaRequest, GeneratePersonaResponse, ModelConfig};
+use crate::search::{SearchError, SearchProvider};
 use once_cell::sync::Lazy;
 
 static DETAILED_PERSONA_RE: Lazy<regex::Regex> = Lazy::new(|| {
@@ -167,6 +168,171 @@ fn parse_persona_tags(content: &str) -> Result<(String, String), String> {
     Ok((detailed, simplified))
 }
 
+/// 搜索阶段（ReAct）工具调用轮数上限
+const MAX_SEARCH_ROUNDS: usize = 20;
+
+const SYSTEM_PROMPT_SEARCH: &str = r#"你是一个资料搜集助手。你的任务是通过 web_search 工具搜集角色设定资料。
+
+【工作方式】
+1. 分析用户给出的参考角色与补充信息，规划需要搜索的关键词（如角色性格、世界观、经典台词等）
+2. 调用 web_search 工具进行搜索，每次只搜索一个主题；可根据已搜结果决定是否继续搜索其他角度
+3. 当资料足够时，停止调用工具，直接输出一份中文资料汇总，作为最终回复
+
+【输出要求】
+- 最终回复是一份结构化的资料汇总（性格设定 / 世界观背景 / 经典台词 等分节），客观整理搜索到的信息，不要杜撰
+- 如果搜索不到相关资料，如实说明"未搜索到相关资料"
+- 不要在最终回复中提及工具调用过程"#;
+
+/// 把搜索到的资料注入 Step1 用户消息
+fn inject_search_material(msg: &str, search_context: Option<&str>) -> String {
+    match search_context {
+        Some(sc) if !sc.trim().is_empty() => {
+            format!("【网络搜索资料】\n<search_material>\n{}\n</search_material>\n\n{}", sc.trim(), msg)
+        }
+        _ => msg.to_string(),
+    }
+}
+
+/// 搜索阶段：ReAct 循环，允许多轮 web_search 工具调用，最终输出资料汇总。
+/// 网络/Key/限流等致命错误会中断整个生成流程并显式返回给用户。
+async fn run_search_phase(
+    provider: &OpenAiCompatibleProvider,
+    searcher: &dyn SearchProvider,
+    reference: Option<&str>,
+    supplement: Option<&str>,
+    db_state: &DbState,
+    usage_agent_id: &Option<String>,
+    usage_model_config_id: &Option<String>,
+) -> Result<String, String> {
+    let mut user_msg = String::from("请搜集以下角色设定所需的资料：\n");
+    if let Some(r) = reference {
+        user_msg.push_str(&format!("【参考角色】{}\n", r));
+    }
+    if let Some(s) = supplement {
+        user_msg.push_str(&format!("【补充信息】{}\n", s));
+    }
+
+    let mut messages = vec![serde_json::json!({ "role": "user", "content": user_msg })];
+    let tools = vec![web_search_tool_schema()];
+    let mut raw_results: Vec<String> = Vec::new();
+    let mut final_summary = String::new();
+
+    for round in 1..=MAX_SEARCH_ROUNDS {
+        log_llm_call("Search", round, SYSTEM_PROMPT_SEARCH, &messages);
+        let resp = provider
+            .chat(SYSTEM_PROMPT_SEARCH, messages.clone(), tools.clone())
+            .await
+            .map_err(|e| format!("搜索阶段 AI 调用失败：{}", e))?;
+
+        record_persona_usage(
+            db_state,
+            usage_agent_id,
+            usage_model_config_id,
+            &resp.usage,
+            100 + round as i32, // 搜索阶段 call_round 从 101 起，与 Step1/2 区分
+        )
+        .await;
+
+        log_llm_response("Search", round, resp.content.as_deref().unwrap_or(""), resp.tool_calls.len());
+
+        if resp.tool_calls.is_empty() {
+            final_summary = resp.content.unwrap_or_default().trim().to_string();
+            break;
+        }
+
+        // 回传 assistant 消息（含 tool_calls）
+        messages.push(serde_json::json!({
+            "role": "assistant",
+            "content": resp.content,
+            "tool_calls": resp.tool_calls.iter().map(|tc| serde_json::json!({
+                "id": tc.id,
+                "type": "function",
+                "function": { "name": tc.name, "arguments": tc.arguments },
+            })).collect::<Vec<_>>(),
+        }));
+
+        for tc in &resp.tool_calls {
+            let result_text = if tc.name != "web_search" {
+                format!("错误：未知工具 {}，本阶段只允许调用 web_search", tc.name)
+            } else {
+                let query = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                    .ok()
+                    .and_then(|v| v["query"].as_str().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                if query.trim().is_empty() {
+                    "错误：web_search 缺少 query 参数".to_string()
+                } else {
+                    crate::logger::debug(&format!(
+                        "[DEBUG persona_generation] Search round={} query={}", round, query
+                    ));
+                    match searcher.search(&query).await {
+                        Ok(text) => {
+                            raw_results.push(format!("【搜索：{}】\n{}", query, text));
+                            text
+                        }
+                        Err(e) if e.is_fatal() => {
+                            // 网络/Key/限流问题：中断生成，显式告知用户
+                            return Err(e.user_message(searcher.display_name()));
+                        }
+                        Err(e) => {
+                            // 非致命错误（如厂商临时错误）：作为工具结果返回，让 AI 换关键词重试
+                            e.user_message(searcher.display_name())
+                        }
+                    }
+                }
+            };
+            messages.push(serde_json::json!({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result_text,
+            }));
+        }
+    }
+
+    if !final_summary.is_empty() {
+        return Ok(final_summary);
+    }
+    if !raw_results.is_empty() {
+        // 达到轮数上限但无汇总：拼接原始搜索结果（截断防超长）
+        let joined = raw_results.join("\n\n");
+        let truncated: String = joined.chars().take(6000).collect();
+        return Ok(truncated);
+    }
+    Ok("（搜索未获得有效资料）".to_string())
+}
+
+/// 记录一次人设生成相关的 LLM 调用用量
+async fn record_persona_usage(
+    db_state: &DbState,
+    usage_agent_id: &Option<String>,
+    usage_model_config_id: &Option<String>,
+    usage_json: &Option<serde_json::Value>,
+    call_round: i32,
+) {
+    if let (Some(agent_id), Some(model_config_id), Some(usage_json)) =
+        (usage_agent_id, usage_model_config_id, usage_json)
+    {
+        let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
+        let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
+        let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
+        let now = chrono::Utc::now().timestamp_millis();
+        let record = crate::models::usage::LlmUsageRecord {
+            id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
+            agent_id: agent_id.clone(),
+            model_config_id: model_config_id.clone(),
+            session_id: None,
+            trigger_type: "persona_generation".to_string(),
+            call_round,
+            prompt_tokens: prompt,
+            completion_tokens: completion,
+            total_tokens: total,
+            message_id: None,
+            created_at: now,
+        };
+        let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
+    }
+}
+
 fn provider_from_config(cfg: &ModelConfig) -> OpenAiCompatibleProvider {
     OpenAiCompatibleProvider::new(
         cfg.api_key.clone(),
@@ -261,11 +427,50 @@ pub async fn generate(
         }
     }
 
+    // 4.5 Search phase (optional, ReAct multi-round web_search)
+    let search_context: Option<String> = if req.enable_search.unwrap_or(false) {
+        let (provider_name, api_key) = {
+            let conn = db_state.0.lock().await;
+            let settings = crate::db::settings::get_or_create_settings(&conn)
+                .map_err(|e| e.to_string())?;
+            let key = settings
+                .search_api_key_encrypted
+                .as_ref()
+                .and_then(|enc| crate::crypto::decrypt(enc).ok());
+            (settings.search_provider.clone(), key)
+        };
+        let provider_name = provider_name
+            .filter(|p| !p.is_empty())
+            .ok_or_else(|| SearchError::NotConfigured.user_message(""))?;
+        let api_key = api_key
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| SearchError::NotConfigured.user_message(""))?;
+        let searcher = crate::search::create_provider(&provider_name, &api_key)
+            .map_err(|e| e.user_message(&provider_name))?;
+        Some(
+            run_search_phase(
+                &provider,
+                searcher.as_ref(),
+                req.reference_character.as_deref(),
+                req.supplement.as_deref(),
+                db_state,
+                &usage_agent_id,
+                &usage_model_config_id,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+
     // 5. Step 1: Information extraction
-    let step1_user_msg = build_step1_user_message(
-        req.reference_character.as_deref(),
-        req.supplement.as_deref(),
-        &existing,
+    let step1_user_msg = inject_search_material(
+        &build_step1_user_message(
+            req.reference_character.as_deref(),
+            req.supplement.as_deref(),
+            &existing,
+        ),
+        search_context.as_deref(),
     );
 
     let step1_messages = vec![serde_json::json!({
@@ -280,28 +485,7 @@ pub async fn generate(
     let response1 = provider.chat(SYSTEM_PROMPT_STEP1, step1_messages, tools).await?;
 
     // Record usage for step 1
-    if let (Some(ref agent_id), Some(ref model_config_id)) = (&usage_agent_id, &usage_model_config_id) {
-        if let Some(ref usage_json) = response1.usage {
-            let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
-            let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
-            let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
-            let now = chrono::Utc::now().timestamp_millis();
-            let record = crate::models::usage::LlmUsageRecord {
-                id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
-                agent_id: agent_id.clone(),
-                model_config_id: model_config_id.clone(),
-                session_id: None,
-                trigger_type: "persona_generation".to_string(),
-                call_round: 1,
-                prompt_tokens: prompt,
-                completion_tokens: completion,
-                total_tokens: total,
-                message_id: None,
-                created_at: now,
-            };
-            let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
-        }
-    }
+    record_persona_usage(db_state, &usage_agent_id, &usage_model_config_id, &response1.usage, 1).await;
 
     let content1 = response1.content.as_deref().unwrap_or("");
     log_llm_response("Step1", 1, content1, response1.tool_calls.len());
@@ -380,28 +564,7 @@ pub async fn generate(
         let response2 = provider.chat(SYSTEM_PROMPT_STEP2, step2_messages.clone(), vec![]).await?;
 
         // Record usage for step 2
-        if let (Some(ref agent_id), Some(ref model_config_id)) = (&usage_agent_id, &usage_model_config_id) {
-            if let Some(ref usage_json) = response2.usage {
-                let prompt = usage_json["prompt_tokens"].as_i64().unwrap_or(0) as i32;
-                let completion = usage_json["completion_tokens"].as_i64().unwrap_or(0) as i32;
-                let total = usage_json["total_tokens"].as_i64().unwrap_or(0) as i32;
-                let now = chrono::Utc::now().timestamp_millis();
-                let record = crate::models::usage::LlmUsageRecord {
-                    id: format!("usage_{}_{}", agent_id, uuid::Uuid::new_v4()),
-                    agent_id: agent_id.clone(),
-                    model_config_id: model_config_id.clone(),
-                    session_id: None,
-                    trigger_type: "persona_generation".to_string(),
-                    call_round: 2,
-                    prompt_tokens: prompt,
-                    completion_tokens: completion,
-                    total_tokens: total,
-                    message_id: None,
-                    created_at: now,
-                };
-                let _ = crate::db::usage::insert_usage_record(db_state, &record).await;
-            }
-        }
+        record_persona_usage(db_state, &usage_agent_id, &usage_model_config_id, &response2.usage, 2).await;
 
         let content2 = response2.content.ok_or_else(|| {
             log_llm_response("Step2", step2_attempt + 1, "[无content]", response2.tool_calls.len());
@@ -448,4 +611,26 @@ pub async fn generate(
         detailed_persona,
         simplified_persona,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inject_search_material_prepends() {
+        let msg = "【参考角色】\nSaber\n\n请分析以上信息。";
+        let out = inject_search_material(msg, Some("搜索到的资料内容"));
+        assert!(out.starts_with("【网络搜索资料】\n<search_material>\n搜索到的资料内容\n</search_material>"));
+        assert!(out.contains(msg));
+        assert!(out.find("search_material").unwrap() < out.find("【参考角色】").unwrap());
+    }
+
+    #[test]
+    fn test_inject_search_material_none_or_empty_is_noop() {
+        let msg = "原始消息";
+        assert_eq!(inject_search_material(msg, None), msg);
+        assert_eq!(inject_search_material(msg, Some("")), msg);
+        assert_eq!(inject_search_material(msg, Some("   ")), msg);
+    }
 }

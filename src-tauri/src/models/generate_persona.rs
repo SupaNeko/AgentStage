@@ -16,6 +16,8 @@ pub struct GeneratePersonaRequest {
     pub model_config_id: Option<String>,
     pub reference_character: Option<String>,
     pub supplement: Option<String>,
+    /// 是否启用联网搜索（ReAct 多轮工具调用）。需先在设置中配置搜索 API。
+    pub enable_search: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]

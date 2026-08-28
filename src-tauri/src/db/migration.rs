@@ -128,6 +128,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "vits_voice",
         sql: super::schema::MIGRATION_V25,
     },
+    Migration {
+        version: 26,
+        name: "search_api_and_virtual_time",
+        sql: super::schema::MIGRATION_V26,
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {

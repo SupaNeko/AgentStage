@@ -796,6 +796,16 @@ CREATE INDEX idx_llm_usage_session_model ON llm_usage_records(session_id, model_
 CREATE INDEX idx_llm_usage_trigger ON llm_usage_records(trigger_type);
 "#;
 
+// V26: 搜索 API 配置 + 虚拟时间
+pub const MIGRATION_V26: &str = r#"
+ALTER TABLE app_settings ADD COLUMN search_provider TEXT;
+ALTER TABLE app_settings ADD COLUMN search_api_key_encrypted BLOB;
+ALTER TABLE app_settings ADD COLUMN virtual_time_enabled INTEGER DEFAULT 0 CHECK(virtual_time_enabled IN (0, 1));
+ALTER TABLE app_settings ADD COLUMN virtual_time_base INTEGER;
+ALTER TABLE app_settings ADD COLUMN virtual_time_set_at INTEGER;
+ALTER TABLE app_settings ADD COLUMN virtual_time_rate INTEGER DEFAULT 1;
+"#;
+
 /// Latest consolidated schema for fresh databases.
 /// Creates all tables and indexes directly at the current version (V20).
 /// Table order respects foreign key dependencies.
@@ -952,6 +962,12 @@ CREATE TABLE app_settings (
     quiet_hours_start INTEGER DEFAULT 0,
     quiet_hours_end INTEGER DEFAULT 480,
     summary_model_config_id TEXT,
+    search_provider TEXT,
+    search_api_key_encrypted BLOB,
+    virtual_time_enabled INTEGER DEFAULT 0 CHECK(virtual_time_enabled IN (0, 1)),
+    virtual_time_base INTEGER,
+    virtual_time_set_at INTEGER,
+    virtual_time_rate INTEGER DEFAULT 1,
     updated_at INTEGER NOT NULL
 );
 

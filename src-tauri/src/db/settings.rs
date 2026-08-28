@@ -7,7 +7,9 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 group_message_limit_default, private_limit_enabled_default, \
                 group_limit_enabled_default, theme, font_size, language, \
                 enter_to_send, launch_on_startup, minimize_to_tray, \
-                active_persona_id, default_avatar_path, quiet_hours_start, quiet_hours_end, summary_model_config_id, updated_at \
+                active_persona_id, default_avatar_path, quiet_hours_start, quiet_hours_end, summary_model_config_id, \
+                search_provider, search_api_key_encrypted, \
+                virtual_time_enabled, virtual_time_base, virtual_time_set_at, virtual_time_rate, updated_at \
          FROM app_settings WHERE id = 1",
         [],
         |row| {
@@ -29,7 +31,13 @@ pub fn get_or_create_settings(conn: &Connection) -> Result<AppSettings> {
                 quiet_hours_start: row.get(14)?,
                 quiet_hours_end: row.get(15)?,
                 summary_model_config_id: row.get(16).ok(),
-                updated_at: row.get(17)?,
+                search_provider: row.get(17).ok(),
+                search_api_key_encrypted: row.get(18).ok(),
+                virtual_time_enabled: row.get::<_, i32>(19).unwrap_or(0) != 0,
+                virtual_time_base: row.get(20).ok(),
+                virtual_time_set_at: row.get(21).ok(),
+                virtual_time_rate: row.get(22).unwrap_or(1),
+                updated_at: row.get(23)?,
             })
         },
     );
@@ -94,6 +102,47 @@ pub fn update_quiet_hours(
     Ok(())
 }
 
+/// 更新搜索 API 配置。encrypted_key 为 None 时清空已存 Key。
+pub fn update_search_config(
+    conn: &Connection,
+    provider: Option<&str>,
+    encrypted_key: Option<&[u8]>,
+) -> Result<(), rusqlite::Error> {
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "UPDATE app_settings SET search_provider = ?1, search_api_key_encrypted = ?2, updated_at = ?3 WHERE id = 1",
+        rusqlite::params![provider, encrypted_key, now],
+    )?;
+    Ok(())
+}
+
+/// 更新虚拟时间配置。提供 base 时，set_at 重置为当前真实时间。
+pub fn update_virtual_time(
+    conn: &Connection,
+    enabled: bool,
+    base: Option<i64>,
+    rate: Option<i32>,
+) -> Result<(), rusqlite::Error> {
+    let now = chrono::Utc::now().timestamp_millis();
+    let current = get_or_create_settings(conn)?;
+    let new_rate = rate.unwrap_or(current.virtual_time_rate).max(1);
+    match base {
+        Some(b) => {
+            conn.execute(
+                "UPDATE app_settings SET virtual_time_enabled = ?1, virtual_time_base = ?2, virtual_time_set_at = ?3, virtual_time_rate = ?4, updated_at = ?5 WHERE id = 1",
+                rusqlite::params![enabled as i32, b, now, new_rate, now],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "UPDATE app_settings SET virtual_time_enabled = ?1, virtual_time_rate = ?2, updated_at = ?3 WHERE id = 1",
+                rusqlite::params![enabled as i32, new_rate, now],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,19 +163,7 @@ mod tests {
 
         let req = UpdateAppSettingsRequest {
             global_min_trigger_interval: Some(60),
-            private_message_limit_default: None,
-            group_message_limit_default: None,
-            private_limit_enabled_default: None,
-            group_limit_enabled_default: None,
-            theme: None,
-            font_size: None,
-            language: None,
-            enter_to_send: None,
-            launch_on_startup: None,
-            minimize_to_tray: None,
-            active_persona_id: None,
-            default_avatar_path: None,
-            summary_model_config_id: None,
+            ..Default::default()
         };
         update_settings(&conn, &req).unwrap();
 
@@ -148,5 +185,60 @@ mod tests {
         let after = get_or_create_settings(&conn).unwrap();
         assert_eq!(after.quiet_hours_start, 120);
         assert_eq!(after.quiet_hours_end, 360);
+    }
+
+    #[test]
+    fn test_search_config_roundtrip_and_clear() {
+        let conn = init_test_db();
+        let before = get_or_create_settings(&conn).unwrap();
+        assert!(before.search_provider.is_none());
+        assert!(before.search_api_key_encrypted.is_none());
+
+        update_search_config(&conn, Some("bocha"), Some(b"encrypted-key")).unwrap();
+        let s = get_or_create_settings(&conn).unwrap();
+        assert_eq!(s.search_provider.as_deref(), Some("bocha"));
+        assert_eq!(s.search_api_key_encrypted.as_deref(), Some(b"encrypted-key".as_slice()));
+
+        // 切换厂商时清空 Key
+        update_search_config(&conn, Some("zhipu"), None).unwrap();
+        let s = get_or_create_settings(&conn).unwrap();
+        assert_eq!(s.search_provider.as_deref(), Some("zhipu"));
+        assert!(s.search_api_key_encrypted.is_none());
+    }
+
+    #[test]
+    fn test_settings_response_never_leaks_search_key() {
+        let conn = init_test_db();
+        get_or_create_settings(&conn).unwrap(); // 确保单例行存在
+        update_search_config(&conn, Some("kimi"), Some(b"super-secret")).unwrap();
+        let s = get_or_create_settings(&conn).unwrap();
+        let resp: crate::models::settings::SettingsResponse = s.into();
+        assert!(resp.search_api_key_set);
+        // SettingsResponse 不含任何 Key 字段，序列化后也不应出现明文
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(!json.contains("super-secret"));
+    }
+
+    #[test]
+    fn test_virtual_time_update_sets_set_at_and_clamps_rate() {
+        let conn = init_test_db();
+        let before = get_or_create_settings(&conn).unwrap();
+        assert!(!before.virtual_time_enabled);
+        assert_eq!(before.virtual_time_rate, 1);
+
+        let base = 1_800_000_000_000i64;
+        update_virtual_time(&conn, true, Some(base), Some(0)).unwrap();
+        let s = get_or_create_settings(&conn).unwrap();
+        assert!(s.virtual_time_enabled);
+        assert_eq!(s.virtual_time_base, Some(base));
+        assert!(s.virtual_time_set_at.is_some());
+        assert_eq!(s.virtual_time_rate, 1); // 0 被钳制为 1
+
+        // 不提供 base 时保留原 base/set_at，仅改开关与流速
+        update_virtual_time(&conn, false, None, Some(5)).unwrap();
+        let s = get_or_create_settings(&conn).unwrap();
+        assert!(!s.virtual_time_enabled);
+        assert_eq!(s.virtual_time_base, Some(base));
+        assert_eq!(s.virtual_time_rate, 5);
     }
 }

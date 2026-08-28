@@ -52,6 +52,13 @@ npm-debug.log*
 /vits_runtime/.venv/
 /vits_runtime/build/
 /vits_runtime/dist/
+/vits_runtime/build-gpu/
+/vits_runtime/dist-gpu/
+/vits_runtime/dist-gpu-launcher/
+/vits_runtime/gpu_launcher/
+/vits_runtime/gpu_package/
+/vits_runtime/main_gpu.py
+/vits_runtime/vits_runtime_gpu.spec
 __pycache__/
 *.pyc
 

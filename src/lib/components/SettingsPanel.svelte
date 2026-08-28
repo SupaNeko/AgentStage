@@ -28,6 +28,84 @@
     let quietStart = $state('00:00');
     let quietEnd = $state('08:00');
 
+    // 搜索 API
+    let searchProvider = $state('');
+    let searchApiKey = $state('');
+    let searchKeySet = $state(false);
+    let testingSearch = $state(false);
+    let searchTestResult = $state<{ ok: boolean; msg: string } | null>(null);
+
+    // 虚拟时间
+    let virtualTimeEnabled = $state(false);
+    let virtualTimeInput = $state('');
+    let virtualTimeRate = $state(1);
+    let vtStoredBase = $state<number | null>(null);
+    let vtStoredSetAt = $state<number | null>(null);
+    let vtPreview = $state('');
+
+    function msToDatetimeLocal(ms: number): string {
+        const d = new Date(ms);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function formatDateTime(d: Date): string {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    // 虚拟时间预览：与后端公式一致 virtual = base + (real_now - set_at) * rate
+    function previewVirtualNow(): Date | null {
+        const now = Date.now();
+        const rate = Math.max(1, Math.floor(Number(virtualTimeRate)) || 1);
+        let base: number | null = null;
+        let setAt = now;
+        if (virtualTimeInput) {
+            const v = new Date(virtualTimeInput).getTime();
+            if (!isNaN(v)) base = v;
+        }
+        if (base == null) return null;
+        // 输入未改动时沿用已存的 set_at，预览才与后端一致
+        if (vtStoredBase != null && vtStoredSetAt != null && base === vtStoredBase) {
+            setAt = vtStoredSetAt;
+        }
+        return new Date(base + (now - setAt) * rate);
+    }
+
+    $effect(() => {
+        if (!virtualTimeEnabled) {
+            vtPreview = '';
+            return;
+        }
+        // 依赖 virtualTimeInput / virtualTimeRate 等状态，变化时重建计时器
+        void virtualTimeInput;
+        void virtualTimeRate;
+        const update = () => {
+            const d = previewVirtualNow();
+            vtPreview = d ? formatDateTime(d) : '请先设定时间';
+        };
+        update();
+        const timer = setInterval(update, 1000);
+        return () => clearInterval(timer);
+    });
+
+    async function testSearchConnection() {
+        if (!searchProvider) return;
+        testingSearch = true;
+        searchTestResult = null;
+        try {
+            const msg = await invoke<string>('test_search_api', {
+                provider: searchProvider,
+                apiKey: searchApiKey || null,
+            });
+            searchTestResult = { ok: true, msg };
+        } catch (err) {
+            searchTestResult = { ok: false, msg: String(err) };
+        } finally {
+            testingSearch = false;
+        }
+    }
+
     function minutesToTime(minutes: number): string {
         const h = Math.floor(minutes / 60).toString().padStart(2, '0');
         const m = (minutes % 60).toString().padStart(2, '0');
@@ -48,16 +126,34 @@
             quietHoursEnabled = (settingsStore.settings.quiet_hours_start ?? -1) >= 0;
             quietStart = minutesToTime(settingsStore.settings.quiet_hours_start ?? 0);
             quietEnd = minutesToTime(settingsStore.settings.quiet_hours_end ?? 480);
+            searchProvider = settingsStore.settings.search_provider ?? '';
+            searchKeySet = settingsStore.settings.search_api_key_set ?? false;
+            virtualTimeEnabled = settingsStore.settings.virtual_time_enabled ?? false;
+            virtualTimeRate = settingsStore.settings.virtual_time_rate ?? 1;
+            vtStoredBase = settingsStore.settings.virtual_time_base ?? null;
+            vtStoredSetAt = settingsStore.settings.virtual_time_set_at ?? null;
+            virtualTimeInput = vtStoredBase != null ? msToDatetimeLocal(vtStoredBase) : '';
         }
     });
 
     async function handleSave() {
         saving = true;
         try {
+            // 虚拟时间：把当前正在显示的虚拟时间作为新 base 提交，保证只改流速时时间不跳变
+            let vtBase: number | undefined;
+            if (virtualTimeEnabled) {
+                vtBase = previewVirtualNow()?.getTime() ?? Date.now();
+            }
             await settingsStore.update({
                 global_min_trigger_interval: draft.global_min_trigger_interval,
                 summary_model_config_id: draft.summary_model_config_id,
+                search_provider: searchProvider || null,
+                ...(searchApiKey ? { search_api_key: searchApiKey } : {}),
+                virtual_time_enabled: virtualTimeEnabled,
+                virtual_time_base: vtBase,
+                virtual_time_rate: Math.max(1, Math.floor(Number(virtualTimeRate)) || 1),
             });
+            searchApiKey = ''; // 保存成功后清空输入框，避免明文驻留
             if (quietHoursEnabled) {
                 await invoke('update_quiet_hours', {
                     quietHoursStart: timeToMinutes(quietStart),
@@ -116,6 +212,77 @@
                             {/if}
                         </button>
                         <span class="text-xs text-text-secondary">点击更换头像</span>
+                    </div>
+
+                    <!-- 搜索 API -->
+                    <div class="border-t border-border pt-4">
+                        <h3 class="font-semibold mb-1">搜索 API</h3>
+                        <p class="text-xs text-text-secondary mb-3">配置后，AI 生成人设时可勾选“启用搜索”，让 AI 联网搜集资料（多轮搜索）。</p>
+                        <label class="block text-sm font-medium mb-1">搜索厂商</label>
+                        <select
+                            bind:value={searchProvider}
+                            class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
+                        >
+                            <option value="">未配置</option>
+                            <option value="bocha">博查</option>
+                            <option value="zhipu">智谱</option>
+                            <option value="kimi">Kimi（Moonshot）</option>
+                        </select>
+                        {#if searchProvider}
+                            <label class="block text-sm font-medium mb-1 mt-3">API Key</label>
+                            <input
+                                type="password"
+                                bind:value={searchApiKey}
+                                placeholder={searchKeySet ? '已保存（输入新 Key 可覆盖）' : '请输入 API Key'}
+                                class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
+                            />
+                            {#if searchProvider !== (settingsStore.settings?.search_provider ?? '')}
+                                <p class="text-xs text-amber-500 mt-1">已切换厂商，需重新填写该厂商的 Key</p>
+                            {/if}
+                            <div class="flex items-center gap-2 mt-2">
+                                <button
+                                    onclick={testSearchConnection}
+                                    disabled={testingSearch || (!searchApiKey && !searchKeySet)}
+                                    class="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-bg transition-colors disabled:opacity-50"
+                                >
+                                    {testingSearch ? '测试中...' : '测试连接'}
+                                </button>
+                                {#if searchTestResult}
+                                    <span class="text-xs {searchTestResult.ok ? 'text-green-500' : 'text-red-500'}">{searchTestResult.msg}</span>
+                                {/if}
+                            </div>
+                        {/if}
+                    </div>
+
+                    <!-- 虚拟时间 -->
+                    <div class="border-t border-border pt-4">
+                        <h3 class="font-semibold mb-1">虚拟时间</h3>
+                        <p class="text-xs text-text-secondary mb-3">启用后，注入给 AI 角色的时间以虚拟时间为准（仅影响对话提示词中的时间，定时器等仍按真实时间运行）。</p>
+                        <label class="flex items-center gap-2 mb-2">
+                            <input type="checkbox" bind:checked={virtualTimeEnabled} />
+                            <span>启用虚拟时间</span>
+                        </label>
+                        {#if virtualTimeEnabled}
+                            <label class="block text-sm font-medium mb-1">设定时间</label>
+                            <input
+                                type="datetime-local"
+                                bind:value={virtualTimeInput}
+                                class="w-full px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
+                            />
+                            <label class="block text-sm font-medium mb-1 mt-3">时间流速</label>
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm">现实 1 分钟 = 虚拟</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    bind:value={virtualTimeRate}
+                                    class="w-20 px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 input-field"
+                                />
+                                <span class="text-sm">分钟</span>
+                            </div>
+                            <p class="text-xs text-text-secondary mt-3">当前虚拟时间：<span class="font-mono">{vtPreview || '—'}</span></p>
+                        {/if}
                     </div>
                 </div>
             {:else if activeTab === 'trigger'}

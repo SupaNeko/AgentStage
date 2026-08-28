@@ -162,6 +162,26 @@ pub fn fill_character_fields_tool_schema() -> serde_json::Value {
     })
 }
 
+pub fn web_search_tool_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "搜索互联网获取实时信息。输入搜索关键词，返回相关网页的标题、链接和摘要。可多次调用以搜集不同方面的信息。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词，应简洁明确，每次只搜索一个主题"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    })
+}
+
 pub fn create_timer_tool_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "function",

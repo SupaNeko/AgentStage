@@ -17,6 +17,12 @@ export interface AppSettings {
     quiet_hours_start?: number;
     quiet_hours_end?: number;
     summary_model_config_id: string | null;
+    search_provider: string | null;
+    search_api_key_set: boolean;
+    virtual_time_enabled: boolean;
+    virtual_time_base: number | null;
+    virtual_time_set_at: number | null;
+    virtual_time_rate: number;
 }
 
 class SettingsStore {
@@ -32,7 +38,7 @@ class SettingsStore {
         }
     }
 
-    async update(partial: Partial<AppSettings>) {
+    async update(partial: Partial<AppSettings> & { search_api_key?: string }) {
         const req = {
             global_min_trigger_interval: partial.global_min_trigger_interval,
             private_message_limit_default: partial.private_message_limit_default,
@@ -48,6 +54,11 @@ class SettingsStore {
             active_persona_id: partial.active_persona_id,
             default_avatar_path: partial.default_avatar_path,
             summary_model_config_id: partial.summary_model_config_id,
+            search_provider: partial.search_provider,
+            search_api_key: partial.search_api_key,
+            virtual_time_enabled: partial.virtual_time_enabled,
+            virtual_time_base: partial.virtual_time_base,
+            virtual_time_rate: partial.virtual_time_rate,
         };
         const updated = await invoke<AppSettings>('update_settings', { req });
         this.settings = updated;

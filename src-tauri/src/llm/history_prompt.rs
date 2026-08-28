@@ -75,9 +75,10 @@ impl HistoryPromptAssembler {
         }
 
         // 4. 格式化当前 session + page 的消息历史（反转使旧消息在上，新消息在下）
+        let clock = crate::virtual_time::VirtualClock::load(conn);
         let mut context = String::new();
         for msg in history_messages.iter().rev() {
-            let time = crate::llm::prompt::PromptAssembler::format_time(msg.created_at);
+            let time = clock.format_ts(msg.created_at);
             let sender = if msg.sender_type == "agent" && msg.sender_id == agent_id {
                 agent.name.clone()
             } else if let Some(snapshot) = snapshot_map.get(&(msg.sender_id.clone(), msg.sender_type.clone())) {
@@ -95,7 +96,7 @@ impl HistoryPromptAssembler {
             .unwrap_or_else(|| "unknown".to_string());
 
         // 6. 组装完整 prompt
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let now = clock.format_now();
         let participants_section = if participants_text.is_empty() {
             String::new()
         } else {

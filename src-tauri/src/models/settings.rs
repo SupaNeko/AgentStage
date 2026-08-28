@@ -19,6 +19,12 @@ pub struct AppSettings {
     pub quiet_hours_start: i32,
     pub quiet_hours_end: i32,
     pub summary_model_config_id: Option<String>,
+    pub search_provider: Option<String>,
+    pub search_api_key_encrypted: Option<Vec<u8>>,
+    pub virtual_time_enabled: bool,
+    pub virtual_time_base: Option<i64>,
+    pub virtual_time_set_at: Option<i64>,
+    pub virtual_time_rate: i32,
     pub updated_at: i64,
 }
 
@@ -40,6 +46,14 @@ pub struct SettingsResponse {
     pub quiet_hours_start: i32,
     pub quiet_hours_end: i32,
     pub summary_model_config_id: Option<String>,
+    /// 搜索 API 厂商（'bocha' | 'zhipu' | 'kimi'），不暴露明文 Key
+    pub search_provider: Option<String>,
+    /// 是否已保存搜索 API Key（不返回 Key 本身）
+    pub search_api_key_set: bool,
+    pub virtual_time_enabled: bool,
+    pub virtual_time_base: Option<i64>,
+    pub virtual_time_set_at: Option<i64>,
+    pub virtual_time_rate: i32,
 }
 
 impl From<AppSettings> for SettingsResponse {
@@ -61,11 +75,21 @@ impl From<AppSettings> for SettingsResponse {
             quiet_hours_start: s.quiet_hours_start,
             quiet_hours_end: s.quiet_hours_end,
             summary_model_config_id: s.summary_model_config_id,
+            search_provider: s.search_provider,
+            search_api_key_set: s
+                .search_api_key_encrypted
+                .as_ref()
+                .map(|k| !k.is_empty())
+                .unwrap_or(false),
+            virtual_time_enabled: s.virtual_time_enabled,
+            virtual_time_base: s.virtual_time_base,
+            virtual_time_set_at: s.virtual_time_set_at,
+            virtual_time_rate: s.virtual_time_rate,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct UpdateAppSettingsRequest {
     pub global_min_trigger_interval: Option<i32>,
     pub private_message_limit_default: Option<i32>,
@@ -81,4 +105,13 @@ pub struct UpdateAppSettingsRequest {
     pub active_persona_id: Option<String>,
     pub default_avatar_path: Option<String>,
     pub summary_model_config_id: Option<String>,
+    /// 搜索 API 厂商；与当前不同时会清空已保存的 Key
+    pub search_provider: Option<String>,
+    /// 搜索 API 明文 Key（仅传输用，入库前加密）；空字符串 = 清除已存 Key
+    pub search_api_key: Option<String>,
+    pub virtual_time_enabled: Option<bool>,
+    /// 用户设定的虚拟时间（ms 时间戳）；提供时 set_at 由后端重置为当前真实时间
+    pub virtual_time_base: Option<i64>,
+    /// 流速：现实 1 分钟 = 虚拟 N 分钟（整数，>= 1）
+    pub virtual_time_rate: Option<i32>,
 }

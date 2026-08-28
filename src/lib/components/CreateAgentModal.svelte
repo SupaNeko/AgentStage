@@ -5,9 +5,15 @@
     import { toastStore } from '$lib/stores/toastStore.svelte';
     import { logger } from '$lib/logger';
     import { modelConfigStore } from '$lib/stores/modelConfigStore.svelte';
+    import { settingsStore } from '$lib/stores/settingsStore.svelte';
     import type { GeneratePersonaResult } from '$lib/types';
+    import { onMount } from 'svelte';
 
     let { open = $bindable(false), onSuccess }: { open: boolean; onSuccess?: () => void } = $props();
+
+    onMount(() => {
+        if (!settingsStore.settings) settingsStore.load();
+    });
 
     let mouseDownOnOverlay = $state(false);
 
@@ -29,6 +35,11 @@
     let generating = $state(false);
     let submitting = $state(false);
     let error = $state('');
+    let enableSearch = $state(false);
+
+    const searchAvailable = $derived(
+        !!(settingsStore.settings?.search_provider && settingsStore.settings?.search_api_key_set)
+    );
 
     async function handleGeneratePersona() {
         const hasRef = referenceCharacter.trim().length > 0;
@@ -55,6 +66,7 @@
                     model_config_id: form.model_config_id,
                     reference_character: referenceCharacter.trim() || null,
                     supplement: additionalInfo.trim() || null,
+                    enable_search: enableSearch && searchAvailable,
                 },
             });
             logger.debug('[DEBUG CreateAgentModal] persona generated');
@@ -161,6 +173,20 @@
                                 class="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none input-field"
                                 placeholder="输入额外的人设补充信息..."></textarea>
                         </div>
+                        <label
+                            class="flex items-center gap-2 text-sm {searchAvailable ? '' : 'opacity-50 cursor-not-allowed'}"
+                            title={searchAvailable ? '让 AI 联网搜索角色资料（多轮搜索），生成更准确的人设' : '请先在 设置 → 通用 → 搜索 API 中配置厂商和 Key'}
+                        >
+                            <input
+                                type="checkbox"
+                                bind:checked={enableSearch}
+                                disabled={!searchAvailable || generating}
+                            />
+                            <span>启用搜索</span>
+                            {#if !searchAvailable}
+                                <span class="text-xs text-text-secondary">（需先在设置中配置搜索 API）</span>
+                            {/if}
+                        </label>
                         <button
                             type="button"
                             onclick={handleGeneratePersona}
